@@ -2,6 +2,8 @@ import { useMemo, useState } from 'react';
 import { balance, recommend, type Choice } from '../engine/balance';
 import { actorFor, aliveCount, seatOf } from '../engine/core';
 import { execute, finishDay, nominateVirgin, previewSlayer, previewVirgin, slayerShoot } from '../engine/flow';
+import { scarletCanTakeOver } from '../engine/info';
+import type { GameState } from '../engine/types';
 import { dayStartLines, endLines, executionLines, nominationLines } from '../engine/scripts';
 import { stepRng, type Game } from '../store';
 import { BottomBar, ChoicePanel, DoBox, SayBox, SeatPicker, Sheet, useUi } from './common';
@@ -9,6 +11,33 @@ import { GrimoirePanel } from './Grimoire';
 import { TimerDisplay } from './Timer';
 
 const toggleStyle = (g: Game) => () => g.tweak((st) => (st.style = st.style === 'simple' ? 'atmo' : 'simple'));
+
+/** 红唇女郎白天接任后，一直挂在白天页面最上面 */
+function SwNotice({ s }: { s: GameState }) {
+  if (s.pendingNewDemon === null) return null;
+  const old = s.seats.find((x) => x.role === 'imp' && !x.alive && x.death?.when === 'day' && x.death.night === s.night);
+  const said = old ? `${old.n}号 ${s.executed === old.n ? '被处决了' : '死了'}` : '';
+  return (
+    <div className="card card-warn stack" style={{ gap: 6 }}>
+      <b style={{ color: 'var(--warn)' }}>红唇女郎（{s.pendingNewDemon}号）接任恶魔，游戏继续</b>
+      {said && <p>公开只说「{said}」。</p>}
+      <p>不要宣布游戏结束，也不要提红唇女郎。今晚会叫醒她，告诉她现在是小恶魔。</p>
+    </div>
+  );
+}
+
+/** 处决/射杀恶魔前的提醒：红唇女郎会不会接任 */
+function demonDeathWarning(s: GameState, n: number, verb: '被处决了' | '死了') {
+  if (seatOf(s, n).role !== 'imp') return null;
+  const sw = scarletCanTakeOver(s);
+  if (!sw) return <div className="card"><p>{n}号 是恶魔：他死后善良获胜。</p></div>;
+  return (
+    <div className="card card-warn stack" style={{ gap: 6 }}>
+      <b style={{ color: 'var(--warn)' }}>红唇女郎（{sw.n}号）会接任恶魔，游戏继续</b>
+      <p>公开只说「{n}号 {verb}」。不要宣布游戏结束，也不要提红唇女郎。</p>
+    </div>
+  );
+}
 
 export function DayScreen({ g }: { g: Game }) {
   const s = g.s;
@@ -31,6 +60,7 @@ export function DayScreen({ g }: { g: Game }) {
           <span className="kicker">白天</span>
           <h2>第 {s.night} 天</h2>
         </div>
+        <SwNotice s={s} />
         <SayBox lines={dayStartLines(s.night, s.style)} title="对所有人说" s={s} onStyle={toggleStyle(g)} />
         <div className="card">
           <h3>讨论计时</h3>
@@ -95,6 +125,7 @@ function ExecSheet({ g, onClose }: { g: Game; onClose: () => void }) {
       <div className="stack">
         <SeatPicker s={s} selected={t} max={1} onChange={setT} label="谁被处决了？" />
         {t.length > 0 && seatOf(s, t[0]).role === 'saint' && <p className="evil">注意：{t[0]}号 是圣徒。</p>}
+        {t.length > 0 && seatOf(s, t[0]).alive && demonDeathWarning(s, t[0], '被处决了')}
         <button className="btn btn-primary btn-block" disabled={!t.length} onClick={() => g.commit((st) => execute(st, t[0]))}>
           {t.length ? `处决 ${t[0]}号` : '先点出被处决的人'}
         </button>
@@ -118,6 +149,7 @@ function DayResult({ g }: { g: Game }) {
           <span className="kicker">第 {s.night} 天 · 结束</span>
           <h2>{s.winner ? '游戏结束' : '白天结束'}</h2>
         </div>
+        <SwNotice s={s} />
         {s.executed !== undefined && <SayBox lines={executionLines(s.executed, s.style)} title="对所有人说" s={s} onStyle={toggleStyle(g)} />}
         {s.winner ? (
           <>
@@ -128,7 +160,7 @@ function DayResult({ g }: { g: Game }) {
             <SayBox lines={endLines(s.winner, s.style)} title="对所有人说" />
           </>
         ) : (
-          <DoBox items={['宣布完处决结果，准备入夜。', s.pendingNewDemon ? `红唇女郎（${s.pendingNewDemon}号）已经变成小恶魔，今晚会叫醒她。不要公开说。` : null]} />
+          <DoBox items={['宣布完处决结果，准备入夜。']} />
         )}
       </div>
       <BottomBar wide>
@@ -223,6 +255,7 @@ function SlayerSheet({ g, onClose }: { g: Game; onClose: () => void }) {
         <SeatPicker s={s} selected={shooter} max={1} onChange={(v) => { setShooter(v); setTwist(null); }} label="谁开的枪？" />
         <SeatPicker s={s} selected={target} max={1} onChange={(v) => { setTarget(v); setTwist(null); }} label="他向谁开枪？" />
         {pv && <div className="card"><p>{pv.reason}</p></div>}
+        {pv?.swTakeover && demonDeathWarning(s, target[0], '死了')}
         {pv?.askTwist && <TwistPick key={`${shooter[0]}-${target[0]}`} g={g} kind={pv.askTwist} onValue={setTwist} />}
         {pv && <SayBox title="公开宣布" lines={hit ? [`${target[0]}号 死了。`] : ['什么都没有发生。']} />}
         <button
@@ -230,7 +263,7 @@ function SlayerSheet({ g, onClose }: { g: Game; onClose: () => void }) {
           disabled={!pv}
           onClick={() => {
             g.commit((st) => slayerShoot(st, shooter[0], target[0], twistVal));
-            ui.toast(hit ? `${target[0]}号 死亡` : '什么都没有发生');
+            ui.toast(!hit ? '什么都没有发生' : pv?.swTakeover ? `${target[0]}号 死亡，红唇女郎接任，游戏继续` : `${target[0]}号 死亡`);
             onClose();
           }}
         >

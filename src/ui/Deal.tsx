@@ -1,3 +1,5 @@
+import { useState } from 'react';
+import { DrunkEdit } from './Setup';
 import { ROLES, TEAM_NAME, roleName } from '../engine/roles';
 import { believedRole } from '../engine/core';
 import { dealNext } from '../engine/flow';
@@ -11,6 +13,7 @@ export function DealScreen({ g }: { g: Game }) {
   const seat = s.seats[s.dealIndex];
   const shown = believedRole(s, seat);
   const isDrunk = seat.role === 'drunk';
+  const [editDrunk, setEditDrunk] = useState(false);
 
   const show = () =>
     ui.showCard({ title: '你的身份', big: [roleName(shown)], team: ROLES[shown].team, ability: ROLES[shown].ability }, () =>
@@ -50,6 +53,9 @@ export function DealScreen({ g }: { g: Game }) {
               {seat.n}号 的真实身份是【酒鬼】，但他会看到自己是 <b className="good">【{roleName(shown)}】</b>。
             </p>
             <p>千万别说漏。之后夜里也按【{roleName(shown)}】叫醒他。</p>
+            <button className="btn btn-outline btn-sm" onClick={() => setEditDrunk(true)}>
+              换一个假身份
+            </button>
           </div>
         ) : (
           <p className="dim">
@@ -58,6 +64,7 @@ export function DealScreen({ g }: { g: Game }) {
         )}
         {s.dealIndex === s.count - 1 && <p className="dim">这是最后一位，看完后直接入夜。</p>}
       </div>
+      {editDrunk && <DrunkEdit g={g} onClose={() => setEditDrunk(false)} />}
       <BottomBar>
         <button className="btn btn-primary btn-block" onClick={show}>
           <Icon name="eye" /> {isDrunk ? `我知道了，给他看【${roleName(shown)}】` : '给他看'}

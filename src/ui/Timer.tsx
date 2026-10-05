@@ -14,11 +14,31 @@ export interface TimerState {
 export const TimerCtx = createContext<TimerState>(null!);
 export const useTimer = () => useContext(TimerCtx);
 
-/** 讨论计时器：白天页和盖屏共用一个 */
+const KEY = 'botc-storyteller-timer-v1';
+
+function loadTimer(): { total: number; endAt: number | null; left: number } {
+  try {
+    const d = JSON.parse(localStorage.getItem(KEY) ?? 'null');
+    if (d && typeof d.total === 'number' && typeof d.left === 'number') return d;
+  } catch {
+    /* 读不到就用默认值 */
+  }
+  return { total: 300, endAt: null, left: 300 };
+}
+
+/** 讨论计时器：白天页和盖屏共用一个；存在本地，刷新或切后台回来接着走 */
 export function useTimerState(): TimerState {
-  const [total, setTotal] = useState(300);
-  const [endAt, setEndAt] = useState<number | null>(null);
-  const [left, setLeft] = useState(300);
+  const [init] = useState(loadTimer);
+  const [total, setTotal] = useState(init.total);
+  const [endAt, setEndAt] = useState<number | null>(init.endAt);
+  const [left, setLeft] = useState(init.left);
+  useEffect(() => {
+    try {
+      localStorage.setItem(KEY, JSON.stringify({ total, endAt, left }));
+    } catch {
+      /* 存不下就算了 */
+    }
+  }, [total, endAt, left]);
   return {
     total,
     endAt,

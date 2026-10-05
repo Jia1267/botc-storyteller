@@ -1,10 +1,10 @@
 import { useMemo, useState } from 'react';
 import { ROLES, TEAM_NAME, isEvilTeam, rolesOfTeam, roleName, type RoleId, type Team } from '../engine/roles';
 import { recommend, setupLabel, balance } from '../engine/balance';
-import { inPlay, notInPlay } from '../engine/core';
+import { addLog, inPlay, notInPlay } from '../engine/core';
 import { defaultRng } from '../engine/rng';
 import {
-  DISTRIBUTION, MAX_PLAYERS, MIN_PLAYERS, bluffChoices, drunkFakeChoices, redHerringChoices,
+  DISTRIBUTION, F4, MAX_F4, MAX_PLAYERS, MIN_PLAYERS, bluffChoices, drunkFakeChoices, redHerringChoices,
   replaceRole, rerollRoles, setCount, setupReasons, shuffleSeats, startDeal, swapSeats,
 } from '../engine/setup';
 import { stepRng, type Game } from '../store';
@@ -132,6 +132,7 @@ function RolesStep({ g }: { g: Game }) {
 
 function RolePicker({ team, current, taken, onPick, onClose }: { team: Team; current: RoleId; taken: RoleId[]; onPick: (r: RoleId) => void; onClose: () => void }) {
   const opts = rolesOfTeam(team).filter((r) => r !== current && !taken.includes(r));
+  const f4Others = taken.filter((r) => r !== current && F4.includes(r)).length;
   return (
     <Sheet title={`把【${roleName(current)}】换成`} onClose={onClose}>
       <div className="choices">
@@ -141,6 +142,11 @@ function RolePicker({ team, current, taken, onPick, onClose }: { team: Team; cur
             <span className="lab">{roleName(r)}</span>
             <span className="why">{ROLES[r].ability}</span>
             {(r === 'baron' || current === 'baron') && <span className="why" style={{ color: 'var(--warn)' }}>男爵会让外来者 +2、镇民 −2，网页会自动调整。</span>}
+            {F4.includes(r) && f4Others >= MAX_F4 && (
+              <span className="why" style={{ color: 'var(--warn)' }}>
+                场上已有 {f4Others} 个首夜信息位，换上它就是第 {f4Others + 1} 个（可以，但这几个人第一晚后没事做）。
+              </span>
+            )}
           </button>
         ))}
       </div>
@@ -192,7 +198,7 @@ function SeatsStep({ g, onRules }: { g: Game; onRules: () => void }) {
               {drunk.n}号 是酒鬼，他会以为自己是 <b className="good">【{roleName(s.drunkFake)}】</b>
             </p>
             <button className="btn btn-outline btn-sm" style={{ marginTop: 10 }} onClick={() => setEdit('drunk')}>
-              看理由 / 更换
+              更换假身份
             </button>
           </div>
         )}
@@ -236,21 +242,31 @@ function SeatsStep({ g, onRules }: { g: Game; onRules: () => void }) {
   );
 }
 
-function DrunkEdit({ g, onClose }: { g: Game; onClose: () => void }) {
+/** 选酒鬼的假身份：所有不在场的镇民都列出来，直接点 */
+export function DrunkEdit({ g, onClose }: { g: Game; onClose: () => void }) {
   const s = g.s;
   const choices = useMemo(() => drunkFakeChoices(s), [s]);
   const rec = useMemo(() => recommend(choices, balance(s).score, stepRng(s, 1)), [choices, s]);
   const [sel, setSel] = useState(() => choices.findIndex((c) => c.value === s.drunkFake));
   return (
     <Sheet title="酒鬼以为自己是" onClose={onClose}>
+      <p className="dim" style={{ marginBottom: 10 }}>
+        只能选不在场的镇民。点一个就换好了。
+      </p>
       <ChoicePanel
         s={s}
         choices={choices}
         sel={sel}
         rec={rec}
+        defaultOpen
+        moreLabel="所有可选的假身份"
         onSel={(i) => {
+          if (i < 0) return;
           setSel(i);
-          g.commit((st) => (st.drunkFake = choices[i].value));
+          g.commit((st) => {
+            st.drunkFake = choices[i].value;
+            if (st.phase === 'deal') addLog(st, 'setup', `酒鬼假身份改为【${roleName(choices[i].value)}】`);
+          });
         }}
       />
     </Sheet>

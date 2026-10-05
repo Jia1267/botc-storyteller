@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { ROLES, type RoleId } from './roles';
 import { seeded } from './rng';
 import {
-  DISTRIBUTION, balancedRoles, newGame, randomRoles, replaceRole, setCount, setupZ, startDeal,
+  DISTRIBUTION, F4, MAX_F4, balancedRoles, bluffChoices, newGame, randomRoles, replaceRole, setCount, setupZ, startDeal,
 } from './setup';
 import {
   chefCount, empathCount, fortuneChoices, legalNumbers, numberChoices, pairChoices, pairVerdict,
@@ -75,6 +75,34 @@ describe('配板', () => {
     expect(teamCounts(s.seats.map((x) => x.role))).toEqual({ townsfolk: 5, outsider: 2, minion: 2, demon: 1 });
     replaceRole(s, minionSeat.n, 'poisoner', rng);
     expect(teamCounts(s.seats.map((x) => x.role))).toEqual({ townsfolk: 7, outsider: 0, minion: 2, demon: 1 });
+  });
+
+  it('随机配板的首夜信息位（F4）最多 2 个，换下男爵时也不超', () => {
+    const rng = seeded(11);
+    const f4 = (rs: RoleId[]) => rs.filter((r) => F4.includes(r)).length;
+    for (let n = 5; n <= 15; n++) {
+      for (let k = 0; k < 200; k++) expect(f4(randomRoles(n, rng))).toBeLessThanOrEqual(MAX_F4);
+      expect(f4(balancedRoles(n, rng))).toBeLessThanOrEqual(MAX_F4);
+    }
+    for (let k = 0; k < 50; k++) {
+      const s = newGame();
+      setCount(s, 15, rng);
+      const minion = s.seats.find((x) => ROLES[x.role].team === 'minion' && x.role !== 'baron')!;
+      replaceRole(s, minion.n, 'baron', rng);
+      replaceRole(s, minion.n, 'poisoner', rng);
+      expect(f4(s.seats.map((x) => x.role))).toBeLessThanOrEqual(MAX_F4);
+    }
+  });
+
+  it('恶魔伪装的标准搭配里有一个不在场的首夜信息位，给邪恶假跳', () => {
+    const rng = seeded(12);
+    for (let k = 0; k < 30; k++) {
+      const s = newGame();
+      setCount(s, 9, rng);
+      const normal = bluffChoices(s, rng).find((c) => c.key === 'normal')!;
+      expect(normal.value.some((r) => F4.includes(r))).toBe(true);
+      normal.value.forEach((r) => expect(s.seats.some((x) => x.role === r)).toBe(false));
+    }
   });
 
   it('酒鬼假身份不在场、恶魔伪装都不在场', () => {
@@ -346,6 +374,18 @@ describe('白天与胜负', () => {
     expect(s.seats[1].alive).toBe(false);
     expect(s.executed).toBe(2);
     expect(s.seats[0].used).toBe(true);
+  });
+
+  it('猎手射中恶魔时，提前告诉说书人红唇女郎会接任', () => {
+    const s = day1(['slayer', 'chef', 'scarletwoman', 'monk', 'imp']);
+    expect(previewSlayer(s, 1, 5).swTakeover).toBe(3);
+    slayerShoot(s, 1, 5);
+    expect(s.winner).toBeNull();
+    expect(s.pendingNewDemon).toBe(3);
+
+    const t = day1(['slayer', 'chef', 'scarletwoman', 'monk', 'imp']);
+    t.seats[3].alive = false;
+    expect(previewSlayer(t, 1, 5).swTakeover).toBeUndefined();
   });
 
   it('猎手：打中恶魔就死，陌客可选', () => {

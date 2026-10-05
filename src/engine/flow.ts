@@ -318,6 +318,8 @@ export interface DayPreview {
   reason: string;
   /** 需要说书人决定间谍/陌客要不要被"当成" */
   askTwist?: 'spyTownsfolk' | 'recluseDemon';
+  /** 恶魔死后会接任的红唇女郎座位（游戏继续） */
+  swTakeover?: number;
 }
 
 export function previewVirgin(s: GameState, nominee: number, nominator: number): DayPreview {
@@ -353,7 +355,12 @@ export function previewSlayer(s: GameState, shooter: number, target: number): Da
   if (!sh.alive) return { applies: false, reason: '猎手已经死亡：什么都不会发生。' };
   if (malfunction(s, shooter)) return { applies: false, reason: `猎手${sh.role === 'drunk' ? '其实是酒鬼' : '中毒了'}：子弹用掉，什么都不会发生。` };
   if (!t.alive) return { applies: false, reason: '目标已经死亡：什么都不会发生，子弹用掉。' };
-  if (t.role === 'imp') return { applies: true, reason: `${target}号 是恶魔：他死亡！` };
+  if (t.role === 'imp') {
+    const sw = scarletCanTakeOver(s);
+    return sw
+      ? { applies: true, swTakeover: sw.n, reason: `${target}号 是恶魔：他死亡。但红唇女郎（${sw.n}号）会立刻接任成为新恶魔，游戏继续！` }
+      : { applies: true, reason: `${target}号 是恶魔：他死亡！善良获胜。` };
+  }
   if (t.role === 'recluse') return { applies: false, reason: '目标是陌客：你可以决定把他当成恶魔（他会死）。', askTwist: 'recluseDemon' };
   return { applies: false, reason: `${target}号 不是恶魔：什么都不会发生，子弹用掉。` };
 }

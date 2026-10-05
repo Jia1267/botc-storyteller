@@ -22,12 +22,32 @@ export const DISTRIBUTION: Record<number, [number, number, number, number]> = {
 export const MIN_PLAYERS = 5;
 export const MAX_PLAYERS = 15;
 
+/** 首夜信息位（F4）：只在第一晚拿信息，之后没事做 */
+export const F4: RoleId[] = ['washerwoman', 'librarian', 'investigator', 'chef'];
+/** 随机配板时 F4 最多几个（至少留两个不在场，给邪恶假跳） */
+export const MAX_F4 = 2;
+
+/** 从候选镇民里挑 n 个，F4 不超过上限（已在场的 F4 也算） */
+function pickTownsfolk(pool: RoleId[], n: number, f4Already: number, rng: Rng): RoleId[] {
+  const out: RoleId[] = [];
+  let f = f4Already;
+  for (const r of shuffle(pool, rng)) {
+    if (out.length === n) break;
+    if (F4.includes(r)) {
+      if (f >= MAX_F4) continue;
+      f++;
+    }
+    out.push(r);
+  }
+  return out;
+}
+
 export function randomRoles(count: number, rng: Rng): RoleId[] {
   const [t, o, m] = DISTRIBUTION[count];
   const minions = sample(rolesOfTeam('minion'), m, rng);
   const baron = minions.includes('baron') ? 2 : 0;
   const outs = sample(rolesOfTeam('outsider'), o + baron, rng);
-  const towns = sample(rolesOfTeam('townsfolk'), t - baron, rng);
+  const towns = pickTownsfolk(rolesOfTeam('townsfolk'), t - baron, 0, rng);
   return [...towns, ...outs, ...minions, 'imp'];
 }
 
@@ -78,6 +98,8 @@ export function setupReasons(roles: RoleId[]): string[] {
   if (has('empath') && has('fortuneteller')) out.push('共情者 + 占卜师：好人每晚都有信息，偏善良');
   if (has('monk') && has('soldier')) out.push('僧侣 + 士兵：恶魔不好杀人，偏善良');
   if (has('saint')) out.push('有圣徒：误杀他好人直接输');
+  const f4 = roles.filter((r) => F4.includes(r)).length;
+  if (f4 > MAX_F4) out.push(`首夜信息位（洗衣妇/图书管理员/调查员/厨师）有 ${f4} 个：第一晚过后这几个人没事做，邪恶也少了可以假跳的身份`);
   return out;
 }
 
@@ -140,7 +162,11 @@ export function replaceRole(s: GameState, n: number, to: RoleId, rng: Rng) {
 
 function swapTeams(s: GameState, fromTeam: 'townsfolk' | 'outsider', toTeam: 'townsfolk' | 'outsider', keep: number, rng: Rng) {
   const victims = sample(s.seats.filter((x) => x.n !== keep && ROLES[x.role].team === fromTeam), 2, rng);
-  const fresh = sample(notInPlay(s, toTeam), victims.length, rng);
+  const f4Left = s.seats.filter((x) => !victims.includes(x) && F4.includes(x.role)).length;
+  const fresh =
+    toTeam === 'townsfolk'
+      ? pickTownsfolk(notInPlay(s, 'townsfolk'), victims.length, f4Left, rng)
+      : sample(notInPlay(s, toTeam), victims.length, rng);
   victims.forEach((v, i) => (v.role = v.startRole = fresh[i]));
 }
 
@@ -181,13 +207,14 @@ function refreshRedHerring(s: GameState, rng: Rng) {
 
 export function drunkFakeChoices(s: GameState): Choice<RoleId>[] {
   if (!inPlay(s, 'drunk')) return [];
-  return notInPlay(s, 'townsfolk').map((r) => {
+  return notInPlay(s, 'townsfolk').map((r): Choice<RoleId> => {
     const def = ROLES[r];
+    const clash = s.bluffs.includes(r) ? '注意：这个角色也在恶魔的伪装里，两人可能撞身份。' : '';
     if (r === 'virgin' || r === 'slayer')
-      return { key: r, label: roleName(r), value: r, lean: 1, truth: true, reason: `${def.name}能当众验证，酒鬼身份容易暴露，帮善良。` };
+      return { key: r, label: roleName(r), value: r, lean: 1, truth: true, reason: `${clash}${def.name}能当众验证，酒鬼身份容易暴露，帮善良。` };
     if (def.info)
-      return { key: r, label: roleName(r), value: r, lean: -1, truth: true, reason: `他以为自己是${def.name}，会把假信息带进小镇，帮邪恶。` };
-    return { key: r, label: roleName(r), value: r, lean: 0, truth: true, standard: true, reason: `${def.name}是被动型角色，影响适中。` };
+      return { key: r, label: roleName(r), value: r, lean: -1, truth: true, reason: `${clash}他以为自己是${def.name}，会把假信息带进小镇，帮邪恶。` };
+    return { key: r, label: roleName(r), value: r, lean: 0, truth: true, standard: true, reason: `${clash}${def.name}是被动型角色，影响适中。` };
   });
 }
 
@@ -199,11 +226,23 @@ export function bluffChoices(s: GameState, rng: Rng): Choice<RoleId[]>[] {
   const weak = byStrength.slice(-3);
   const towns = pool.filter((r) => ROLES[r].team === 'townsfolk');
   const outs = pool.filter((r) => ROLES[r].team === 'outsider');
-  const normal = outs.length && towns.length >= 2 ? [...sample(towns, 2, rng), pick(outs, rng)] : sample(pool, 3, rng);
+  const f4Free = towns.filter((r) => F4.includes(r));
+  const otherTowns = towns.filter((r) => !F4.includes(r));
+  // 标准搭配里放一个不在场的首夜信息位，邪恶最好假跳；外来者都在场时第三个用镇民补
+  const withF4 = f4Free.length > 0 && otherTowns.length > 0;
+  let normal: RoleId[];
+  if (withF4) {
+    const a = pick(f4Free, rng);
+    const b = pick(otherTowns, rng);
+    normal = [a, b, pick(outs.length ? outs : pool.filter((r) => r !== a && r !== b), rng)];
+  } else normal = outs.length && towns.length >= 2 ? [...sample(towns, 2, rng), pick(outs, rng)] : sample(pool, 3, rng);
   const fmt = (rs: RoleId[]) => rs.map(roleName).join('、');
   return [
     { key: 'strong', label: fmt(strong), value: strong, lean: -1, truth: true, reason: '这几个角色很难被当场拆穿，恶魔好伪装，帮邪恶。' },
-    { key: 'normal', label: fmt(normal), value: normal, lean: 0, truth: true, standard: true, reason: '普通搭配：两个镇民加一个外来者，伪装难度适中。' },
+    {
+      key: 'normal', label: fmt(normal), value: normal, lean: 0, truth: true, standard: true,
+      reason: withF4 ? '标准搭配：含一个不在场的首夜信息位（邪恶最好假跳），伪装难度适中。' : '普通搭配：两个镇民加一个外来者，伪装难度适中。',
+    },
     { key: 'weak', label: fmt(weak), value: weak, lean: 1, truth: true, reason: '这几个角色容易被验证或拆穿，恶魔不好装，帮善良。' },
   ];
 }

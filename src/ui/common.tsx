@@ -152,7 +152,7 @@ export function SeatPicker({
  * sel === -1 表示手动模式，manual 里放手动输入的界面。
  */
 export function ChoicePanel<T>({
-  s, choices, sel, rec, onSel, manual, manualLabel = '都不合适，手动指定',
+  s, choices, sel, rec, onSel, manual, manualLabel = '都不合适，手动指定', defaultOpen = false, moreLabel = '换一种给法',
 }: {
   s: GameState;
   choices: Choice<T>[];
@@ -161,6 +161,9 @@ export function ChoicePanel<T>({
   onSel: (i: number) => void;
   manual?: ReactNode;
   manualLabel?: string;
+  /** 一打开就把所有选项展开 */
+  defaultOpen?: boolean;
+  moreLabel?: string;
 }) {
   const score = balance(s).score;
   const cur = sel >= 0 ? choices[sel] : null;
@@ -186,9 +189,9 @@ export function ChoicePanel<T>({
         </div>
       )}
       {(choices.length > 1 || manual) && (
-        <details className="more">
+        <details className="more" open={defaultOpen || undefined}>
           <summary>
-            <Icon name="chevronDown" size={18} /> 换一种给法（{choices.length}
+            <Icon name="chevronDown" size={18} /> {moreLabel}（{choices.length}
             {manual ? ' + 手动' : ''}）
           </summary>
           <div className="choices" style={{ marginTop: 8 }}>
