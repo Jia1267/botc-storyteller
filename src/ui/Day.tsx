@@ -1,54 +1,76 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
+import { FABLED, ROLES, roleName } from '../engine/roles';
 import { balance, recommend, type Choice } from '../engine/balance';
-import { actorFor, aliveCount, seatOf } from '../engine/core';
-import { execute, finishDay, nominateVirgin, previewSlayer, previewVirgin, slayerShoot } from '../engine/flow';
+import { actorFor, aliveCount, hasAbility, isDemonSeat, isEvil, lilMonsta, malfunction, seatOf, vortoxActive } from '../engine/core';
+import {
+  LEVIATHAN_DAYS, execute, fearmongerAsk, finishDay, goblinAsk, nominateVirgin, previewSlayer, previewVirgin,
+  savantVisit, setDuchessVisitors, slayerShoot, markUsed,
+} from '../engine/flow';
 import { scarletCanTakeOver } from '../engine/info';
-import type { GameState } from '../engine/types';
+import { AMNESIAC_ANSWERS, artistMode, fishermanChoices, savantChoices } from '../engine/daytime';
+import type { GameState, Seat } from '../engine/types';
 import { dayStartLines, endLines, executionLines, nominationLines } from '../engine/scripts';
 import { stepRng, type Game } from '../store';
 import { BottomBar, ChoicePanel, DoBox, SayBox, SeatPicker, Sheet, useUi } from './common';
 import { GrimoirePanel } from './Grimoire';
+import { KlutzPrompt, PixiePrompt, promptPending } from './Prompts';
 import { TimerDisplay } from './Timer';
 
 const toggleStyle = (g: Game) => () => g.tweak((st) => (st.style = st.style === 'simple' ? 'atmo' : 'simple'));
 
 /** 红唇女郎白天接任后，一直挂在白天页面最上面 */
 function SwNotice({ s }: { s: GameState }) {
-  if (s.pendingNewDemon === null) return null;
-  const old = s.seats.find((x) => x.role === 'imp' && !x.alive && x.death?.when === 'day' && x.death.night === s.night);
+  const lil = lilMonsta(s) && s.babysitterLocked && s.babysitter;
+  if (s.pendingNewDemon === null && !lil) return null;
+  const old = s.seats.find(
+    (x) => !x.alive && x.death?.when === 'day' && x.death.night === s.night && (ROLES[x.role].team === 'demon' || (lilMonsta(s) && ROLES[x.role].team === 'minion')),
+  );
   const said = old ? `${old.n}号 ${s.executed === old.n ? '被处决了' : '死了'}` : '';
+  const sw = lil ? s.babysitter! : s.pendingNewDemon!;
   return (
     <div className="card card-warn stack" style={{ gap: 6 }}>
-      <b style={{ color: 'var(--warn)' }}>红唇女郎（{s.pendingNewDemon}号）接任恶魔，游戏继续</b>
+      <b style={{ color: 'var(--warn)' }}>
+        红唇女郎（{sw}号）{lil ? '接手照看小怪宝' : '接任恶魔'}，游戏继续
+      </b>
       {said && <p>公开只说「{said}」。</p>}
-      <p>不要宣布游戏结束，也不要提红唇女郎。今晚会叫醒她，告诉她现在是小恶魔。</p>
+      <p>
+        不要宣布游戏结束，也不要提红唇女郎。
+        {lil ? '今晚爪牙们醒来时，告诉他们由她照看。' : `今晚会叫醒她，告诉她现在是${roleName(seatOf(s, sw).role)}。`}
+      </p>
     </div>
   );
 }
 
 /** 处决/射杀恶魔前的提醒：红唇女郎会不会接任 */
 function demonDeathWarning(s: GameState, n: number, verb: '被处决了' | '死了') {
-  if (seatOf(s, n).role !== 'imp') return null;
+  if (!isDemonSeat(s, n)) return null;
   const sw = scarletCanTakeOver(s);
-  if (!sw) return <div className="card"><p>{n}号 是恶魔：他死后善良获胜。</p></div>;
+  const who = lilMonsta(s) ? '照看小怪宝的人' : '恶魔';
+  if (!sw) return <div className="card"><p>{n}号 是{who}：他死后善良获胜。</p></div>;
   return (
     <div className="card card-warn stack" style={{ gap: 6 }}>
-      <b style={{ color: 'var(--warn)' }}>红唇女郎（{sw.n}号）会接任恶魔，游戏继续</b>
+      <b style={{ color: 'var(--warn)' }}>
+        红唇女郎（{sw.n}号）会{lilMonsta(s) ? '接手照看小怪宝' : '接任恶魔'}，游戏继续
+      </b>
       <p>公开只说「{n}号 {verb}」。不要宣布游戏结束，也不要提红唇女郎。</p>
     </div>
   );
 }
 
+type Panel = 'virgin' | 'slayer' | 'exec' | 'artist' | 'fisherman' | 'savant' | 'amnesiac' | 'mutant' | 'duchess' | null;
+
 export function DayScreen({ g }: { g: Game }) {
   const s = g.s;
-  const [panel, setPanel] = useState<'virgin' | 'slayer' | 'exec' | null>(null);
+  const [panel, setPanel] = useState<Panel>(null);
   if (s.executed !== undefined || s.winner) return <DayResult g={g} />;
 
   const alive = aliveCount(s);
   const need = Math.ceil(alive / 2);
   const butler = s.seats.find((x) => x.role === 'butler' && x.alive);
   const virgin = actorFor(s, 'virgin');
-  const showVirgin = virgin && virgin.alive && !virgin.used;
+  const lev = s.seats.find((x) => x.role === 'leviathan' && x.alive);
+  const fm = s.seats.find((x) => x.role === 'fearmonger' && x.alive);
+  const close = () => setPanel(null);
 
   return (
     <main className="main split">
@@ -61,6 +83,24 @@ export function DayScreen({ g }: { g: Game }) {
           <h2>第 {s.night} 天</h2>
         </div>
         <SwNotice s={s} />
+        <KlutzPrompt g={g} />
+        <PixiePrompt g={g} />
+        {lev && (
+          <div className="card card-warn">
+            <p>
+              <b>利维坦在场</b>：今天是第 {s.night} 天，第 {LEVIATHAN_DAYS} 天结束时邪恶获胜。已处决善良玩家 {s.goodExecutions} 人，再处决{' '}
+              {Math.max(0, 2 - s.goodExecutions)} 个善良玩家邪恶就获胜。
+            </p>
+          </div>
+        )}
+        {vortoxActive(s) && (
+          <div className="card card-evil">
+            <p>
+              <b>涡流在场</b>：今天必须处决一个人，否则邪恶直接获胜（只有你知道，别说出来）。
+            </p>
+          </div>
+        )}
+        {fm && s.fearTarget && <p className="dim">恐惧之灵（{fm.n}号）现在的目标：{s.fearTarget}号。只有你知道。</p>}
         <SayBox lines={dayStartLines(s.night, s.style)} title="对所有人说" s={s} onStyle={toggleStyle(g)} />
         <div className="card">
           <h3>讨论计时</h3>
@@ -69,6 +109,7 @@ export function DayScreen({ g }: { g: Game }) {
             右上角的眼睛按钮可以一键盖屏，只显示计时器。
           </p>
         </div>
+        <DayAbilities s={s} open={setPanel} />
         <SayBox lines={nominationLines(s.style)} title="讨论结束后说" />
         <div className="card">
           <h3>投票规则（你来数票）</h3>
@@ -91,23 +132,16 @@ export function DayScreen({ g }: { g: Game }) {
             </p>
           </div>
         )}
-        <div className="card">
-          <h3>白天突发情况</h3>
-          <div className="stack" style={{ gap: 8 }}>
-            {showVirgin && (
-              <button className="btn btn-ghost btn-block" onClick={() => setPanel('virgin')}>
-                有人提名了 {virgin!.n}号（{virgin!.role === 'drunk' ? '以为自己是贞洁者的酒鬼' : '贞洁者'}）
-              </button>
-            )}
-            <button className="btn btn-ghost btn-block" onClick={() => setPanel('slayer')}>
-              有人宣称自己是猎手并开枪
-            </button>
-          </div>
-        </div>
       </div>
-      {panel === 'virgin' && virgin && <VirginSheet g={g} virginN={virgin.n} onClose={() => setPanel(null)} />}
-      {panel === 'slayer' && <SlayerSheet g={g} onClose={() => setPanel(null)} />}
-      {panel === 'exec' && <ExecSheet g={g} onClose={() => setPanel(null)} />}
+      {panel === 'virgin' && virgin && <VirginSheet g={g} virginN={virgin.n} onClose={close} />}
+      {panel === 'slayer' && <SlayerSheet g={g} onClose={close} />}
+      {panel === 'exec' && <ExecSheet g={g} onClose={close} />}
+      {panel === 'artist' && <ArtistSheet g={g} onClose={close} />}
+      {panel === 'fisherman' && <FishermanSheet g={g} onClose={close} />}
+      {panel === 'savant' && <SavantSheet g={g} onClose={close} />}
+      {panel === 'amnesiac' && <AmnesiacSheet g={g} onClose={close} />}
+      {panel === 'mutant' && <MutantSheet g={g} onClose={close} />}
+      {panel === 'duchess' && <DuchessSheet g={g} onClose={close} />}
       <BottomBar wide>
         <button className="btn btn-primary btn-block" onClick={() => setPanel('exec')}>
           所有提名结束，录入处决结果
@@ -117,23 +151,89 @@ export function DayScreen({ g }: { g: Game }) {
   );
 }
 
+/** 白天随时可能有人来找你：按剧本和场上角色列出按钮 */
+function DayAbilities({ s, open }: { s: GameState; open: (p: Panel) => void }) {
+  const items: ReactNode[] = [];
+  const btn = (key: Panel, label: string) => (
+    <button key={key} className="btn btn-ghost btn-block" onClick={() => open(key)}>
+      {label}
+    </button>
+  );
+  const holder = (r: Parameters<typeof actorFor>[1]) => s.seats.find((x) => x.alive && hasAbility(s, x, r));
+  const virgin = actorFor(s, 'virgin');
+  if (virgin && virgin.alive && !virgin.used) items.push(btn('virgin', `有人提名了 ${virgin.n}号（${virgin.role === 'virgin' ? '贞洁者' : `有贞洁者能力的${roleName(virgin.role)}`}）`));
+  if (s.script === 'tb' || holder('slayer')) items.push(btn('slayer', '有人宣称自己是猎手并开枪'));
+  const artist = holder('artist');
+  if (artist && !artist.used) items.push(btn('artist', `艺术家（${artist.n}号）来问是非题`));
+  const fisher = holder('fisherman');
+  if (fisher && !fisher.used) items.push(btn('fisherman', `渔夫（${fisher.n}号）来要建议`));
+  const savant = holder('savant');
+  if (savant && s.savantDay !== s.night) items.push(btn('savant', `博学者（${savant.n}号）来要今天的两条信息`));
+  const amn = s.seats.find((x) => x.alive && x.role === 'amnesiac');
+  if (amn) items.push(btn('amnesiac', `失忆者（${amn.n}号）来猜自己的能力`));
+  const mutant = s.seats.find((x) => x.alive && x.role === 'mutant');
+  if (mutant) items.push(btn('mutant', `畸形秀演员（${mutant.n}号）说自己是外来者了`));
+  if (s.fabled.includes('duchess')) items.push(btn('duchess', s.duchessVisitors.length ? `公爵夫人的拜访者：${s.duchessVisitors.map((n) => `${n}号`).join('、')}（改）` : '有人来拜访公爵夫人'));
+  if (!items.length) return null;
+  return (
+    <div className="card">
+      <h3>白天有人来找你 / 突发情况</h3>
+      <div className="stack" style={{ gap: 8 }}>
+        {items}
+      </div>
+    </div>
+  );
+}
+
 function ExecSheet({ g, onClose }: { g: Game; onClose: () => void }) {
   const s = g.s;
   const [t, setT] = useState<number[]>([]);
+  const [fear, setFear] = useState(false);
+  const [goblin, setGoblin] = useState(false);
+  const n = t[0];
+  const st = n ? seatOf(s, n) : undefined;
+  const lev = s.seats.find((x) => x.role === 'leviathan' && x.alive && !malfunction(s, x.n));
   return (
     <Sheet title="今天的处决结果" onClose={onClose}>
       <div className="stack">
-        <SeatPicker s={s} selected={t} max={1} onChange={setT} label="谁被处决了？" />
-        {t.length > 0 && seatOf(s, t[0]).role === 'saint' && <p className="evil">注意：{t[0]}号 是圣徒。</p>}
-        {t.length > 0 && seatOf(s, t[0]).alive && demonDeathWarning(s, t[0], '被处决了')}
-        <button className="btn btn-primary btn-block" disabled={!t.length} onClick={() => g.commit((st) => execute(st, t[0]))}>
-          {t.length ? `处决 ${t[0]}号` : '先点出被处决的人'}
+        <SeatPicker s={s} selected={t} max={1} onChange={(v) => { setT(v); setFear(false); setGoblin(false); }} label="谁被处决了？" />
+        {st?.role === 'saint' && <p className="evil">注意：{n}号 是圣徒。</p>}
+        {st?.alive && demonDeathWarning(s, n, '被处决了')}
+        {st && lev && !isEvil(st) && (
+          <p className="evil">利维坦在场：这是第 {s.goodExecutions + 1} 个被处决的善良玩家{s.goodExecutions + 1 >= 2 ? '，处决后邪恶直接获胜！' : '。'}</p>
+        )}
+        {n && fearmongerAsk(s, n) && (
+          <Toggle on={fear} set={setFear} label={`${n}号 是恐惧之灵的目标：是恐惧之灵提名的他吗？`} hint={`是的话，${n}号 所在的阵营直接落败。`} />
+        )}
+        {n && goblinAsk(s, n) && (
+          <Toggle on={goblin} set={setGoblin} label={`${n}号 是哥布林：他被提名时公开说了自己是哥布林吗？`} hint="说了的话，邪恶直接获胜。" />
+        )}
+        <button className="btn btn-primary btn-block" disabled={!n} onClick={() => g.commit((x) => execute(x, n, '被处决', { fearmongerNominated: fear, goblinClaimed: goblin }))}>
+          {n ? `处决 ${n}号` : '先点出被处决的人'}
         </button>
-        <button className="btn btn-outline btn-block" onClick={() => g.commit((st) => execute(st, null))}>
+        {vortoxActive(s) && <p className="evil">涡流在场：今天没人被处决的话，邪恶直接获胜。</p>}
+        <button className="btn btn-outline btn-block" onClick={() => g.commit((x) => execute(x, null))}>
           今天没人被处决
         </button>
       </div>
     </Sheet>
+  );
+}
+
+function Toggle({ on, set, label, hint }: { on: boolean; set: (v: boolean) => void; label: string; hint: string }) {
+  return (
+    <div className="card card-warn stack" style={{ gap: 8 }}>
+      <b>{label}</b>
+      <p className="dim">{hint}</p>
+      <div className="seg" role="radiogroup">
+        <button className={on ? 'on' : ''} onClick={() => set(true)} aria-pressed={on}>
+          是
+        </button>
+        <button className={!on ? 'on' : ''} onClick={() => set(false)} aria-pressed={!on}>
+          不是
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -151,6 +251,8 @@ function DayResult({ g }: { g: Game }) {
         </div>
         <SwNotice s={s} />
         {s.executed !== undefined && <SayBox lines={executionLines(s.executed, s.style)} title="对所有人说" s={s} onStyle={toggleStyle(g)} />}
+        <KlutzPrompt g={g} />
+        <PixiePrompt g={g} />
         {s.winner ? (
           <>
             <div className={`card ${s.winner === 'good' ? '' : 'card-evil'}`}>
@@ -164,13 +266,150 @@ function DayResult({ g }: { g: Game }) {
         )}
       </div>
       <BottomBar wide>
-        <button className="btn btn-primary btn-block" onClick={() => g.commit((st) => finishDay(st))}>
-          {s.winner ? '宣布结果，查看复盘' : '入夜'}
+        <button className="btn btn-primary btn-block" disabled={!s.winner && promptPending(s)} onClick={() => g.commit((st) => finishDay(st))}>
+          {s.winner ? '宣布结果，查看复盘' : promptPending(s) ? '先处理上面的提示' : '入夜'}
         </button>
       </BottomBar>
     </main>
   );
 }
+
+/* ---------------- 白天的私下拜访 ---------------- */
+
+function holderOf(s: GameState, r: Parameters<typeof actorFor>[1]): Seat | undefined {
+  return s.seats.find((x) => x.alive && hasAbility(s, x, r));
+}
+
+function ArtistSheet({ g, onClose }: { g: Game; onClose: () => void }) {
+  const s = g.s;
+  const a = holderOf(s, 'artist')!;
+  const m = artistMode(s, a.n);
+  return (
+    <Sheet title={`艺术家（${a.n}号）的是非题`} onClose={onClose}>
+      <div className="stack">
+        <p>他私下问你一个能用"是/否"回答的问题。整局只能问一次。</p>
+        <div className={`card ${m.mode === 'truth' ? '' : 'card-warn'}`}>
+          <b>{m.text}</b>
+        </div>
+        <p className="dim">不确定答案就点右上角的书本图标看魔典。</p>
+        <button className="btn btn-primary btn-block" onClick={() => { g.commit((st) => markUsed(st, a.n, `艺术家（${a.n}号）问了是非题（${m.mode === 'truth' ? '如实回答' : m.mode === 'lie' ? '涡流：回答假的' : '中毒：可真可假'}）`)); onClose(); }}>
+          我回答完了（记下他已经用过）
+        </button>
+      </div>
+    </Sheet>
+  );
+}
+
+function FishermanSheet({ g, onClose }: { g: Game; onClose: () => void }) {
+  const s = g.s;
+  const f = holderOf(s, 'fisherman')!;
+  const choices = useMemo(() => fishermanChoices(s, f.n, stepRng(s, 41)), [s, f.n]);
+  const rec = useMemo(() => recommend(choices, balance(s).score, stepRng(s, 42)), [choices, s]);
+  const [sel, setSel] = useState(rec);
+  const c = choices[sel];
+  return (
+    <Sheet title={`渔夫（${f.n}号）的建议`} onClose={onClose}>
+      <div className="stack">
+        <p className="dim">整局一次。私下告诉他一条帮他获胜的建议。</p>
+        {choices.length > 0 && <ChoicePanel s={s} choices={choices} sel={sel} rec={rec} onSel={(i) => i >= 0 && setSel(i)} />}
+        {c && <SayBox title="小声说" lines={[c.label]} />}
+        <button className="btn btn-primary btn-block" onClick={() => { g.commit((st) => markUsed(st, f.n, `渔夫（${f.n}号）得到建议：${c?.label ?? '（说书人自己说的）'}`)); onClose(); }}>
+          说完了（记下他已经用过）
+        </button>
+      </div>
+    </Sheet>
+  );
+}
+
+function SavantSheet({ g, onClose }: { g: Game; onClose: () => void }) {
+  const s = g.s;
+  const v = holderOf(s, 'savant')!;
+  const choices = useMemo(() => savantChoices(s, v.n, stepRng(s, 51)), [s, v.n]);
+  const rec = useMemo(() => recommend(choices, balance(s).score, stepRng(s, 52)), [choices, s]);
+  const [sel, setSel] = useState(rec);
+  const c = choices[sel];
+  return (
+    <Sheet title={`博学者（${v.n}号）今天的两条信息`} onClose={onClose}>
+      <div className="stack">
+        <p className="dim">每天一次。两条一真一假，不告诉他哪条是真的。</p>
+        <ChoicePanel s={s} choices={choices} sel={sel} rec={rec} onSel={(i) => i >= 0 && setSel(i)} />
+        {c && <SayBox title="小声说" lines={[`第一条：${c.value[0]}。`, `第二条：${c.value[1]}。`]} />}
+        <button className="btn btn-primary btn-block" disabled={!c} onClick={() => { g.commit((st) => savantVisit(st, v.n, c!.value)); onClose(); }}>
+          说完了
+        </button>
+      </div>
+    </Sheet>
+  );
+}
+
+function AmnesiacSheet({ g, onClose }: { g: Game; onClose: () => void }) {
+  const s = g.s;
+  const a = s.seats.find((x) => x.alive && x.role === 'amnesiac')!;
+  const ab = s.amnesiacAbility;
+  const [ans, setAns] = useState<string | null>(null);
+  return (
+    <Sheet title={`失忆者（${a.n}号）来猜能力`} onClose={onClose}>
+      <div className="stack">
+        <div className="card">
+          <b>他真正的能力：{ab ? `像${roleName(ab)}一样` : '（没定）'}</b>
+          {ab && <p className="dim">{ROLES[ab].ability}</p>}
+        </div>
+        <p>听他猜完，按接近程度回答他：</p>
+        <div className="role-grid">
+          {AMNESIAC_ANSWERS.map((x) => (
+            <button key={x} className="role-chip" style={ans === x ? { boxShadow: '0 0 0 2px var(--gold) inset' } : undefined} onClick={() => setAns(x)}>
+              {x}
+            </button>
+          ))}
+        </div>
+        {malfunction(s, a.n) && <p className="dim">他中毒了：可以随便回答。</p>}
+        <button className="btn btn-primary btn-block" disabled={!ans} onClick={() => { g.commit((st) => logDay(st, `失忆者（${a.n}号）猜能力，回答：${ans}`)); onClose(); }}>
+          说完了
+        </button>
+      </div>
+    </Sheet>
+  );
+}
+
+const logDay = (s: GameState, text: string) => s.log.push({ night: s.night, phase: 'day', text });
+
+function MutantSheet({ g, onClose }: { g: Game; onClose: () => void }) {
+  const s = g.s;
+  const m = s.seats.find((x) => x.alive && x.role === 'mutant')!;
+  return (
+    <Sheet title={`畸形秀演员（${m.n}号）疯狂了`} onClose={onClose}>
+      <div className="stack">
+        <p>他公开说自己是外来者，就算"疯狂"了。你可以现在处决他（算今天的处决，今天的提名到此结束），也可以放过他。</p>
+        {malfunction(s, m.n) && <p className="dim">他中毒了：能力无效，建议放过。</p>}
+        <SayBox title="如果处决，公开宣布" lines={[`${m.n}号 被处决了。`]} />
+        <button className="btn btn-danger btn-block" onClick={() => { g.commit((st) => execute(st, m.n, '疯狂地说自己是外来者，被处决')); onClose(); }}>
+          处决他
+        </button>
+        <button className="btn btn-outline btn-block" onClick={onClose}>
+          放过他
+        </button>
+      </div>
+    </Sheet>
+  );
+}
+
+function DuchessSheet({ g, onClose }: { g: Game; onClose: () => void }) {
+  const s = g.s;
+  const [v, setV] = useState<number[]>(s.duchessVisitors);
+  return (
+    <Sheet title={FABLED.duchess.name} onClose={onClose}>
+      <div className="stack">
+        <p className="dim">{FABLED.duchess.ability}</p>
+        <SeatPicker s={s} selected={v} max={3} onChange={setV} label="今天谁来拜访了（最多 3 人）？" />
+        <button className="btn btn-primary btn-block" disabled={!v.length} onClick={() => { g.commit((st) => setDuchessVisitors(st, v)); onClose(); }}>
+          记下拜访者（今晚会告诉他们）
+        </button>
+      </div>
+    </Sheet>
+  );
+}
+
+/* ---------------- 贞洁者 / 猎手 ---------------- */
 
 function twistChoices(kind: 'spyTownsfolk' | 'recluseDemon'): Choice<boolean>[] {
   if (kind === 'spyTownsfolk')
@@ -218,12 +457,7 @@ function VirginSheet({ g, virginN, onClose }: { g: Game; virginN: number; onClos
         <SeatPicker s={s} selected={t} max={1} onChange={(v) => { setT(v); setTwist(null); }} disabled={[virginN]} label="是谁提名的？" />
         {pv && <div className="card"><p>{pv.reason}</p></div>}
         {pv?.askTwist && <TwistPick key={t[0]} g={g} kind={pv.askTwist} onValue={setTwist} />}
-        {pv && (
-          <SayBox
-            title="公开宣布"
-            lines={fires ? [`${t[0]}号 被处决了。`] : ['提名有效，继续进行投票。']}
-          />
-        )}
+        {pv && <SayBox title="公开宣布" lines={fires ? [`${t[0]}号 被处决了。`] : ['提名有效，继续进行投票。']} />}
         <button
           className="btn btn-primary btn-block"
           disabled={!pv}

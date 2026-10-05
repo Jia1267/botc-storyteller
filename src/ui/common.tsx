@@ -271,7 +271,17 @@ export function seatMarks(s: GameState, n: number): Mark[] {
   const x = seatOf(s, n);
   const out: Mark[] = [];
   if (x.role === 'drunk') out.push({ key: 'drunk', short: '醉', text: `酒鬼：以为自己是【${roleName(believedRole(s, x))}】`, cls: 'm-drunk' });
-  if (isPoisoned(s, n)) out.push({ key: 'poison', short: '毒', text: '中毒中（今晚和明天白天）', cls: 'm-poison' });
+  if (x.role === 'lunatic') out.push({ key: 'lunatic', short: '疯', text: `疯子：以为自己是【${roleName(believedRole(s, x))}】`, cls: 'm-drunk' });
+  if (isPoisoned(s, n))
+    out.push({
+      key: 'poison', short: '毒', cls: 'm-poison',
+      text: s.widowPoison === n ? '被寡妇下毒（寡妇活着就一直中毒）' : x.role === 'cannibal' && s.cannibalPoisoned ? '食人族吃到邪恶，中毒中' : '中毒中（今晚和明天白天）',
+    });
+  if (s.babysitter === n && s.demonChar === 'lilmonsta') out.push({ key: 'baby', short: '宝', text: '正在照看小怪宝（算作恶魔）', cls: 'm-evil' });
+  if (s.fearTarget === n && s.seats.some((y) => y.role === 'fearmonger' && y.alive)) out.push({ key: 'fear', short: '惧', text: '恐惧之灵的目标', cls: 'm-evil' });
+  if (s.gained[n]) out.push({ key: 'gained', short: '获', text: `现在拥有【${roleName(s.gained[n])}】的能力` });
+  if (x.role === 'amnesiac' && s.amnesiacAbility) out.push({ key: 'amn', short: '忆', text: `失忆者的能力：像${roleName(s.amnesiacAbility)}一样` });
+  if (s.widowInformed === n) out.push({ key: 'wknow', short: '知', text: '知道寡妇在场' });
   if (s.phase === 'night' && s.ns?.monk === n) out.push({ key: 'monk', short: '护', text: '今晚受僧侣保护' });
   if (s.butlerMaster === n && s.seats.some((y) => y.role === 'butler' && y.alive)) out.push({ key: 'master', short: '主', text: '管家的主人' });
   if (s.redHerring === n && s.seats.some((y) => y.role === 'fortuneteller')) out.push({ key: 'rh', short: '扰', text: '占卜师的干扰项' });

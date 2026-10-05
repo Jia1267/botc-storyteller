@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { ROLES, isEvilTeam, roleName } from '../engine/roles';
+import { FABLED, ROLES, isEvilTeam, roleName } from '../engine/roles';
 import { aliveCount, seatOf } from '../engine/core';
 import type { GameState } from '../engine/types';
 import { BalanceMeter, Sheet, TeamChip, seatMarks } from './common';
@@ -147,7 +147,7 @@ export function GrimoirePanel({ s, detail = false }: { s: GameState; detail?: bo
       {view === 'circle' ? <GrimoireCircle s={s} onSeat={setSeat} hub={<GrimoireHub s={s} />} /> : <GrimoireList s={s} onSeat={setSeat} />}
       <SetupFacts s={s} />
       <BalanceMeter s={s} detail={detail} />
-      <div className="dim">标记：醉=酒鬼 毒=中毒 护=僧侣保护 主=管家主人 扰=占卜干扰项 用=能力已用 变=中途变成恶魔</div>
+      <div className="dim">标记：醉=酒鬼 疯=疯子 毒=中毒 宝=照看小怪宝 惧=恐惧之灵目标 获=获得的能力 忆=失忆者能力 知=知道寡妇在场 护=僧侣保护 主=管家主人 扰=占卜干扰项 用=能力已用 变=中途变成恶魔</div>
       {seat !== null && <SeatDetail s={s} n={seat} onClose={() => setSeat(null)} />}
     </div>
   );
@@ -156,8 +156,15 @@ export function GrimoirePanel({ s, detail = false }: { s: GameState; detail?: bo
 function SetupFacts({ s }: { s: GameState }) {
   return (
     <div className="chips">
+      {s.demonChar === 'lilmonsta' && <span className="chip chip-evil">小怪宝：{s.babysitter ? `${s.babysitter}号 照看` : '还没人照看'}</span>}
       {s.drunkFake && s.seats.some((x) => x.role === 'drunk') && <span className="chip chip-warn">酒鬼以为是：{roleName(s.drunkFake)}</span>}
+      {s.lunaticFake && <span className="chip chip-warn">疯子以为是：{roleName(s.lunaticFake)}</span>}
       {s.bluffs.length > 0 && <span className="chip">恶魔伪装：{s.bluffs.map(roleName).join('、')}</span>}
+      {s.fabled.map((f) => (
+        <span key={f} className="chip">
+          传奇：{FABLED[f].name}
+        </span>
+      ))}
     </div>
   );
 }

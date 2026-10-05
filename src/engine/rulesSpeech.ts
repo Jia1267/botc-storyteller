@@ -1,5 +1,61 @@
+import type { ScriptId } from './editions';
+
+type Section = { title: string; lines: string[] };
+
+/** 小剧本（5–6 人）额外要讲的 */
+const TEENSY: Section[] = [
+  {
+    title: '这个剧本的特别规则',
+    lines: [
+      '这是 5–6 人的小剧本：邪恶方互相不认识，恶魔也不知道哪些角色不在场。',
+      '所以邪恶玩家要自己找队友，善良玩家也可以放心地撒谎来骗邪恶。',
+    ],
+  },
+  {
+    title: '什么是"疯狂"',
+    lines: [
+      '有的角色要你"疯狂"地证明某件事：意思是你要真心实意、努力地让大家相信它。',
+      '做不到的话，你可能会受到惩罚，或者拿不到好处。',
+    ],
+  },
+];
+
+const BY_SCRIPT: Partial<Record<ScriptId, Section[]>> = {
+  spooky: [
+    ...TEENSY,
+    {
+      title: '幽灵茶会要注意',
+      lines: ['如果恶魔是涡流：所有镇民拿到的信息都是假的，而且只要有一天没处决人，邪恶直接获胜。'],
+    },
+  ],
+  whispers: [
+    ...TEENSY,
+    {
+      title: '窃窃私语要注意',
+      lines: [
+        '恶魔是利维坦，大家都知道它在场。它晚上不杀人。',
+        '但善良最多只能误杀一个人：第二个善良玩家被处决，或者撑到第 5 天结束，邪恶获胜。',
+      ],
+    },
+  ],
+};
+
+/** 某个剧本的完整讲稿：通用部分 + 剧本特别规则（插在"最后提醒"前） */
+export function rulesFor(script: ScriptId): Section[] {
+  const extra = BY_SCRIPT[script] ?? [];
+  // 利维坦晚上不杀人：通用讲稿里"恶魔每晚杀人"那句要换掉
+  const base =
+    script === 'whispers'
+      ? RULES_SPEECH.map((sec) => ({
+          ...sec,
+          lines: sec.lines.map((l) => (l.startsWith('从第二晚开始') ? '这个剧本的恶魔晚上不杀人，后面会讲它怎么赢。' : l)),
+        }))
+      : RULES_SPEECH;
+  return [...base.slice(0, -1), ...extra, base[base.length - 1]];
+}
+
 /** 开局给新玩家念的规则讲稿（约 5 分钟） */
-export const RULES_SPEECH: { title: string; lines: string[] }[] = [
+export const RULES_SPEECH: Section[] = [
   {
     title: '这是个什么游戏',
     lines: [

@@ -1,6 +1,7 @@
-import { ROLES, rolesOfTeam, roleName, type RoleId } from './roles';
+import { ROLES, roleName, type FabledId, type RoleId } from './roles';
 import { balance, recommend, type Choice } from './balance';
-import { findRole, inPlay, isEvil, notInPlay } from './core';
+import { actorFor, inPlay, isEvil, lilMonsta, notInPlay, scriptOf, scriptRolesOf } from './core';
+import { SCRIPTS, type ScriptId } from './editions';
 import { pick, sample, seeded, shuffle, type Rng } from './rng';
 import type { GameState, Seat } from './types';
 
@@ -28,12 +29,12 @@ export const F4: RoleId[] = ['washerwoman', 'librarian', 'investigator', 'chef']
 export const MAX_F4 = 2;
 
 /** 从候选镇民里挑 n 个，F4 不超过上限（已在场的 F4 也算） */
-function pickTownsfolk(pool: RoleId[], n: number, f4Already: number, rng: Rng): RoleId[] {
+function pickTownsfolk(pool: RoleId[], n: number, f4Already: number, rng: Rng, cap = true): RoleId[] {
   const out: RoleId[] = [];
   let f = f4Already;
   for (const r of shuffle(pool, rng)) {
     if (out.length === n) break;
-    if (F4.includes(r)) {
+    if (cap && F4.includes(r)) {
       if (f >= MAX_F4) continue;
       f++;
     }
@@ -42,51 +43,89 @@ function pickTownsfolk(pool: RoleId[], n: number, f4Already: number, rng: Rng): 
   return out;
 }
 
-export function randomRoles(count: number, rng: Rng): RoleId[] {
-  const [t, o, m] = DISTRIBUTION[count];
-  const minions = sample(rolesOfTeam('minion'), m, rng);
-  const baron = minions.includes('baron') ? 2 : 0;
-  const outs = sample(rolesOfTeam('outsider'), o + baron, rng);
-  const towns = pickTownsfolk(rolesOfTeam('townsfolk'), t - baron, 0, rng);
-  return [...towns, ...outs, ...minions, 'imp'];
+/** 外来者人数的修正：男爵 +2、气球驾驶员 +1、哨兵 ±1 */
+const outsiderDelta = (roles: RoleId[], sentinelDelta: number) =>
+  (roles.includes('baron') ? 2 : 0) + (roles.includes('balloonist') ? 1 : 0) + sentinelDelta;
+
+export interface RandomSetup {
+  /** 每个座位的角色（小怪宝时没有恶魔座位） */
+  roles: RoleId[];
+  demonChar: RoleId;
 }
+
+export function randomSetup(script: ScriptId, count: number, rng: Rng, sentinelDelta = 0): RandomSetup {
+  const sc = SCRIPTS[script];
+  const of = (t: string) => sc.roles.filter((r) => ROLES[r].team === t);
+  const [t, o, m] = DISTRIBUTION[count];
+  for (let tries = 0; ; tries++) {
+    const demon = pick(of('demon'), rng);
+    const lil = demon === 'lilmonsta';
+    const minions = sample(of('minion'), m + (lil ? 1 : 0), rng);
+    let towns = pickTownsfolk(of('townsfolk'), t, 0, rng, !!sc.f4Cap);
+    const outs = of('outsider');
+    const outCount = Math.max(0, Math.min(outs.length, o + outsiderDelta([...towns, ...minions], sentinelDelta)));
+    const tFinal = count - minions.length - (lil ? 0 : 1) - outCount;
+    if (tFinal < 1 && tries < 50) continue;
+    // 多了就去掉几个（保留气球驾驶员），少了就补（不再补气球驾驶员，免得外来者人数又变）
+    while (towns.length > tFinal) {
+      const drop = pick(towns.filter((r) => r !== 'balloonist'), rng);
+      towns = towns.filter((r) => r !== drop);
+    }
+    if (towns.length < tFinal) {
+      const f4 = towns.filter((r) => F4.includes(r)).length;
+      const more = pickTownsfolk(of('townsfolk').filter((r) => !towns.includes(r) && r !== 'balloonist'), tFinal - towns.length, f4, rng, !!sc.f4Cap);
+      towns = [...towns, ...more];
+    }
+    const roles = [...towns, ...sample(outs, outCount, rng), ...minions, ...(lil ? [] : [demon])];
+    if (roles.length === count || tries >= 50) return { roles, demonChar: demon };
+  }
+}
+
+/** 暗流涌动的旧接口：只要角色列表 */
+export const randomRoles = (count: number, rng: Rng) => randomSetup('tb', count, rng).roles;
 
 export const rolesWeight = (roles: RoleId[]) => roles.reduce((a, r) => a + ROLES[r].weight, 0);
 
-const statsCache: Record<number, { mean: number; sd: number }> = {};
-function stats(count: number) {
-  if (!statsCache[count]) {
-    const rng = seeded(1000 + count);
-    const xs = Array.from({ length: 800 }, () => rolesWeight(randomRoles(count, rng)));
+const setupWeight = (x: RandomSetup) => rolesWeight(x.roles) + (x.roles.includes(x.demonChar) ? 0 : ROLES[x.demonChar].weight);
+
+const statsCache: Record<string, { mean: number; sd: number }> = {};
+function stats(script: ScriptId, count: number) {
+  const key = `${script}:${count}`;
+  if (!statsCache[key]) {
+    const rng = seeded(1000 + count + script.length * 97);
+    const xs = Array.from({ length: 800 }, () => setupWeight(randomSetup(script, count, rng)));
     const mean = xs.reduce((a, b) => a + b, 0) / xs.length;
     const sd = Math.sqrt(xs.reduce((a, b) => a + (b - mean) ** 2, 0) / xs.length) || 1;
-    statsCache[count] = { mean, sd };
+    statsCache[key] = { mean, sd };
   }
-  return statsCache[count];
+  return statsCache[key];
 }
 
 /** 配板强度标准分：0 = 平均，正数偏善良 */
-export function setupZ(roles: RoleId[], count: number): number {
-  const { mean, sd } = stats(count);
-  return (rolesWeight(roles) - mean) / sd;
+export function setupZ(roles: RoleId[], count: number, script: ScriptId = 'tb', demonChar: RoleId = 'imp'): number {
+  const { mean, sd } = stats(script, count);
+  return (setupWeight({ roles, demonChar }) - mean) / sd;
 }
 
 /** 一键生成：只从均衡的组合里挑 */
-export function balancedRoles(count: number, rng: Rng): RoleId[] {
-  let best: RoleId[] = randomRoles(count, rng);
-  let bestZ = Math.abs(setupZ(best, count));
+export function balancedSetup(script: ScriptId, count: number, rng: Rng, sentinelDelta = 0): RandomSetup {
+  const z = (x: RandomSetup) => Math.abs(setupZ(x.roles, count, script, x.demonChar));
+  let best = randomSetup(script, count, rng, sentinelDelta);
+  let bestZ = z(best);
   for (let i = 0; i < 300 && bestZ > 0.5; i++) {
-    const r = randomRoles(count, rng);
-    const z = Math.abs(setupZ(r, count));
-    if (z < bestZ) {
+    const r = randomSetup(script, count, rng, sentinelDelta);
+    const rz = z(r);
+    if (rz < bestZ) {
       best = r;
-      bestZ = z;
+      bestZ = rz;
     }
   }
   return best;
 }
 
-/** 配板强度的原因（一两句大白话） */
+export const balancedRoles = (count: number, rng: Rng) => balancedSetup('tb', count, rng).roles;
+
+/** 配板强度的原因（一两句大白话）。roles 里包含恶魔角色 */
 export function setupReasons(roles: RoleId[]): string[] {
   const out: string[] = [];
   const has = (r: RoleId) => roles.includes(r);
@@ -98,6 +137,11 @@ export function setupReasons(roles: RoleId[]): string[] {
   if (has('empath') && has('fortuneteller')) out.push('共情者 + 占卜师：好人每晚都有信息，偏善良');
   if (has('monk') && has('soldier')) out.push('僧侣 + 士兵：恶魔不好杀人，偏善良');
   if (has('saint')) out.push('有圣徒：误杀他好人直接输');
+  if (has('vortox')) out.push('有涡流：所有镇民的信息都是假的，而且每天必须处决人');
+  if (has('lilmonsta')) out.push('小怪宝：没人扮演恶魔，邪恶多一个爪牙，每晚由你定谁死');
+  if (has('leviathan')) out.push('利维坦：晚上不杀人，但好人最多只能误杀一次，撑到第 5 天结束也算邪恶赢');
+  if (has('widow')) out.push('有寡妇：开局就有一人一直中毒');
+  if (has('savant') && has('balloonist')) out.push('博学者 + 气球驾驶员：好人每天都有信息，偏善良');
   const f4 = roles.filter((r) => F4.includes(r)).length;
   if (f4 > MAX_F4) out.push(`首夜信息位（洗衣妇/图书管理员/调查员/厨师）有 ${f4} 个：第一晚过后这几个人没事做，邪恶也少了可以假跳的身份`);
   return out;
@@ -106,11 +150,32 @@ export function setupReasons(roles: RoleId[]): string[] {
 export function newGame(): GameState {
   return {
     v: 1,
+    script: 'tb',
     phase: 'setup',
-    setupStep: 'count',
+    setupStep: 'script',
     count: 0,
     seats: [],
+    demonChar: null,
+    fabled: [],
+    sentinelDelta: 0,
     drunkFake: null,
+    lunaticFake: null,
+    amnesiacAbility: null,
+    gained: {},
+    cannibalPoisoned: false,
+    pixieRole: null,
+    pixieResolved: false,
+    widowPoison: null,
+    widowInformed: null,
+    fearTarget: null,
+    fearAnnounce: false,
+    babysitter: null,
+    babysitterLocked: false,
+    balloonShown: [],
+    klutzResolved: false,
+    savantDay: 0,
+    duchessVisitors: [],
+    goodExecutions: 0,
     bluffs: [],
     redHerring: null,
     setupZ: 0,
@@ -136,38 +201,95 @@ function seatsFrom(roles: RoleId[]): Seat[] {
   return roles.map((r, i) => ({ n: i + 1, role: r, startRole: r, alive: true }));
 }
 
+export function setScript(s: GameState, script: ScriptId) {
+  s.script = script;
+  s.fabled = [];
+  s.sentinelDelta = 0;
+  s.setupStep = 'count';
+}
+
+function applySetup(s: GameState, x: RandomSetup, rng: Rng) {
+  s.seats = seatsFrom(shuffle(x.roles, rng));
+  s.demonChar = x.demonChar;
+  refreshSetup(s, rng);
+}
+
 /** 选好人数后：生成均衡组合、随机落座、填好推荐的特殊设置 */
 export function setCount(s: GameState, count: number, rng: Rng) {
   s.count = count;
-  s.seats = seatsFrom(shuffle(balancedRoles(count, rng), rng));
   s.setupStep = 'roles';
-  refreshSetup(s, rng);
+  applySetup(s, balancedSetup(s.script, count, rng, s.sentinelDelta), rng);
 }
 
 export function rerollRoles(s: GameState, rng: Rng) {
-  s.seats = seatsFrom(shuffle(balancedRoles(s.count, rng), rng));
-  refreshSetup(s, rng);
+  applySetup(s, balancedSetup(s.script, s.count, rng, s.sentinelDelta), rng);
 }
 
-/** 把某个座位换成同阵营的另一个角色；男爵进出时自动调整外来者人数 */
+/** 把某个座位换成同阵营的另一个角色；人数修正（男爵、气球驾驶员）自动调整 */
 export function replaceRole(s: GameState, n: number, to: RoleId, rng: Rng) {
   const st = s.seats[n - 1];
-  const from = st.role;
-  if (from === to || inPlay(s, to)) return;
+  if (st.role === to || inPlay(s, to)) return;
   st.role = st.startRole = to;
-  if (to === 'baron') swapTeams(s, 'townsfolk', 'outsider', n, rng);
-  if (from === 'baron') swapTeams(s, 'outsider', 'townsfolk', n, rng);
+  if (ROLES[to].team === 'demon') s.demonChar = to;
+  normalize(s, rng, n);
   refreshSetup(s, rng);
 }
 
-function swapTeams(s: GameState, fromTeam: 'townsfolk' | 'outsider', toTeam: 'townsfolk' | 'outsider', keep: number, rng: Rng) {
-  const victims = sample(s.seats.filter((x) => x.n !== keep && ROLES[x.role].team === fromTeam), 2, rng);
-  const f4Left = s.seats.filter((x) => !victims.includes(x) && F4.includes(x.role)).length;
-  const fresh =
-    toTeam === 'townsfolk'
-      ? pickTownsfolk(notInPlay(s, 'townsfolk'), victims.length, f4Left, rng)
-      : sample(notInPlay(s, toTeam), victims.length, rng);
-  victims.forEach((v, i) => (v.role = v.startRole = fresh[i]));
+/** 换恶魔：小怪宝没有座位，要在恶魔座位和爪牙座位之间转换 */
+export function replaceDemon(s: GameState, to: RoleId, rng: Rng) {
+  const from = s.demonChar;
+  if (!from || from === to) return;
+  if (from === 'lilmonsta') {
+    const m = pick(s.seats.filter((x) => ROLES[x.role].team === 'minion'), rng);
+    m.role = m.startRole = to;
+  } else {
+    const d = s.seats.find((x) => x.role === from)!;
+    const r = to === 'lilmonsta' ? pick(notInPlay(s, 'minion'), rng) : to;
+    d.role = d.startRole = r;
+  }
+  s.demonChar = to;
+  normalize(s, rng);
+  refreshSetup(s, rng);
+}
+
+/** 让外来者人数符合人数表 + 修正（男爵、气球驾驶员、哨兵） */
+function normalize(s: GameState, rng: Rng, keep?: number) {
+  const sc = scriptOf(s);
+  const [, o] = DISTRIBUTION[s.count];
+  const roles = s.seats.map((x) => x.role);
+  const target = Math.max(0, Math.min(scriptRolesOf(s, 'outsider').length, o + outsiderDelta(roles, s.sentinelDelta)));
+  const team = (x: Seat) => ROLES[x.role].team;
+  for (let guard = 0; guard < 6; guard++) {
+    const outs = s.seats.filter((x) => team(x) === 'outsider');
+    if (outs.length > target) {
+      const v = pick(outs.filter((x) => x.n !== keep), rng);
+      const f4 = s.seats.filter((x) => F4.includes(x.role)).length;
+      const r = pickTownsfolk(notInPlay(s, 'townsfolk').filter((x) => x !== 'balloonist'), 1, f4, rng, !!sc.f4Cap)[0];
+      if (!v || !r) break;
+      v.role = v.startRole = r;
+    } else if (outs.length < target) {
+      const v = pick(s.seats.filter((x) => team(x) === 'townsfolk' && x.n !== keep && x.role !== 'balloonist'), rng);
+      const r = pick(notInPlay(s, 'outsider'), rng);
+      if (!v || !r) break;
+      v.role = v.startRole = r;
+    } else break;
+  }
+}
+
+export function toggleFabled(s: GameState, f: FabledId, on: boolean, rng: Rng) {
+  s.fabled = on ? [...new Set([...s.fabled, f])] : s.fabled.filter((x) => x !== f);
+  if (f === 'sentinel') {
+    const cs = sentinelChoices(s);
+    s.sentinelDelta = on ? cs[recommend(cs, balance(s).score, rng)].value : 0;
+    normalize(s, rng);
+    refreshSetup(s, rng);
+  }
+}
+
+export function setSentinelDelta(s: GameState, d: number, rng: Rng) {
+  s.sentinelDelta = d;
+  normalize(s, rng);
+  refreshSetup(s, rng);
 }
 
 /** 交换两个座位上的角色 */
@@ -186,13 +308,18 @@ export function shuffleSeats(s: GameState, rng: Rng) {
   refreshRedHerring(s, rng);
 }
 
-/** 角色变了以后重新算配板强度和三项推荐 */
+/** 角色变了以后重新算配板强度和各项推荐 */
 export function refreshSetup(s: GameState, rng: Rng) {
-  s.setupZ = setupZ(s.seats.map((x) => x.role), s.count);
+  s.setupZ = setupZ(s.seats.map((x) => x.role), s.count, s.script, s.demonChar ?? 'imp');
   const score = balance(s).score;
   const df = drunkFakeChoices(s);
   s.drunkFake = df.length ? df[recommend(df, score, rng)].value : null;
-  const bl = bluffChoices(s, rng);
+  // 疯子看到在场的恶魔；小怪宝时给他看涡流
+  s.lunaticFake = inPlay(s, 'lunatic') ? (lilMonsta(s) ? 'vortox' : s.demonChar) : null;
+  const am = amnesiacChoices(s);
+  s.amnesiacAbility = am.length ? am[recommend(am, score, rng)].value : null;
+  // 5–6 人局官方规则：恶魔没有伪装
+  const bl = s.count >= 7 ? bluffChoices(s, rng) : [];
   s.bluffs = bl.length ? bl[recommend(bl, score, rng)].value : [];
   refreshRedHerring(s, rng);
 }
@@ -203,7 +330,7 @@ function refreshRedHerring(s: GameState, rng: Rng) {
   s.redHerring = rh.length ? rh[recommend(rh, balance(s).score, rng)].value : null;
 }
 
-/* ---------- 三项特殊设置的推荐 ---------- */
+/* ---------- 特殊设置的推荐 ---------- */
 
 export function drunkFakeChoices(s: GameState): Choice<RoleId>[] {
   if (!inPlay(s, 'drunk')) return [];
@@ -216,6 +343,30 @@ export function drunkFakeChoices(s: GameState): Choice<RoleId>[] {
       return { key: r, label: roleName(r), value: r, lean: -1, truth: true, reason: `${clash}他以为自己是${def.name}，会把假信息带进小镇，帮邪恶。` };
     return { key: r, label: roleName(r), value: r, lean: 0, truth: true, standard: true, reason: `${clash}${def.name}是被动型角色，影响适中。` };
   });
+}
+
+/** 失忆者能力清单：每个能力网页都会算 */
+export const AMNESIAC_ABILITIES: RoleId[] = ['empath', 'fortuneteller', 'washerwoman', 'investigator', 'chef', 'undertaker', 'virgin', 'slayer'];
+
+export function amnesiacChoices(s: GameState): Choice<RoleId>[] {
+  if (!inPlay(s, 'amnesiac')) return [];
+  return AMNESIAC_ABILITIES.map((r): Choice<RoleId> => {
+    const name = roleName(r);
+    const base = { key: r, label: `像${name}一样`, value: r, truth: true };
+    if (r === 'empath' || r === 'fortuneteller') return { ...base, lean: 1, reason: `每晚都有信息（${ROLES[r].ability}），帮善良。` };
+    if (r === 'virgin' || r === 'slayer') return { ...base, lean: -1, reason: `被动/白天能力，他不知道自己有，很难用上，帮邪恶。（${ROLES[r].ability}）` };
+    return { ...base, lean: 0, standard: true, reason: `${ROLES[r].ability}` };
+  });
+}
+
+/** 哨兵：外来者 -1 / 0 / +1 */
+export function sentinelChoices(s: GameState): Choice<number>[] {
+  void s;
+  return [
+    { key: 'plus', label: '外来者 +1', value: 1, lean: -1, truth: true, reason: '多一个外来者、少一个镇民，帮邪恶。' },
+    { key: 'zero', label: '不变', value: 0, lean: 0, truth: true, standard: true, reason: '按人数表，标准做法。' },
+    { key: 'minus', label: '外来者 −1', value: -1, lean: 1, truth: true, reason: '少一个外来者、多一个镇民，帮善良。' },
+  ];
 }
 
 export function bluffChoices(s: GameState, rng: Rng): Choice<RoleId[]>[] {
@@ -248,8 +399,8 @@ export function bluffChoices(s: GameState, rng: Rng): Choice<RoleId[]>[] {
 }
 
 export function redHerringChoices(s: GameState, rng: Rng): Choice<number>[] {
-  const ft = findRole(s, 'fortuneteller');
-  if (!ft) return [];
+  const ft = actorFor(s, 'fortuneteller');
+  if (!ft || ft.role === 'drunk') return [];
   const good = s.seats.filter((x) => !isEvil(x));
   const out: Choice<number>[] = [];
   const plain = good.filter((x) => x.n !== ft.n && ROLES[x.role].team === 'townsfolk');
@@ -260,7 +411,7 @@ export function redHerringChoices(s: GameState, rng: Rng): Choice<number>[] {
   const saint = good.find((x) => x.role === 'saint');
   if (saint)
     out.push({ key: 'saint', label: `${saint.n}号（圣徒）`, value: saint.n, lean: -2, truth: true, reason: '干扰项放在圣徒身上：好人可能把圣徒当恶魔处决，直接输。大帮邪恶。' });
-  out.push({ key: 'self', label: `${ft.n}号（占卜师自己）`, value: ft.n, lean: -1, truth: true, reason: '占卜师自己当干扰项：他查到自己会得到"有"，会怀疑自己。帮邪恶。' });
+  out.push({ key: 'self', label: `${ft.n}号（${roleName(ft.role)}自己）`, value: ft.n, lean: -1, truth: true, reason: '占卜的人自己当干扰项：他查到自己会得到"有"，会怀疑自己。帮邪恶。' });
   const recluse = good.find((x) => x.role === 'recluse');
   if (recluse)
     out.push({ key: 'recluse', label: `${recluse.n}号（陌客）`, value: recluse.n, lean: 1, truth: true, reason: '陌客本来就可能被当成恶魔，干扰集中在一个人身上，帮善良。' });
@@ -270,8 +421,14 @@ export function redHerringChoices(s: GameState, rng: Rng): Choice<number>[] {
 export function startDeal(s: GameState) {
   s.phase = 'deal';
   s.dealIndex = 0;
-  s.log.push({ night: 0, phase: 'setup', text: `开局：${s.count} 人。${s.seats.map((x) => `${x.n}号${roleName(x.role)}`).join('、')}` });
-  if (s.drunkFake) s.log.push({ night: 0, phase: 'setup', text: `酒鬼以为自己是【${roleName(s.drunkFake)}】` });
-  if (s.bluffs.length) s.log.push({ night: 0, phase: 'setup', text: `恶魔伪装：${s.bluffs.map(roleName).join('、')}` });
-  if (s.redHerring) s.log.push({ night: 0, phase: 'setup', text: `占卜师干扰项：${s.redHerring}号` });
+  const lines = [`开局：${scriptOf(s).name}，${s.count} 人。${s.seats.map((x) => `${x.n}号${roleName(x.role)}`).join('、')}`];
+  if (lilMonsta(s)) lines.push('恶魔是小怪宝（无人扮演，每晚由爪牙照看）');
+  if (s.drunkFake && inPlay(s, 'drunk')) lines.push(`酒鬼以为自己是【${roleName(s.drunkFake)}】`);
+  if (s.lunaticFake) lines.push(`疯子以为自己是【${roleName(s.lunaticFake)}】`);
+  if (s.amnesiacAbility) lines.push(`失忆者的能力：像${roleName(s.amnesiacAbility)}一样`);
+  if (s.bluffs.length) lines.push(`恶魔伪装：${s.bluffs.map(roleName).join('、')}`);
+  if (s.redHerring) lines.push(`占卜干扰项：${s.redHerring}号`);
+  if (s.fabled.includes('sentinel')) lines.push(`传奇角色哨兵：外来者 ${s.sentinelDelta > 0 ? '+1' : s.sentinelDelta < 0 ? '−1' : '不变'}`);
+  if (s.fabled.includes('duchess')) lines.push('传奇角色：公爵夫人');
+  for (const text of lines) s.log.push({ night: 0, phase: 'setup', text });
 }

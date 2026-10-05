@@ -1,6 +1,6 @@
 import { ROLES, roleName, rolesOfTeam, type RoleId, type Team } from './roles';
 import type { Choice } from './balance';
-import { aliveCount, aliveNeighbors, findRole, isEvil, malfunction, notInPlay, seatOf } from './core';
+import { aliveCount, aliveNeighbors, findRole, isDemonSeat, isEvil, malfunction, mustLie, notInPlay, scriptRolesOf, seatOf } from './core';
 import { pick, type Rng } from './rng';
 import type { GameState, Seat } from './types';
 
@@ -29,6 +29,14 @@ const goodOf = (xs: Seat[]) => xs.filter((x) => !isEvil(x));
 const evilOf = (xs: Seat[]) => xs.filter((x) => isEvil(x));
 const pickOr = <T,>(xs: T[], rng: Rng): T | undefined => (xs.length ? pick(xs, rng) : undefined);
 
+/** 涡流在场：镇民只能拿假信息，只留假选项 */
+function vortoxOnly<T>(s: GameState, ability: RoleId, out: Choice<T>[]): Choice<T>[] {
+  if (!mustLie(s, ability)) return out;
+  return out
+    .filter((c) => !c.truth)
+    .map((c) => ({ ...c, reason: `涡流在场，镇民只能拿假信息。${c.reason.replace('中毒的标准用法。', '')}` }));
+}
+
 /** 判断一条"角色+两人"信息是真、合规的误导、还是假的 */
 export function pairVerdict(s: GameState, kind: PairKind, actorN: number, p: PairInfo): Verdict {
   const team = KIND_TEAM[kind];
@@ -50,7 +58,7 @@ export function pairVerdict(s: GameState, kind: PairKind, actorN: number, p: Pai
 
 export function pairChoices(s: GameState, kind: PairKind, actorN: number, rng: Rng): Choice<PairInfo>[] {
   const team = KIND_TEAM[kind];
-  const healthy = !malfunction(s, actorN);
+  const healthy = !malfunction(s, actorN) && !mustLie(s, kind);
   const rest = others(s, [actorN]);
   const targets = rest.filter((x) => ROLES[x.role].team === team);
   const out: Choice<PairInfo>[] = [];
@@ -72,6 +80,7 @@ export function pairChoices(s: GameState, kind: PairKind, actorN: number, rng: R
   const fakeRole = (t: Team) =>
     pickOr(notInPlay(s, t, [...s.bluffs, ...(s.drunkFake ? [s.drunkFake] : [])]), rng) ??
     pickOr(notInPlay(s, t), rng) ??
+    pickOr(scriptRolesOf(s, t), rng) ??
     pick(rolesOfTeam(t), rng);
 
   if (healthy) {
@@ -93,7 +102,7 @@ export function pairChoices(s: GameState, kind: PairKind, actorN: number, rng: R
     }
     if (kind === 'investigator' && targets.length) {
       const t = pick(targets, rng);
-      const demon = rest.find((x) => x.role === 'imp');
+      const demon = rest.find((x) => isDemonSeat(s, x.n));
       const otherMinion = decoyFor(t, rest.filter((x) => ROLES[x.role].team === 'minion'));
       if (otherMinion) out.push(mk('twoMinions', { role: t.role, seats: sorted(t.n, otherMinion.n) }, 1, '干扰项也是爪牙：两个人都是邪恶，帮善良。', 'true'));
       if (demon) out.push(mk('demonDecoy', { role: t.role, seats: sorted(t.n, demon.n) }, 2, '干扰项是恶魔：好人几乎直接锁定邪恶，大帮善良。', 'true'));
@@ -127,7 +136,7 @@ export function pairChoices(s: GameState, kind: PairKind, actorN: number, rng: R
   if (kind === 'librarian' && targets.length) {
     out.push(mk('fakeZero', { role: null, seats: null }, -1, '假信息：说场上没有外来者。好人会算错外来者人数。', 'false'));
   }
-  const demon = rest.find((x) => x.role === 'imp');
+  const demon = rest.find((x) => isDemonSeat(s, x.n));
   const bluff = s.bluffs.find((r) => ROLES[r].team === team);
   const g = pickOr(goodOf(rest), rng);
   if (kind !== 'investigator' && demon && bluff && g) {
@@ -136,7 +145,7 @@ export function pairChoices(s: GameState, kind: PairKind, actorN: number, rng: R
     const e = pickOr(evilOf(rest), rng);
     if (e && g) out.push(mk('frameEvil', { role: fakeRole(team), seats: sorted(e.n, g.n) }, -2, `让邪恶玩家 ${e.n}号 看起来像${kind === 'washerwoman' ? '镇民' : '外来者'}，大帮邪恶。`, 'false'));
   }
-  return out;
+  return vortoxOnly(s, kind, out);
 }
 
 /* ---------------- 厨师 / 共情者（数字） ---------------- */
@@ -191,7 +200,7 @@ export function numberChoices(s: GameState, kind: 'chef' | 'empath', actorN: num
   const base = count(vs[0]);
   const lbl = (n: number) => `比 ${n}`;
 
-  if (!malfunction(s, actorN)) {
+  if (!malfunction(s, actorN) && !mustLie(s, kind)) {
     const byNum = new Map<number, string[]>();
     for (const v of vs) {
       const c = count(v);
@@ -217,23 +226,23 @@ export function numberChoices(s: GameState, kind: 'chef' | 'empath', actorN: num
       out.push({ key: `n${n}`, label: lbl(n), value: n, lean: -1, truth: false, standard: true, reason: '少报一个：替一个邪恶玩家打掩护，帮邪恶。' });
     else out.push({ key: `n${n}`, label: lbl(n), value: n, lean: -2, truth: false, reason: '和真实差得多，误导很强，大帮邪恶。' });
   }
-  return out;
+  return vortoxOnly(s, kind, out);
 }
 
 /* ---------------- 占卜师 ---------------- */
 
 export function fortuneTruth(s: GameState, picks: number[]): boolean {
-  return picks.some((n) => seatOf(s, n).role === 'imp' || n === s.redHerring);
+  return picks.some((n) => isDemonSeat(s, n) || n === s.redHerring);
 }
 
 export function fortuneChoices(s: GameState, actorN: number, picks: number[]): Choice<boolean>[] {
   const yes = fortuneTruth(s, picks);
-  const demonIn = picks.some((n) => seatOf(s, n).role === 'imp');
+  const demonIn = picks.some((n) => isDemonSeat(s, n));
   const rec = picks.find((n) => seatOf(s, n).role === 'recluse');
   const Y = (lean: number, reason: string, truth: boolean, extra: Partial<Choice<boolean>> = {}): Choice<boolean> => ({ key: 'yes', label: '点头：有恶魔', value: true, lean, reason, truth, ...extra });
   const N = (lean: number, reason: string, truth: boolean, extra: Partial<Choice<boolean>> = {}): Choice<boolean> => ({ key: 'no', label: '摇头：没有恶魔', value: false, lean, reason, truth, ...extra });
 
-  if (!malfunction(s, actorN)) {
+  if (!malfunction(s, actorN) && !mustLie(s, 'fortuneteller')) {
     if (yes) return [Y(0, demonIn ? '恶魔就在这两人里。' : `${s.redHerring}号是干扰项，所以也是"有"。`, true, { standard: true })];
     if (rec) return [N(1, '按真实情况：两人都不是恶魔。帮善良。', true), Y(-1, `把陌客（${rec}号）当成恶魔（规则允许），帮邪恶。`, true, { twist: true })];
     return [N(0, '两人都不是恶魔。', true, { standard: true })];
@@ -243,9 +252,9 @@ export function fortuneChoices(s: GameState, actorN: number, picks: number[]): C
     const f = demonIn
       ? N(-1, '假答案：替恶魔打掩护。中毒的标准用法。', false, { standard: true })
       : N(0, '假答案：干扰项不起作用。', false, { standard: true });
-    return [t, f];
+    return vortoxOnly(s, 'fortuneteller', [t, f]);
   }
-  return [N(1, '中毒/酒鬼也可以给真答案。帮善良。', true), Y(0, '假答案：冤枉这两人之一。中毒的标准用法。', false, { standard: true })];
+  return vortoxOnly(s, 'fortuneteller', [N(1, '中毒/酒鬼也可以给真答案。帮善良。', true), Y(0, '假答案：冤枉这两人之一。中毒的标准用法。', false, { standard: true })]);
 }
 
 /* ---------------- 送葬者 / 守鸦人（看角色） ---------------- */
@@ -259,17 +268,19 @@ export function revealVerdict(s: GameState, subjectN: number, r: RoleId): Verdic
   return 'false';
 }
 
-export function revealChoices(s: GameState, actorN: number, subjectN: number, rng: Rng): Choice<RoleId>[] {
+export function revealChoices(
+  s: GameState, actorN: number, subjectN: number, rng: Rng, ability: 'undertaker' | 'ravenkeeper' = 'undertaker',
+): Choice<RoleId>[] {
   const sub = seatOf(s, subjectN);
   const r = sub.role;
   const mk = (role: RoleId, lean: number, reason: string, v: Verdict, standard = false): Choice<RoleId> => ({
     key: role, label: `给他看【${roleName(role)}】`, value: role, lean, reason, truth: v !== 'false', twist: v === 'twist', standard,
   });
   const goodFake = () =>
-    pickOr(notInPlay(s, 'townsfolk', [...s.bluffs, ...(s.drunkFake ? [s.drunkFake] : [])]), rng) ?? pick(rolesOfTeam('townsfolk'), rng);
-  const minionFake = () => pickOr(s.seats.filter((x) => ROLES[x.role].team === 'minion').map((x) => x.role), rng) ?? pick(rolesOfTeam('minion'), rng);
+    pickOr(notInPlay(s, 'townsfolk', [...s.bluffs, ...(s.drunkFake ? [s.drunkFake] : [])]), rng) ?? pickOr(scriptRolesOf(s, 'townsfolk'), rng) ?? pick(rolesOfTeam('townsfolk'), rng);
+  const minionFake = () => pickOr(s.seats.filter((x) => ROLES[x.role].team === 'minion').map((x) => x.role), rng) ?? pickOr(scriptRolesOf(s, 'minion'), rng) ?? pick(rolesOfTeam('minion'), rng);
 
-  if (!malfunction(s, actorN)) {
+  if (!malfunction(s, actorN) && !mustLie(s, ability)) {
     if (r === 'spy') return [mk('spy', 1, '按真实身份给，帮善良。', 'true'), mk(goodFake(), -1, '把间谍当成善良角色给出去（规则允许），帮邪恶。', 'twist')];
     if (r === 'recluse') return [mk('recluse', 1, '按真实身份给，帮善良。', 'true'), mk(minionFake(), -1, '把陌客当成爪牙给出去（规则允许），帮邪恶。', 'twist')];
     return [mk(r, 0, r === 'drunk' ? '他就是酒鬼，直接给看"酒鬼"。' : '真实角色。', 'true', true)];
@@ -277,7 +288,7 @@ export function revealChoices(s: GameState, actorN: number, subjectN: number, rn
   const out = [mk(r, 1, '中毒/酒鬼也可以给真角色。帮善良。', 'true')];
   if (isEvil(sub)) out.push(mk(goodFake(), -1, '假信息：把邪恶玩家说成善良角色，替他洗白。', 'false', true));
   else out.push(mk(minionFake(), 0, '假信息：把好人说成爪牙。中毒的标准用法。', 'false', true));
-  return out;
+  return vortoxOnly(s, ability, out);
 }
 
 /* ---------------- 小恶魔相关 ---------------- */
@@ -292,7 +303,7 @@ export function scarletCanTakeOver(s: GameState): Seat | undefined {
 export function mayorBounceChoices(s: GameState, mayorN: number, rng: Rng): Choice<number>[] {
   const monk = s.ns?.monk ?? null;
   const ok = (x: Seat) =>
-    x.alive && x.n !== mayorN && x.role !== 'imp' && x.n !== monk && !(x.role === 'soldier' && !malfunction(s, x.n));
+    x.alive && x.n !== mayorN && !isDemonSeat(s, x.n) && x.n !== monk && !(x.role === 'soldier' && !malfunction(s, x.n));
   const good = s.seats.filter((x) => ok(x) && !isEvil(x));
   const minions = s.seats.filter((x) => ok(x) && ROLES[x.role].team === 'minion');
   const out: Choice<number>[] = [
@@ -328,4 +339,134 @@ export function starpassChoices(s: GameState, impN: number): Choice<number>[] {
     if (v(x) === hi) return { ...base, lean: 1, reason: `${why(x)}。好人更容易抓到新恶魔，帮善良。` };
     return { ...base, lean: 0, reason: `${why(x)}。` };
   });
+}
+
+/* ---------------- 幽灵茶会 / 窃窃私语 ---------------- */
+
+/** 通用的"比数字"选项：健康给真数字；中毒/酒鬼/涡流给假数字 */
+function countChoices(s: GameState, ability: RoleId, actorN: number, base: number, max: number): Choice<number>[] {
+  const lbl = (n: number) => `比 ${n}`;
+  if (!malfunction(s, actorN) && !mustLie(s, ability))
+    return [{ key: `n${base}`, label: lbl(base), value: base, lean: 0, truth: true, standard: true, reason: '真实答案。' }];
+  const out: Choice<number>[] = [{ key: `n${base}`, label: lbl(base), value: base, lean: 1, truth: true, reason: '中毒/醉酒也可以给真数字。帮善良。' }];
+  for (let n = 0; n <= max; n++) {
+    if (n === base) continue;
+    if (n === base + 1) out.push({ key: `n${n}`, label: lbl(n), value: n, lean: 0, truth: false, standard: true, reason: '多报一个：看起来正常的假信息。' });
+    else if (n === base - 1) out.push({ key: `n${n}`, label: lbl(n), value: n, lean: -1, truth: false, standard: true, reason: '少报一个：帮邪恶藏一下。' });
+    else out.push({ key: `n${n}`, label: lbl(n), value: n, lean: -2, truth: false, reason: '和真实差得多，误导很强，大帮邪恶。' });
+  }
+  return vortoxOnly(s, ability, out);
+}
+
+/** 侍女：她选的两人今晚有几个因为自己的能力醒过 */
+export const chambermaidCount = (s: GameState, picks: number[]) => picks.filter((n) => s.ns?.woke.includes(n)).length;
+
+export function chambermaidChoices(s: GameState, actorN: number, picks: number[]): Choice<number>[] {
+  return countChoices(s, 'chambermaid', actorN, chambermaidCount(s, picks), 2);
+}
+
+/** 小精灵：第一晚给他看一个在场的镇民 */
+export function pixieChoices(s: GameState, actorN: number, rng: Rng): Choice<RoleId>[] {
+  const mk = (r: RoleId, lean: number, reason: string, truth: boolean, standard = false): Choice<RoleId> => ({
+    key: r, label: `给他看【${roleName(r)}】`, value: r, lean, reason, truth, standard,
+  });
+  const inPlayTowns = s.seats.filter((x) => x.n !== actorN && ROLES[x.role].team === 'townsfolk').map((x) => x.role);
+  const fakes = notInPlay(s, 'townsfolk').filter((r) => r !== 'pixie');
+  if (!malfunction(s, actorN) && !mustLie(s, 'pixie')) {
+    return inPlayTowns.map((r) => mk(r, 0, `${roleName(r)}在场，真实信息。`, true, true));
+  }
+  const out = inPlayTowns.slice(0, 1).map((r) => mk(r, 1, '中毒也可以给真信息。帮善良。', true));
+  const f = pickOr(fakes, rng);
+  if (f) out.push(mk(f, 0, '假信息：这个角色其实不在场，他会去冒充一个不存在的身份。', false, true));
+  return vortoxOnly(s, 'pixie', out);
+}
+
+/** 气球驾驶员：每晚一名玩家，类型和之前给过的都不同 */
+export interface BalloonInfo {
+  seat: number;
+  team: Team;
+}
+export const BALLOON_TYPES: Team[] = ['townsfolk', 'outsider', 'minion', 'demon'];
+
+/** 场上存在、还没给过的类型 */
+export function balloonRemaining(s: GameState, actorN: number): Team[] {
+  const typeOf = (x: Seat): Team => (isDemonSeat(s, x.n) ? 'demon' : ROLES[x.role].team);
+  const present = new Set(s.seats.filter((x) => x.n !== actorN).map(typeOf));
+  return BALLOON_TYPES.filter((t) => present.has(t) && !s.balloonShown.includes(t));
+}
+
+export function balloonistChoices(s: GameState, actorN: number, rng: Rng): Choice<BalloonInfo>[] {
+  const typeOf = (x: Seat): Team => (isDemonSeat(s, x.n) ? 'demon' : ROLES[x.role].team);
+  const rest = s.seats.filter((x) => x.n !== actorN);
+  const NAME: Record<Team, string> = { townsfolk: '镇民', outsider: '外来者', minion: '爪牙', demon: '恶魔' };
+  const out: Choice<BalloonInfo>[] = [];
+  for (const t of balloonRemaining(s, actorN)) {
+    const x = pick(rest.filter((y) => typeOf(y) === t), rng);
+    out.push({
+      key: t, label: `指向 ${x.n}号（${NAME[t]}）`, value: { seat: x.n, team: t }, truth: true,
+      lean: t === 'demon' ? 1 : 0, standard: t !== 'demon',
+      reason: t === 'demon' ? '直接把恶魔指给他，帮善良。' : `给他一个${NAME[t]}，标准做法。`,
+    });
+  }
+  if (malfunction(s, actorN)) {
+    const shown = s.balloonShown.length ? s.balloonShown : (['townsfolk'] as Team[]);
+    const x = pickOr(rest.filter((y) => shown.includes(typeOf(y))), rng);
+    if (x) out.push({ key: 'fake', label: `指向 ${x.n}号（${NAME[typeOf(x)]}，其实是之前给过的类型）`, value: { seat: x.n, team: typeOf(x) }, truth: false, lean: 0, standard: true, reason: '假信息：类型和之前重复了，他会推错。' });
+    for (const c of out)
+      if (c.truth) {
+        c.lean = 1;
+        c.standard = false;
+      }
+  }
+  return out;
+}
+
+/** 小怪宝：每晚（第一晚除外）由说书人决定谁死 */
+export function lilKillChoices(s: GameState, rng: Rng): Choice<number>[] {
+  const cands = s.seats.filter((x) => x.alive && x.n !== s.babysitter);
+  const good = cands.filter((x) => !isEvil(x)).sort((a, b) => ROLES[b.role].weight - ROLES[a.role].weight);
+  if (!good.length) return cands.map((x) => ({ key: `k${x.n}`, label: `${x.n}号（${roleName(x.role)}）`, value: x.n, lean: 0, truth: true, reason: '只剩这些人可选。' }));
+  const strong = good[0];
+  const weak = good[good.length - 1];
+  const mid = pick(good, rng);
+  const lbl = (x: Seat) => `${x.n}号（${roleName(x.role)}）死亡`;
+  const out: Choice<number>[] = [
+    { key: 'strong', label: lbl(strong), value: strong.n, lean: -1, truth: true, reason: `${roleName(strong.role)}对善良最有用，杀他帮邪恶。` },
+    { key: 'mid', label: lbl(mid), value: mid.n, lean: 0, truth: true, standard: true, reason: '随便一名善良玩家，标准做法。' },
+  ];
+  if (weak.n !== strong.n) out.push({ key: 'weak', label: lbl(weak), value: weak.n, lean: 1, truth: true, reason: `${roleName(weak.role)}对善良用处最小，杀他帮善良。` });
+  return out;
+}
+
+/** 寡妇：告诉一名善良玩家"寡妇在场" */
+export function widowInformChoices(s: GameState, rng: Rng): Choice<number>[] {
+  const good = s.seats.filter((x) => x.alive && !isEvil(x));
+  const out: Choice<number>[] = [];
+  const victim = good.find((x) => x.n === s.widowPoison);
+  const others = good.filter((x) => x.n !== s.widowPoison);
+  const r = pickOr(others, rng);
+  if (r) out.push({ key: 'rand', label: `告诉 ${r.n}号（${roleName(r.role)}）`, value: r.n, lean: 0, truth: true, standard: true, reason: '随便一名善良玩家，标准做法。' });
+  if (victim) out.push({ key: 'victim', label: `告诉 ${victim.n}号（被毒的人）`, value: victim.n, lean: 1, truth: true, reason: '被毒的人知道寡妇在场，会怀疑自己的信息，帮善良。' });
+  return out;
+}
+
+/** 公爵夫人：拜访者中几个邪恶，其中一人拿到假数字 */
+export interface DuchessInfo {
+  falseFor: number;
+  falseNum: number;
+}
+export const duchessCount = (s: GameState) => s.duchessVisitors.filter((n) => isEvil(seatOf(s, n))).length;
+
+export function duchessChoices(s: GameState, rng: Rng): Choice<DuchessInfo>[] {
+  const vs = s.duchessVisitors;
+  if (!vs.length) return [];
+  const c = duchessCount(s);
+  const out: Choice<DuchessInfo>[] = [];
+  const who = pick(vs, rng);
+  if (c + 1 <= vs.length) out.push({ key: 'up', label: `${who}号 拿到假数字 ${c + 1}`, value: { falseFor: who, falseNum: c + 1 }, lean: 0, truth: false, standard: true, reason: '多报一个：冤枉一名拜访者，标准做法。' });
+  if (c - 1 >= 0) out.push({ key: 'down', label: `${who}号 拿到假数字 ${c - 1}`, value: { falseFor: who, falseNum: c - 1 }, lean: -1, truth: false, reason: '少报一个：替邪恶拜访者打掩护，帮邪恶。' });
+  const evilVisitor = vs.find((n) => isEvil(seatOf(s, n)));
+  if (evilVisitor && c + 1 <= vs.length)
+    out.push({ key: 'evil', label: `${evilVisitor}号 拿到假数字 ${c + 1}`, value: { falseFor: evilVisitor, falseNum: c + 1 }, lean: 1, truth: false, reason: '假数字给邪恶玩家：真话都在好人手里，帮善良。' });
+  return out;
 }

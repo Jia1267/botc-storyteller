@@ -5,7 +5,15 @@ export type RoleId =
   | 'undertaker' | 'monk' | 'ravenkeeper' | 'virgin' | 'slayer' | 'soldier' | 'mayor'
   | 'butler' | 'drunk' | 'recluse' | 'saint'
   | 'poisoner' | 'spy' | 'scarletwoman' | 'baron'
-  | 'imp';
+  | 'imp'
+  // 幽灵茶会 / 窃窃私语
+  | 'chambermaid' | 'artist' | 'pixie' | 'cannibal' | 'balloonist' | 'fisherman' | 'savant' | 'amnesiac'
+  | 'klutz' | 'lunatic' | 'mutant'
+  | 'fearmonger' | 'widow' | 'goblin'
+  | 'vortox' | 'lilmonsta' | 'leviathan';
+
+/** 传奇角色：说书人的角色，不发给玩家 */
+export type FabledId = 'sentinel' | 'duchess';
 
 export interface RoleDef {
   id: RoleId;
@@ -197,7 +205,148 @@ const R: RoleDef[] = [
       '恶魔中毒时杀人无效。',
     ],
   },
+
+  /* ---------- 幽灵茶会 / 窃窃私语 ---------- */
+  {
+    id: 'chambermaid', name: '侍女', short: '侍女', team: 'townsfolk', weight: 1.5, bluff: 1, info: true,
+    ability: '每晚，你选择除你以外的两名存活玩家，得知他们之中今晚有几人因为自己的能力醒来过。',
+    tips: [
+      '她指两个人（不能指自己），你用手指比出这两人今晚有几个因为自己的能力醒过。',
+      '她在夜里很靠后才醒，网页会自动统计今晚谁醒过。疯子以为自己是恶魔而醒来，也算醒过。',
+    ],
+  },
+  {
+    id: 'artist', name: '艺术家', short: '艺术家', team: 'townsfolk', weight: 1.5, bluff: 1,
+    ability: '整局一次，白天你可以私下问说书人一个是非题，并得到答案。',
+    tips: [
+      '他白天私下来找你，问一个能用"是/否"回答的问题。',
+      '他健康时必须如实回答；中毒或醉酒时可以说假话；涡流在场时必须说假话。',
+    ],
+  },
+  {
+    id: 'pixie', name: '小精灵', short: '小精灵', team: 'townsfolk', weight: 1, bluff: 1, info: true,
+    ability: '第一晚，你会得知一个在场的镇民角色。如果你"疯狂"地证明自己就是这个角色，那名玩家死亡时你会获得这个角色的能力。',
+    tips: [
+      '第一晚给他看一个在场的镇民角色名（不能是他自己）。',
+      '之后他要一直公开坚持自己就是那个角色（疯狂）。那名玩家死亡时，网页会问你他有没有做到，做到了就获得能力。',
+    ],
+  },
+  {
+    id: 'cannibal', name: '食人族', short: '食人族', team: 'townsfolk', weight: 1.5, bluff: 1,
+    ability: '你拥有最近一个被处决死亡的玩家的能力。如果那名玩家是邪恶的，你会中毒，直到下一个善良玩家被处决死亡。',
+    tips: [
+      '每次有人被处决死亡，他就换成那个人的能力。他不会被告知是什么能力，要自己推断。',
+      '吃到邪恶玩家：他中毒，你按一个假的善良能力叫醒他，直到下一个善良玩家被处决死亡。',
+      '网页会自动跟踪他现在的能力，并在夜里那个能力的位置叫醒他。',
+    ],
+  },
+  {
+    id: 'balloonist', name: '气球驾驶员', short: '气球', team: 'townsfolk', weight: 1.5, bluff: 1, info: true,
+    ability: '每晚，你会得知一名玩家，他的角色类型和你之前得知过的都不同，直到场上每种角色类型你都得知过一次。[+1 外来者]',
+    tips: [
+      '每晚用手指向一名玩家，他的类型（镇民/外来者/爪牙/恶魔）不能和之前指过的重复。',
+      '每种类型都指过以后，就不再叫醒他。',
+      '配板时多一个外来者，网页自动调整。',
+    ],
+  },
+  {
+    id: 'fisherman', name: '渔夫', short: '渔夫', team: 'townsfolk', weight: 1, bluff: 1,
+    ability: '整局一次，白天你可以找说书人，得到一条帮助你的阵营获胜的建议。',
+    tips: ['建议要真的有帮助，但别直接说出谁是恶魔。', '网页会按当前局势给你几条建议参考。'],
+  },
+  {
+    id: 'savant', name: '博学者', short: '博学者', team: 'townsfolk', weight: 2, bluff: 1,
+    ability: '每个白天，你可以私下找说书人得知两条信息：一条是真的，一条是假的。',
+    tips: [
+      '每天最多一次。两条信息一真一假，不告诉他哪条是真的。',
+      '网页会按魔典生成几组"一真一假"，你挑一组念。他中毒或醉酒时，两条都可以是假的。',
+    ],
+  },
+  {
+    id: 'amnesiac', name: '失忆者', short: '失忆', team: 'townsfolk', weight: 1, bluff: 1,
+    ability: '你不知道自己的能力是什么。每个白天你可以私下猜一次，说书人会告诉你猜得有多准。',
+    tips: [
+      '开局时由你偷偷给他定一个能力（网页提供清单）。',
+      '他的能力需要在夜里醒时，网页会在失忆者那一步叫醒他。',
+      '他每天来猜一次，你按"完全正确 / 非常接近 / 有点接近 / 差得远"回答。',
+    ],
+  },
+  {
+    id: 'klutz', name: '呆瓜', short: '呆瓜', team: 'outsider', weight: -1, bluff: 1,
+    ability: '当你得知自己死亡时，你要公开选择一名存活玩家：如果他是邪恶的，你的阵营落败。',
+    tips: ['他死了以后（天亮宣布或被处决时），让他立刻公开选一名存活玩家。', '选到邪恶玩家，善良直接输。'],
+  },
+  {
+    id: 'lunatic', name: '疯子', short: '疯子', team: 'outsider', weight: -0.5, bluff: 1,
+    ability: '你以为自己是恶魔，但其实不是。真正的恶魔知道你是谁，也知道你每晚选了谁。',
+    tips: [
+      '发身份时给他看恶魔角色（小怪宝在场时给他看涡流）。',
+      '他夜里"杀"的人不会死。',
+      '真恶魔会被告知疯子是谁、每晚选了谁（小怪宝在场时告诉爪牙们）。',
+    ],
+  },
+  {
+    id: 'mutant', name: '畸形秀演员', short: '畸形秀', team: 'outsider', weight: -0.5, bluff: 1,
+    ability: '如果你"疯狂"地证明自己是外来者，你可能会被处决。',
+    tips: ['他公开说自己是外来者，就算"疯狂"了。', '你可以当场处决他（算当天的处决），也可以放过。'],
+  },
+  {
+    id: 'fearmonger', name: '恐惧之灵', short: '恐惧', team: 'minion', weight: -2, bluff: 0,
+    ability: '每晚，你选择一名玩家：如果你提名他并且他被处决，他的阵营落败。你第一次选择或更换目标时，所有玩家都会得知。',
+    tips: [
+      '每晚记下他选的目标。他第一次选或换了新目标，天亮时公开说"恐惧之灵选择了一名新的目标"（不说是谁）。',
+      '他提名自己的目标、对方又被处决：那名玩家所在的阵营直接输。',
+    ],
+  },
+  {
+    id: 'widow', name: '寡妇', short: '寡妇', team: 'minion', weight: -2.5, bluff: 0,
+    ability: '第一晚，你可以查看魔典并选择一名玩家：他中毒。之后会有一名善良玩家得知寡妇在场。',
+    tips: ['第一晚给她看只读魔典，她选一人中毒（寡妇活着就一直中毒）。', '然后叫醒一名善良玩家，告诉他"寡妇在场"。'],
+  },
+  {
+    id: 'goblin', name: '哥布林', short: '哥布林', team: 'minion', weight: -1.5, bluff: 0,
+    ability: '如果你被提名时公开声称自己是哥布林，并且当天被处决，你的阵营获胜。',
+    tips: ['处决他时问一句：他被提名时有没有公开说自己是哥布林？说了，邪恶获胜。'],
+  },
+  {
+    id: 'vortox', name: '涡流', short: '涡流', team: 'demon', weight: -2, bluff: 0,
+    ability: '每晚（第一晚除外），你选择一名玩家：他死亡。镇民的能力只会给出错误信息。如果某个白天没有人被处决，邪恶阵营获胜。',
+    tips: [
+      '涡流在场时，所有镇民拿到的信息都必须是假的，网页只给假选项。',
+      '某天没人被处决，邪恶直接获胜。',
+    ],
+  },
+  {
+    id: 'lilmonsta', name: '小怪宝', short: '小怪宝', team: 'demon', weight: -1, bluff: 0,
+    ability: '每晚，所有爪牙秘密决定由谁照看小怪宝，那名玩家被当作恶魔。每晚（第一晚除外），会有一名玩家死亡。[+1 爪牙]',
+    tips: [
+      '开局没有人是恶魔，多一个爪牙。',
+      '每晚叫醒所有爪牙，让他们指出由谁照看小怪宝（只能是爪牙）。',
+      '每晚（第一晚除外）由你决定谁死，不能是照看者。',
+      '照看者死亡，善良获胜；红唇女郎存活且存活人数 ≥5 时由她接手照看。',
+    ],
+  },
+  {
+    id: 'leviathan', name: '利维坦', short: '利维坦', team: 'demon', weight: -1.5, bluff: 0,
+    ability: '所有玩家都知道利维坦在场。如果超过一名善良玩家被处决，邪恶阵营获胜。第五个白天结束时，邪恶阵营获胜。',
+    tips: ['第一个天亮时公开宣布"利维坦在场"。', '他晚上不杀人。', '第 2 个善良玩家被处决，或第 5 天结束，邪恶获胜。'],
+  },
 ];
+
+export interface FabledDef {
+  id: FabledId;
+  name: string;
+  ability: string;
+}
+
+export const FABLED: Record<FabledId, FabledDef> = {
+  sentinel: { id: 'sentinel', name: '哨兵', ability: '开局时，外来者可能会多一个或少一个。' },
+  duchess: {
+    id: 'duchess',
+    name: '公爵夫人',
+    ability: '每个白天，最多三名玩家可以一起拜访说书人。当晚（第一晚除外），每名拜访者会得知拜访者中有几个是邪恶的，但其中一人得到的数字是错的。',
+  },
+};
 
 export const ROLES: Record<RoleId, RoleDef> = Object.fromEntries(R.map((r) => [r.id, r])) as Record<RoleId, RoleDef>;
 export const ROLE_LIST = R;

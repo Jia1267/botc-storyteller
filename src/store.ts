@@ -5,6 +5,7 @@ import { seeded, type Rng } from './engine/rng';
 import type { GameState } from './engine/types';
 
 const KEY = 'botc-storyteller-v1';
+export const STORE_KEY = KEY;
 const MAX_HISTORY = 300;
 
 interface Saved {
@@ -12,12 +13,26 @@ interface Saved {
   hist: GameState[];
 }
 
+/** 老版本的存档（只有暗流涌动）补上新字段 */
+function migrate(x: GameState): GameState {
+  const base = newGame();
+  return {
+    ...base,
+    ...x,
+    script: x.script ?? 'tb',
+    demonChar: x.demonChar ?? (x.seats.length ? 'imp' : null),
+    gained: x.gained ?? {},
+    ns: x.ns ? { ...{ doneActors: [], woke: [], lunaticPick: null }, ...x.ns } : null,
+  };
+}
+
 function load(): Saved | null {
   try {
     const raw = localStorage.getItem(KEY);
     if (!raw) return null;
     const d = JSON.parse(raw) as Saved;
-    return d?.cur?.v === 1 ? d : null;
+    if (d?.cur?.v !== 1) return null;
+    return { cur: migrate(d.cur), hist: d.hist.map(migrate) };
   } catch {
     return null;
   }

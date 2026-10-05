@@ -1,11 +1,13 @@
 import { useMemo, useState } from 'react';
-import { ROLES, TEAM_NAME, isEvilTeam, rolesOfTeam, roleName, type RoleId, type Team } from '../engine/roles';
+import { FABLED, ROLES, TEAM_NAME, isEvilTeam, roleName, type FabledId, type RoleId, type Team } from '../engine/roles';
 import { recommend, setupLabel, balance } from '../engine/balance';
-import { addLog, inPlay, notInPlay } from '../engine/core';
+import { actorFor, addLog, inPlay, lilMonsta, notInPlay, scriptOf } from '../engine/core';
+import { SCRIPT_LIST, SCRIPTS } from '../engine/editions';
 import { defaultRng } from '../engine/rng';
 import {
-  DISTRIBUTION, F4, MAX_F4, MAX_PLAYERS, MIN_PLAYERS, bluffChoices, drunkFakeChoices, redHerringChoices,
-  replaceRole, rerollRoles, setCount, setupReasons, shuffleSeats, startDeal, swapSeats,
+  DISTRIBUTION, F4, MAX_F4, amnesiacChoices, bluffChoices, drunkFakeChoices, redHerringChoices, replaceDemon,
+  replaceRole, rerollRoles, sentinelChoices, setCount, setScript, setSentinelDelta, setupReasons, shuffleSeats,
+  startDeal, swapSeats, toggleFabled,
 } from '../engine/setup';
 import { stepRng, type Game } from '../store';
 import { BottomBar, ChoicePanel, Sheet, SeatPicker } from './common';
@@ -13,21 +15,56 @@ import { GrimoireCircle } from './Grimoire';
 import { Icon } from './icons';
 
 export function SetupScreen({ g, onRules, onRoles }: { g: Game; onRules: () => void; onRoles: () => void }) {
+  if (g.s.setupStep === 'script') return <ScriptStep g={g} />;
   if (g.s.setupStep === 'count') return <CountStep g={g} onRules={onRules} onRoles={onRoles} />;
   if (g.s.setupStep === 'roles') return <RolesStep g={g} />;
   return <SeatsStep g={g} onRules={onRules} />;
 }
 
-function CountStep({ g, onRules, onRoles }: { g: Game; onRules: () => void; onRoles: () => void }) {
-  const counts = Array.from({ length: MAX_PLAYERS - MIN_PLAYERS + 1 }, (_, i) => i + MIN_PLAYERS);
+function ScriptStep({ g }: { g: Game }) {
   return (
     <main className="main">
       <div className="stack">
         <div className="hero">
           <h1>钟楼说书人</h1>
-          <p className="sub">暗流涌动 · 一步一屏带你主持一整局</p>
+          <p className="sub">一步一屏带你主持一整局</p>
         </div>
-        <h2 style={{ fontSize: 22 }}>几个人玩？</h2>
+        <h2 style={{ fontSize: 22 }}>玩哪个剧本？</h2>
+        <div className="choices">
+          {SCRIPT_LIST.map((sc) => (
+            <button key={sc.id} className="choice" style={{ padding: '14px 16px' }} onClick={() => g.commit((s) => setScript(s, sc.id))}>
+              <div className="top">
+                <span className="lab" style={{ fontFamily: 'var(--serif)', fontSize: 22 }}>
+                  {sc.name}
+                </span>
+                <span className="tag tag-mid">
+                  {sc.min === sc.max ? sc.min : `${sc.min}–${sc.max}`} 人
+                </span>
+              </div>
+              <span className="why">{sc.blurb}</span>
+              <span className="dim" style={{ fontSize: 13 }}>
+                {sc.roles.length} 个角色{sc.fabled.length ? ` · 传奇角色：${sc.fabled.map((f) => FABLED[f].name).join('、')}` : ''}
+              </span>
+            </button>
+          ))}
+        </div>
+      </div>
+    </main>
+  );
+}
+
+function CountStep({ g, onRules, onRoles }: { g: Game; onRules: () => void; onRoles: () => void }) {
+  const sc = scriptOf(g.s);
+  const counts = Array.from({ length: sc.max - sc.min + 1 }, (_, i) => i + sc.min);
+  return (
+    <main className="main">
+      <div className="stack">
+        <div className="step-head">
+          <span className="kicker">
+            剧本：{sc.name}（{sc.min}–{sc.max} 人）
+          </span>
+          <h2>几个人玩？</h2>
+        </div>
         <p className="dim">不算说书人。选好后网页会自动配一套均衡的角色。</p>
         <div className="count-grid">
           {counts.map((n) => {
@@ -50,6 +87,9 @@ function CountStep({ g, onRules, onRoles }: { g: Game; onRules: () => void; onRo
             角色速查
           </button>
         </div>
+        <button className="btn btn-outline btn-sm" onClick={() => g.commit((s) => (s.setupStep = 'script'))}>
+          换剧本
+        </button>
       </div>
     </main>
   );
@@ -59,22 +99,24 @@ const TEAMS: Team[] = ['townsfolk', 'outsider', 'minion', 'demon'];
 
 function RolesStep({ g }: { g: Game }) {
   const s = g.s;
-  const [edit, setEdit] = useState<number | null>(null);
+  const sc = scriptOf(s);
+  const [edit, setEdit] = useState<number | 'demon' | null>(null);
   const roles = s.seats.map((x) => x.role);
-  const reasons = setupReasons(roles);
+  const reasons = setupReasons(s.demonChar ? [...roles, s.demonChar] : roles);
   const label = setupLabel(s.setupZ);
+  const demons = sc.roles.filter((r) => ROLES[r].team === 'demon');
+  const editRole = edit === 'demon' ? s.demonChar! : edit !== null ? s.seats[edit - 1].role : null;
   return (
     <main className="main">
       <div className="stack">
         <div className="step-head">
-          <span className="kicker">开局设置 · 第 1 步 / 共 2 步</span>
+          <span className="kicker">
+            {sc.name} · 开局设置 · 第 1 步 / 共 2 步
+          </span>
           <h2>{s.count} 人的角色</h2>
         </div>
         <div className={`card${label === '均衡' ? '' : ' card-warn'}`}>
-          <div className="row" style={{ justifyContent: 'space-between' }}>
-            <b>配板强度：{label}</b>
-            <span className="dim">{s.setupZ > 0 ? '+' : ''}{s.setupZ.toFixed(1)}</span>
-          </div>
+          <b>配板强度：{label}</b>
           {reasons.length > 0 && (
             <ul style={{ margin: '6px 0 0', paddingLeft: 18 }} className="muted">
               {reasons.map((r) => (
@@ -86,15 +128,22 @@ function RolesStep({ g }: { g: Game }) {
         </div>
         {TEAMS.map((t) => {
           const xs = s.seats.filter((x) => ROLES[x.role].team === t);
-          if (!xs.length) return null;
+          const lil = t === 'demon' && lilMonsta(s);
+          if (!xs.length && !lil) return null;
+          const canEdit = t !== 'demon' || demons.length > 1;
           return (
             <div key={t} className="stack" style={{ gap: 8 }}>
               <div className="dim">
-                {TEAM_NAME[t]}（{xs.length}）{t !== 'demon' && ' · 点角色可以换'}
+                {TEAM_NAME[t]}（{lil ? '无人扮演' : xs.length}）{canEdit && ' · 点角色可以换'}
               </div>
               <div className="role-grid">
+                {lil && (
+                  <button className="role-chip evil-c" onClick={() => setEdit('demon')}>
+                    小怪宝 <small>没有玩家扮演，多一个爪牙</small>
+                  </button>
+                )}
                 {xs.map((x) => (
-                  <button key={x.n} className={`role-chip${isEvilTeam(t) ? ' evil-c' : ''}`} onClick={() => t !== 'demon' && setEdit(x.n)}>
+                  <button key={x.n} className={`role-chip${isEvilTeam(t) ? ' evil-c' : ''}`} onClick={() => canEdit && setEdit(t === 'demon' ? 'demon' : x.n)}>
                     {roleName(x.role)}
                   </button>
                 ))}
@@ -102,17 +151,19 @@ function RolesStep({ g }: { g: Game }) {
             </div>
           );
         })}
+        {sc.fabled.length > 0 && <FabledCard g={g} />}
         <button className="btn btn-outline btn-sm" onClick={() => g.commit((st) => (st.setupStep = 'count'))}>
           改人数
         </button>
       </div>
-      {edit !== null && (
+      {editRole && (
         <RolePicker
-          team={ROLES[s.seats[edit - 1].role].team}
-          current={s.seats[edit - 1].role}
-          taken={roles}
+          team={ROLES[editRole].team}
+          current={editRole}
+          taken={s.demonChar ? [...roles, s.demonChar] : roles}
+          pool={sc.roles}
           onPick={(r) => {
-            g.commit((st) => replaceRole(st, edit, r, defaultRng));
+            g.commit((st) => (edit === 'demon' ? replaceDemon(st, r, defaultRng) : replaceRole(st, edit as number, r, defaultRng)));
             setEdit(null);
           }}
           onClose={() => setEdit(null)}
@@ -130,9 +181,65 @@ function RolesStep({ g }: { g: Game }) {
   );
 }
 
-function RolePicker({ team, current, taken, onPick, onClose }: { team: Team; current: RoleId; taken: RoleId[]; onPick: (r: RoleId) => void; onClose: () => void }) {
-  const opts = rolesOfTeam(team).filter((r) => r !== current && !taken.includes(r));
+/** 传奇角色：开局时勾选，默认不加 */
+function FabledCard({ g }: { g: Game }) {
+  const s = g.s;
+  const on = (f: FabledId) => s.fabled.includes(f);
+  return (
+    <div className="card stack" style={{ gap: 10 }}>
+      <h3 style={{ margin: 0 }}>传奇角色（说书人用，默认不加）</h3>
+      {scriptOf(s).fabled.map((f) => (
+        <div key={f} className="stack" style={{ gap: 6 }}>
+          <div className="row" style={{ justifyContent: 'space-between', flexWrap: 'nowrap' }}>
+            <b>{FABLED[f].name}</b>
+            <button className={`btn btn-sm ${on(f) ? 'btn-primary' : 'btn-outline'}`} onClick={() => g.commit((st) => toggleFabled(st, f, !on(f), defaultRng))}>
+              {on(f) ? '已加入' : '加入'}
+            </button>
+          </div>
+          <p className="dim">{FABLED[f].ability}</p>
+          {f === 'sentinel' && on(f) && <SentinelPick g={g} />}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function SentinelPick({ g }: { g: Game }) {
+  const s = g.s;
+  const choices = useMemo(() => sentinelChoices(s), [s]);
+  const rec = useMemo(() => recommend(choices, balance(s).score, stepRng(s, 3)), [choices, s]);
+  const sel = choices.findIndex((c) => c.value === s.sentinelDelta);
+  return (
+    <ChoicePanel
+      s={s}
+      choices={choices}
+      sel={sel}
+      rec={rec}
+      moreLabel="外来者人数"
+      onSel={(i) => i >= 0 && g.commit((st) => setSentinelDelta(st, choices[i].value, defaultRng))}
+    />
+  );
+}
+
+function RolePicker({
+  team, current, taken, pool, onPick, onClose,
+}: {
+  team: Team;
+  current: RoleId;
+  taken: RoleId[];
+  pool: RoleId[];
+  onPick: (r: RoleId) => void;
+  onClose: () => void;
+}) {
+  const opts = pool.filter((r) => ROLES[r].team === team && r !== current && !taken.includes(r));
   const f4Others = taken.filter((r) => r !== current && F4.includes(r)).length;
+  const note = (r: RoleId) => {
+    if (r === 'baron' || current === 'baron') return '男爵会让外来者 +2、镇民 −2，网页会自动调整。';
+    if (r === 'balloonist' || current === 'balloonist') return '气球驾驶员会让外来者 +1、镇民 −1，网页会自动调整。';
+    if (r === 'lilmonsta') return '小怪宝没有玩家扮演：原来的恶魔座位会变成一个爪牙。';
+    if (current === 'lilmonsta') return '换掉小怪宝：会有一个爪牙座位变成这个恶魔。';
+    return '';
+  };
   return (
     <Sheet title={`把【${roleName(current)}】换成`} onClose={onClose}>
       <div className="choices">
@@ -141,7 +248,7 @@ function RolePicker({ team, current, taken, onPick, onClose }: { team: Team; cur
           <button key={r} className="choice" onClick={() => onPick(r)}>
             <span className="lab">{roleName(r)}</span>
             <span className="why">{ROLES[r].ability}</span>
-            {(r === 'baron' || current === 'baron') && <span className="why" style={{ color: 'var(--warn)' }}>男爵会让外来者 +2、镇民 −2，网页会自动调整。</span>}
+            {note(r) && <span className="why" style={{ color: 'var(--warn)' }}>{note(r)}</span>}
             {F4.includes(r) && f4Others >= MAX_F4 && (
               <span className="why" style={{ color: 'var(--warn)' }}>
                 场上已有 {f4Others} 个首夜信息位，换上它就是第 {f4Others + 1} 个（可以，但这几个人第一晚后没事做）。
@@ -154,14 +261,16 @@ function RolePicker({ team, current, taken, onPick, onClose }: { team: Team; cur
   );
 }
 
-type Edit = 'drunk' | 'bluffs' | 'rh' | null;
+type Edit = 'drunk' | 'bluffs' | 'rh' | 'lunatic' | 'amnesiac' | null;
 
 function SeatsStep({ g, onRules }: { g: Game; onRules: () => void }) {
   const s = g.s;
   const [first, setFirst] = useState<number | null>(null);
   const [edit, setEdit] = useState<Edit>(null);
   const drunk = s.seats.find((x) => x.role === 'drunk');
-  const ft = s.seats.find((x) => x.role === 'fortuneteller');
+  const lunatic = s.seats.find((x) => x.role === 'lunatic');
+  const amnesiac = s.seats.find((x) => x.role === 'amnesiac');
+  const ft = actorFor(s, 'fortuneteller');
 
   const tapSeat = (n: number) => {
     if (first === null) setFirst(n);
@@ -175,7 +284,7 @@ function SeatsStep({ g, onRules }: { g: Game; onRules: () => void }) {
     <main className="main">
       <div className="stack">
         <div className="step-head">
-          <span className="kicker">开局设置 · 第 2 步 / 共 2 步</span>
+          <span className="kicker">{scriptOf(s).name} · 开局设置 · 第 2 步 / 共 2 步</span>
           <h2>座位与特殊设置</h2>
         </div>
         <p className="muted">
@@ -185,7 +294,7 @@ function SeatsStep({ g, onRules }: { g: Game; onRules: () => void }) {
           s={s}
           onSeat={tapSeat}
           selected={first ? [first] : []}
-          hub={first ? <b>再点一个座位交换</b> : <small>{s.count} 人</small>}
+          hub={first ? <b>再点一个座位交换</b> : <small>{s.count} 人{lilMonsta(s) ? ' · 小怪宝' : ''}</small>}
         />
         <button className="btn btn-ghost btn-sm" onClick={() => g.commit((st) => shuffleSeats(st, defaultRng))}>
           <Icon name="shuffle" size={18} /> 重新随机座位
@@ -202,19 +311,47 @@ function SeatsStep({ g, onRules }: { g: Game; onRules: () => void }) {
             </button>
           </div>
         )}
-        <div className="card">
-          <h3>恶魔的 3 个伪装</h3>
-          <p>{s.bluffs.map(roleName).join('、') || '（无）'}</p>
-          <p className="dim">这些角色不在场，第一晚告诉恶魔，他可以假装成这些角色。</p>
-          <button className="btn btn-outline btn-sm" style={{ marginTop: 10 }} onClick={() => setEdit('bluffs')}>
-            看理由 / 更换
-          </button>
-        </div>
+        {lunatic && s.lunaticFake && (
+          <div className="card">
+            <h3>疯子</h3>
+            <p>
+              {lunatic.n}号 是疯子，他会以为自己是恶魔 <b className="evil">【{roleName(s.lunaticFake)}】</b>
+            </p>
+            {lilMonsta(s) && <p className="dim">小怪宝在场，按你们的规矩给疯子看涡流。</p>}
+            <button className="btn btn-outline btn-sm" style={{ marginTop: 10 }} onClick={() => setEdit('lunatic')}>
+              更换
+            </button>
+          </div>
+        )}
+        {amnesiac && s.amnesiacAbility && (
+          <div className="card">
+            <h3>失忆者</h3>
+            <p>
+              {amnesiac.n}号 是失忆者，你偷偷给他的能力：<b className="good">像{roleName(s.amnesiacAbility)}一样</b>
+            </p>
+            <p className="dim">{ROLES[s.amnesiacAbility].ability}</p>
+            <button className="btn btn-outline btn-sm" style={{ marginTop: 10 }} onClick={() => setEdit('amnesiac')}>
+              看理由 / 更换
+            </button>
+          </div>
+        )}
+        {s.count >= 7 ? (
+          <div className="card">
+            <h3>恶魔的 3 个伪装</h3>
+            <p>{s.bluffs.map(roleName).join('、') || '（无）'}</p>
+            <p className="dim">这些角色不在场，第一晚告诉恶魔，他可以假装成这些角色。</p>
+            <button className="btn btn-outline btn-sm" style={{ marginTop: 10 }} onClick={() => setEdit('bluffs')}>
+              看理由 / 更换
+            </button>
+          </div>
+        ) : (
+          <p className="dim">5–6 人局：邪恶方互相不认识，恶魔没有伪装角色。</p>
+        )}
         {ft && s.redHerring && (
           <div className="card">
-            <h3>占卜师的干扰项</h3>
+            <h3>占卜的干扰项</h3>
             <p>
-              {s.redHerring}号（{roleName(s.seats[s.redHerring - 1].role)}）：占卜师查到他也会得到"有恶魔"。
+              {s.redHerring}号（{roleName(s.seats[s.redHerring - 1].role)}）：查到他也会得到"有恶魔"。
             </p>
             <button className="btn btn-outline btn-sm" style={{ marginTop: 10 }} onClick={() => setEdit('rh')}>
               看理由 / 更换
@@ -233,12 +370,73 @@ function SeatsStep({ g, onRules }: { g: Game; onRules: () => void }) {
       {edit === 'drunk' && <DrunkEdit g={g} onClose={() => setEdit(null)} />}
       {edit === 'bluffs' && <BluffEdit g={g} onClose={() => setEdit(null)} />}
       {edit === 'rh' && <RedHerringEdit g={g} onClose={() => setEdit(null)} />}
+      {edit === 'lunatic' && <LunaticEdit g={g} onClose={() => setEdit(null)} />}
+      {edit === 'amnesiac' && <AmnesiacEdit g={g} onClose={() => setEdit(null)} />}
       <BottomBar>
         <button className="btn btn-primary btn-block" onClick={() => g.commit((st) => startDeal(st))}>
           开始发身份
         </button>
       </BottomBar>
     </main>
+  );
+}
+
+/** 疯子以为自己是哪个恶魔 */
+export function LunaticEdit({ g, onClose }: { g: Game; onClose: () => void }) {
+  const s = g.s;
+  const demons = SCRIPTS[s.script].roles.filter((r) => ROLES[r].team === 'demon');
+  return (
+    <Sheet title="疯子以为自己是" onClose={onClose}>
+      <div className="choices">
+        {demons.map((r) => (
+          <button
+            key={r}
+            className={`choice${s.lunaticFake === r ? ' sel' : ''}`}
+            onClick={() =>
+              g.commit((st) => {
+                st.lunaticFake = r;
+                if (st.phase === 'deal') addLog(st, 'setup', `疯子的假身份改为【${roleName(r)}】`);
+              })
+            }
+          >
+            <span className="lab">{roleName(r)}</span>
+            <span className="why">{ROLES[r].ability}</span>
+          </button>
+        ))}
+      </div>
+    </Sheet>
+  );
+}
+
+function AmnesiacEdit({ g, onClose }: { g: Game; onClose: () => void }) {
+  const s = g.s;
+  const choices = useMemo(() => amnesiacChoices(s), [s]);
+  const rec = useMemo(() => recommend(choices, balance(s).score, stepRng(s, 5)), [choices, s]);
+  const sel = choices.findIndex((c) => c.value === s.amnesiacAbility);
+  return (
+    <Sheet title="失忆者的能力" onClose={onClose}>
+      <p className="dim" style={{ marginBottom: 10 }}>
+        他自己不知道。需要夜里醒的能力，网页会在失忆者那一步叫醒他。
+      </p>
+      <ChoicePanel
+        s={s}
+        choices={choices}
+        sel={sel}
+        rec={rec}
+        defaultOpen
+        moreLabel="全部能力"
+        onSel={(i) => {
+          if (i < 0) return;
+          g.commit((st) => {
+            st.amnesiacAbility = choices[i].value;
+            if (choices[i].value === 'fortuneteller' && !st.redHerring) {
+              const rh = redHerringChoices(st, stepRng(st, 6));
+              st.redHerring = rh.length ? rh[0].value : null;
+            }
+          });
+        }}
+      />
+    </Sheet>
   );
 }
 
@@ -326,7 +524,7 @@ function RedHerringEdit({ g, onClose }: { g: Game; onClose: () => void }) {
   const [sel, setSel] = useState(() => choices.findIndex((c) => c.value === s.redHerring));
   const evilSeats = s.seats.filter((x) => isEvilTeam(ROLES[x.role].team)).map((x) => x.n);
   return (
-    <Sheet title="占卜师的干扰项" onClose={onClose}>
+    <Sheet title="占卜的干扰项" onClose={onClose}>
       <ChoicePanel
         s={s}
         choices={choices}
@@ -341,7 +539,7 @@ function RedHerringEdit({ g, onClose }: { g: Game; onClose: () => void }) {
         }
         manualLabel="自己选一名善良玩家"
       />
-      {!inPlay(s, 'fortuneteller') && <p className="dim">场上没有占卜师。</p>}
+      {!inPlay(s, 'fortuneteller') && !actorFor(s, 'fortuneteller') && <p className="dim">场上没有占卜的人。</p>}
     </Sheet>
   );
 }

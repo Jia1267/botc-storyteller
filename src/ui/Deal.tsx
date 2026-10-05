@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { DrunkEdit } from './Setup';
+import { DrunkEdit, LunaticEdit } from './Setup';
 import { ROLES, TEAM_NAME, roleName } from '../engine/roles';
-import { believedRole } from '../engine/core';
+import { believedRole, lilMonsta } from '../engine/core';
 import { dealNext } from '../engine/flow';
 import type { Game } from '../store';
 import { BottomBar, useUi } from './common';
@@ -12,8 +12,9 @@ export function DealScreen({ g }: { g: Game }) {
   const ui = useUi();
   const seat = s.seats[s.dealIndex];
   const shown = believedRole(s, seat);
-  const isDrunk = seat.role === 'drunk';
-  const [editDrunk, setEditDrunk] = useState(false);
+  // 酒鬼、疯子看到的是假身份
+  const fake = shown !== seat.role;
+  const [edit, setEdit] = useState(false);
 
   const show = () =>
     ui.showCard({ title: '你的身份', big: [roleName(shown)], team: ROLES[shown].team, ability: ROLES[shown].ability }, () =>
@@ -44,16 +45,23 @@ export function DealScreen({ g }: { g: Game }) {
             <li>他看完自己点「看完了」，然后叫下一位。</li>
           </ol>
         </div>
-        {isDrunk ? (
+        {fake ? (
           <div className="card card-warn stack" style={{ gap: 8 }}>
             <div className="row" style={{ color: 'var(--warn)' }}>
-              <Icon name="alert" /> <b>他是酒鬼</b>
+              <Icon name="alert" /> <b>他是{roleName(seat.role)}</b>
             </div>
             <p>
-              {seat.n}号 的真实身份是【酒鬼】，但他会看到自己是 <b className="good">【{roleName(shown)}】</b>。
+              {seat.n}号 的真实身份是【{roleName(seat.role)}】，但他会看到自己是{' '}
+              <b className={seat.role === 'lunatic' ? 'evil' : 'good'}>【{roleName(shown)}】</b>。
             </p>
-            <p>千万别说漏。之后夜里也按【{roleName(shown)}】叫醒他。</p>
-            <button className="btn btn-outline btn-sm" onClick={() => setEditDrunk(true)}>
+            <p>
+              千万别说漏。
+              {seat.role === 'lunatic'
+                ? '他夜里选的人不会死，真恶魔会被告知他是谁、选了谁。'
+                : `之后夜里也按【${roleName(shown)}】叫醒他。`}
+            </p>
+            {seat.role === 'lunatic' && lilMonsta(s) && <p className="dim">小怪宝在场，按你们的规矩给他看涡流。</p>}
+            <button className="btn btn-outline btn-sm" onClick={() => setEdit(true)}>
               换一个假身份
             </button>
           </div>
@@ -64,10 +72,11 @@ export function DealScreen({ g }: { g: Game }) {
         )}
         {s.dealIndex === s.count - 1 && <p className="dim">这是最后一位，看完后直接入夜。</p>}
       </div>
-      {editDrunk && <DrunkEdit g={g} onClose={() => setEditDrunk(false)} />}
+      {edit && seat.role === 'drunk' && <DrunkEdit g={g} onClose={() => setEdit(false)} />}
+      {edit && seat.role === 'lunatic' && <LunaticEdit g={g} onClose={() => setEdit(false)} />}
       <BottomBar>
         <button className="btn btn-primary btn-block" onClick={show}>
-          <Icon name="eye" /> {isDrunk ? `我知道了，给他看【${roleName(shown)}】` : '给他看'}
+          <Icon name="eye" /> {fake ? `我知道了，给他看【${roleName(shown)}】` : '给他看'}
         </button>
       </BottomBar>
     </main>

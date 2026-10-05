@@ -98,8 +98,8 @@ export default function App() {
             <GrimoirePanel s={s} detail />
           </Overlay>
         )}
-        {panel === 'roles' && <RolesRef onClose={() => setPanel(null)} />}
-        {panel === 'rules' && <RulesSpeech onClose={() => setPanel(null)} />}
+        {panel === 'roles' && <RolesRef script={s.script} onClose={() => setPanel(null)} />}
+        {panel === 'rules' && <RulesSpeech script={s.script} onClose={() => setPanel(null)} />}
         {panel === 'log' && <LogView s={s} onClose={() => setPanel(null)} />}
         {panel === 'menu' && (
           <Sheet title="菜单" onClose={() => setPanel(null)}>

@@ -22,6 +22,16 @@ export const SLOT_TITLE: Record<SlotId, string> = {
   ravenkeeper: '守鸦人',
   undertaker: '送葬者',
   dawn: '天亮',
+  lunatic: '疯子',
+  lilmonsta: '小怪宝：爪牙选照看者',
+  widow: '寡妇',
+  fearmonger: '恐惧之灵',
+  pixie: '小精灵',
+  chambermaid: '侍女',
+  vortox: '涡流',
+  duchess: '公爵夫人的拜访者',
+  amnesiac: '失忆者',
+  balloonist: '气球驾驶员',
 };
 
 const SLOT_LINES: Partial<Record<SlotId, Lines>> = {
@@ -93,6 +103,42 @@ const SLOT_LINES: Partial<Record<SlotId, Lines>> = {
     simple: ['这是今天被处决的玩家的角色。'],
     atmo: ['你为今天的死者收殓……', '他真实的身份是——'],
   },
+  lunatic: {
+    simple: ['请选择一名玩家，他会死亡。'],
+    atmo: ['恶魔，醒来吧。今夜，谁会死去？'],
+  },
+  lilmonsta: {
+    simple: ['爪牙们，请商量由谁来照看小怪宝，指向那个人。'],
+    atmo: ['小怪宝在摇篮里哭闹……', '爪牙们，决定今晚由谁来照看它。'],
+  },
+  widow: {
+    simple: ['这是魔典。请选择一名玩家，他会中毒。'],
+    atmo: ['你拥有了整个小镇的秘密……', '选一个人，让他今后再也分不清真假。'],
+  },
+  fearmonger: {
+    simple: ['请选择一名玩家。'],
+    atmo: ['恐惧在黑暗里蔓延……你要让谁成为你的猎物？'],
+  },
+  pixie: {
+    simple: ['这个镇民角色在场。'],
+    atmo: ['林间的小精灵悄悄告诉你——', '这个角色，就在你们中间。'],
+  },
+  chambermaid: {
+    simple: ['请选择除你以外的两名存活玩家。', '他们之中今晚因为自己的能力醒来过的人数是——'],
+    atmo: ['你整夜在走廊里巡视……选两扇门。', '今晚，这两间房里有人醒过——'],
+  },
+  vortox: {
+    simple: ['请选择一名玩家，他会死亡。'],
+    atmo: ['漩涡在黑暗中旋转……今夜，谁会被卷走？'],
+  },
+  duchess: {
+    simple: ['今天拜访公爵夫人的人里，有这么多个是邪恶的。'],
+    atmo: ['公爵夫人送来一封密信——', '今天的客人里，心怀不轨的有——'],
+  },
+  balloonist: {
+    simple: ['这名玩家的类型和你之前得知的都不同。'],
+    atmo: ['热气球在夜空中升起，你看见了——', '这个人。'],
+  },
 };
 
 export function slotLines(slot: SlotId, style: 'simple' | 'atmo'): string[] {
@@ -103,14 +149,16 @@ export function librarianZeroLines(style: 'simple' | 'atmo'): string[] {
   return style === 'simple' ? ['场上没有外来者。'] : ['书架深处的名单上……一个外来者也没有。'];
 }
 
-export function dawnLines(deaths: number[], style: 'simple' | 'atmo'): string[] {
+export function dawnLines(deaths: number[], style: 'simple' | 'atmo', extra: { fear?: boolean; leviathanDay?: number } = {}): string[] {
   const list = deaths.map((n) => `${n}号`).join('、');
-  if (style === 'simple')
-    return ['天亮了，大家请睁眼。', deaths.length ? `昨晚，${list} 死了。` : '昨晚是平安夜，没有人死亡。'];
-  return [
-    '晨光刺破了黑夜，大家请睁开眼睛。',
-    deaths.length ? `可惜，昨夜 ${list} 再也没有醒来……` : '昨夜，钟楼小镇平安无事。',
-  ];
+  const out =
+    style === 'simple'
+      ? ['天亮了，大家请睁眼。', deaths.length ? `昨晚，${list} 死了。` : '昨晚是平安夜，没有人死亡。']
+      : ['晨光刺破了黑夜，大家请睁开眼睛。', deaths.length ? `可惜，昨夜 ${list} 再也没有醒来……` : '昨夜，钟楼小镇平安无事。'];
+  if (extra.fear) out.push('恐惧之灵选择了一名新的目标。');
+  if (extra.leviathanDay === 1) out.push('另外：利维坦在场。');
+  else if (extra.leviathanDay) out.push(`今天是第 ${extra.leviathanDay} 天，利维坦仍在场。`);
+  return out;
 }
 
 export function dayStartLines(day: number, style: 'simple' | 'atmo'): string[] {

@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react';
-import { ROLES, ROLE_LIST, TEAM_NAME, isEvilTeam, roleName, type Team } from '../engine/roles';
+import { ROLES, TEAM_NAME, isEvilTeam, roleName, type Team } from '../engine/roles';
+import { SCRIPTS, type ScriptId } from '../engine/editions';
 import { endLines } from '../engine/scripts';
-import { RULES_SPEECH } from '../engine/rulesSpeech';
+import { rulesFor } from '../engine/rulesSpeech';
 import type { GameState, LogEntry } from '../engine/types';
 import type { Game } from '../store';
 import { BottomBar, ConfirmButton, SayBox } from './common';
@@ -63,6 +64,7 @@ export function EndScreen({ g }: { g: Game }) {
                     {x.startRole !== x.role ? `${roleName(x.startRole)} → ${roleName(x.role)}` : roleName(x.role)}
                   </span>
                   {x.role === 'drunk' && s.drunkFake && <span className="dim">（以为是{roleName(s.drunkFake)}）</span>}
+                  {x.role === 'lunatic' && s.lunaticFake && <span className="dim">（以为是{roleName(s.lunaticFake)}）</span>}
                 </span>
                 <span className="dim">{x.alive ? '存活' : `第${x.death?.night}${x.death?.when === 'night' ? '夜' : '天'} ${x.death?.cause}`}</span>
               </div>
@@ -102,14 +104,14 @@ export function Overlay({ title, onClose, children }: { title: string; onClose: 
   );
 }
 
-export function RolesRef({ onClose }: { onClose: () => void }) {
+export function RolesRef({ script, onClose }: { script: ScriptId; onClose: () => void }) {
   const teams: Team[] = ['townsfolk', 'outsider', 'minion', 'demon'];
   return (
-    <Overlay title="角色速查 · 暗流涌动" onClose={onClose}>
+    <Overlay title={`角色速查 · ${SCRIPTS[script].name}`} onClose={onClose}>
       {teams.map((t) => (
         <div key={t} style={{ marginBottom: 18 }}>
           <h3 style={{ fontSize: 18, color: isEvilTeam(t) ? 'var(--evil)' : 'var(--good)', margin: '8px 0 0' }}>{TEAM_NAME[t]}</h3>
-          {ROLE_LIST.filter((r) => r.team === t).map((r) => (
+          {SCRIPTS[script].roles.map((id) => ROLES[id]).filter((r) => r.team === t).map((r) => (
             <div key={r.id} className="ref-role">
               <h3>{r.name}</h3>
               <p>{r.ability}</p>
@@ -126,14 +128,14 @@ export function RolesRef({ onClose }: { onClose: () => void }) {
   );
 }
 
-export function RulesSpeech({ onClose }: { onClose: () => void }) {
+export function RulesSpeech({ script, onClose }: { script: ScriptId; onClose: () => void }) {
   return (
     <Overlay title="规则讲稿（约 5 分钟）" onClose={onClose}>
       <p className="dim" style={{ marginBottom: 12 }}>
         开局前念给新玩家听。照着读就行。
       </p>
       <div className="stack">
-        {RULES_SPEECH.map((sec) => (
+        {rulesFor(script).map((sec) => (
           <div key={sec.title} className="say">
             <div className="lbl">{sec.title}</div>
             {sec.lines.map((l) => (
