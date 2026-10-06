@@ -78,6 +78,8 @@ export interface GameState {
   /** 恐惧之灵的目标；换了新目标天亮要宣布 */
   fearTarget: number | null;
   fearAnnounce: boolean;
+  /** 恐惧之灵今天提名的人（每人每天只能提名一次） */
+  fearNominated: number | null;
   /** 小怪宝的照看者 */
   babysitter: number | null;
   /** 红唇女郎接手照看，今晚爪牙不能改 */

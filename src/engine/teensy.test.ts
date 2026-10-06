@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { ROLES, type RoleId } from './roles';
 import { seeded } from './rng';
 import { newGame, randomSetup, refreshSetup, setCount, setScript, startDeal } from './setup';
-import { completeSlot, currentSlot, dealNext, execute, finishDay, klutzChoose, pixieMad, pixieNeedsCheck, slotActor } from './flow';
+import {
+  completeSlot, currentSlot, dealNext, execute, fearPreview, fearmongerNominates, finishDay, klutzChoose, pixieMad, pixieNeedsCheck,
+  setCannibalFake, slotActor,
+} from './flow';
 import { balloonistChoices, chambermaidChoices, duchessChoices, numberChoices, pixieChoices } from './info';
 import { fishermanChoices, savantChoices } from './daytime';
 import { isDemonSeat, isPoisoned, malfunction } from './core';
@@ -156,8 +159,33 @@ describe('幽灵茶会', () => {
     completeSlot(s, { kind: 'target', target: 2 });
     expect(s.fearAnnounce).toBe(true);
     finishNight(s);
-    execute(s, 2, '被处决', { fearmongerNominated: true });
+    expect(fearPreview(s, 3).lethal).toBe(false);
+    expect(fearPreview(s, 2).lethal).toBe(true);
+    fearmongerNominates(s, 2);
+    execute(s, 2); // 记过提名，处决时自动结算
     expect(s.winner).toBe('evil');
+  });
+
+  it('恐惧之灵提名的不是目标：处决不触发；第二天提名记录清空', () => {
+    const s = game('spooky', ['chef', 'empath', 'chambermaid', 'fearmonger', 'vortox', 'artist'], 'vortox');
+    while (currentSlot(s) !== 'fearmonger') completeSlot(s, { kind: 'none' });
+    completeSlot(s, { kind: 'target', target: 2 });
+    finishNight(s);
+    fearmongerNominates(s, 3);
+    execute(s, 3);
+    expect(s.winner).toBeNull();
+    finishDay(s);
+    finishNight(s);
+    expect(s.fearNominated).toBeNull();
+  });
+
+  it('食人族吃到邪恶后，说书人可以手动换假能力', () => {
+    const s = game('spooky', ['cannibal', 'empath', 'chambermaid', 'fearmonger', 'vortox', 'chef'], 'vortox');
+    finishNight(s);
+    execute(s, 4);
+    expect(s.cannibalPoisoned).toBe(true);
+    setCannibalFake(s, 'chambermaid');
+    expect(s.gained[1]).toBe('chambermaid');
   });
 
   it('寡妇：毒一直有效，寡妇死了解除', () => {

@@ -190,6 +190,7 @@ export function completeSlot(s: GameState, p: SlotPayload) {
       const d = ns.deaths;
       addLog(s, 'night', d.length ? `天亮：${d.map((n) => `${n}号`).join('、')} 死亡` : '天亮：平安夜');
       s.fearAnnounce = false;
+      s.fearNominated = null;
       s.babysitterLocked = false;
       s.phase = s.winner ? 'end' : 'day';
       return;
@@ -420,6 +421,14 @@ function cannibalEats(s: GameState, eaten: Seat) {
   }
 }
 
+/** 说书人手动换食人族（吃到邪恶时）的假能力 */
+export function setCannibalFake(s: GameState, r: RoleId) {
+  const c = s.seats.find((x) => x.role === 'cannibal' && x.alive);
+  if (!c) return;
+  s.gained[c.n] = r;
+  addLog(s, 'day', `说书人把食人族（${c.n}号）的假能力换成【${roleName(r)}】`);
+}
+
 export function execute(s: GameState, n: number | null, cause = '被处决', opts: ExecuteOpts = {}) {
   s.executed = n;
   if (n === null) {
@@ -450,7 +459,8 @@ export function execute(s: GameState, n: number | null, cause = '被处决', opt
   if (st.role === 'saint' && !malfunction(s, n)) return win(s, 'evil', '圣徒被处决', 'day');
   if (st.role === 'goblin' && !malfunction(s, n) && opts.goblinClaimed) return win(s, 'evil', '哥布林被提名时公开声称自己是哥布林，并被处决', 'day');
   const fm = s.seats.find((x) => x.role === 'fearmonger' && x.alive);
-  if (fm && !malfunction(s, fm.n) && s.fearTarget === n && opts.fearmongerNominated)
+  const fearNominated = opts.fearmongerNominated ?? s.fearNominated === n;
+  if (fm && !malfunction(s, fm.n) && s.fearTarget === n && fearNominated)
     return win(s, isEvil(st) ? 'good' : 'evil', `恐惧之灵提名并处决了他的目标 ${n}号`, 'day');
   cannibalEats(s, st);
   if (isDemonSeat(s, n)) {
@@ -592,6 +602,22 @@ export function finishDay(s: GameState) {
     return;
   }
   startNight(s);
+}
+
+/** 恐惧之灵提名了某人：当场告诉说书人是不是目标 */
+export function fearPreview(s: GameState, nominee: number): { lethal: boolean; text: string } {
+  const fm = s.seats.find((x) => x.role === 'fearmonger' && x.alive);
+  if (!fm) return { lethal: false, text: '恐惧之灵已经死了，什么都不会发生。' };
+  if (s.fearTarget !== nominee) return { lethal: false, text: `${nominee}号 不是恐惧之灵的目标（目标是 ${s.fearTarget ?? '—'}号）：正常投票。` };
+  if (malfunction(s, fm.n)) return { lethal: false, text: `${nominee}号 是他的目标，但恐惧之灵中毒了：处决也不会触发。正常投票。` };
+  const team = isEvil(seatOf(s, nominee)) ? '邪恶' : '善良';
+  return { lethal: true, text: `${nominee}号 就是恐惧之灵的目标！如果今天处决他，${team}阵营直接落败。不要说出来，正常投票。` };
+}
+
+export function fearmongerNominates(s: GameState, nominee: number) {
+  const fm = s.seats.find((x) => x.role === 'fearmonger' && x.alive);
+  s.fearNominated = nominee;
+  addLog(s, 'day', `恐惧之灵（${fm?.n}号）提名了 ${nominee}号${fearPreview(s, nominee).lethal ? '（是他的目标）' : ''}`);
 }
 
 /** 恐惧之灵在场，处决某人时要问"是他提名的吗" */

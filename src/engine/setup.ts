@@ -169,6 +169,7 @@ export function newGame(): GameState {
     widowInformed: null,
     fearTarget: null,
     fearAnnounce: false,
+    fearNominated: null,
     babysitter: null,
     babysitterLocked: false,
     balloonShown: [],

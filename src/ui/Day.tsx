@@ -1,9 +1,9 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { FABLED, ROLES, roleName } from '../engine/roles';
 import { balance, recommend, type Choice } from '../engine/balance';
-import { actorFor, aliveCount, hasAbility, isDemonSeat, isEvil, lilMonsta, malfunction, seatOf, vortoxActive } from '../engine/core';
+import { actorFor, aliveCount, hasAbility, isDemonSeat, isEvil, lilMonsta, malfunction, scriptOf, seatOf, vortoxActive } from '../engine/core';
 import {
-  LEVIATHAN_DAYS, execute, fearmongerAsk, finishDay, goblinAsk, nominateVirgin, previewSlayer, previewVirgin,
+  LEVIATHAN_DAYS, execute, fearPreview, fearmongerAsk, fearmongerNominates, finishDay, goblinAsk, nominateVirgin, previewSlayer, previewVirgin, setCannibalFake,
   savantVisit, setDuchessVisitors, slayerShoot, markUsed,
 } from '../engine/flow';
 import { scarletCanTakeOver } from '../engine/info';
@@ -57,7 +57,7 @@ function demonDeathWarning(s: GameState, n: number, verb: '被处决了' | '死�
   );
 }
 
-type Panel = 'virgin' | 'slayer' | 'exec' | 'artist' | 'fisherman' | 'savant' | 'amnesiac' | 'mutant' | 'duchess' | null;
+type Panel = 'virgin' | 'slayer' | 'exec' | 'artist' | 'fisherman' | 'savant' | 'amnesiac' | 'mutant' | 'duchess' | 'fear' | null;
 
 export function DayScreen({ g }: { g: Game }) {
   const s = g.s;
@@ -85,6 +85,7 @@ export function DayScreen({ g }: { g: Game }) {
         <SwNotice s={s} />
         <KlutzPrompt g={g} />
         <PixiePrompt g={g} />
+        <CannibalNotice g={g} />
         {lev && (
           <div className="card card-warn">
             <p>
@@ -142,6 +143,7 @@ export function DayScreen({ g }: { g: Game }) {
       {panel === 'amnesiac' && <AmnesiacSheet g={g} onClose={close} />}
       {panel === 'mutant' && <MutantSheet g={g} onClose={close} />}
       {panel === 'duchess' && <DuchessSheet g={g} onClose={close} />}
+      {panel === 'fear' && <FearSheet g={g} onClose={close} />}
       <BottomBar wide>
         <button className="btn btn-primary btn-block" onClick={() => setPanel('exec')}>
           所有提名结束，录入处决结果
@@ -160,6 +162,8 @@ function DayAbilities({ s, open }: { s: GameState; open: (p: Panel) => void }) {
     </button>
   );
   const holder = (r: Parameters<typeof actorFor>[1]) => s.seats.find((x) => x.alive && hasAbility(s, x, r));
+  const fm = s.seats.find((x) => x.alive && x.role === 'fearmonger');
+  if (fm) items.push(btn('fear', s.fearNominated ? `恐惧之灵（${fm.n}号）今天提名了 ${s.fearNominated}号（改）` : `恐惧之灵（${fm.n}号）提名了一名玩家`));
   const virgin = actorFor(s, 'virgin');
   if (virgin && virgin.alive && !virgin.used) items.push(btn('virgin', `有人提名了 ${virgin.n}号（${virgin.role === 'virgin' ? '贞洁者' : `有贞洁者能力的${roleName(virgin.role)}`}）`));
   if (s.script === 'tb' || holder('slayer')) items.push(btn('slayer', '有人宣称自己是猎手并开枪'));
@@ -202,13 +206,23 @@ function ExecSheet({ g, onClose }: { g: Game; onClose: () => void }) {
         {st && lev && !isEvil(st) && (
           <p className="evil">利维坦在场：这是第 {s.goodExecutions + 1} 个被处决的善良玩家{s.goodExecutions + 1 >= 2 ? '，处决后邪恶直接获胜！' : '。'}</p>
         )}
-        {n && fearmongerAsk(s, n) && (
-          <Toggle on={fear} set={setFear} label={`${n}号 是恐惧之灵的目标：是恐惧之灵提名的他吗？`} hint={`是的话，${n}号 所在的阵营直接落败。`} />
+        {n && fearmongerAsk(s, n) && s.fearNominated === n && (
+          <div className="card card-evil">
+            <b>{n}号 是恐惧之灵提名的、也是他的目标：处决后{isEvil(seatOf(s, n)) ? '邪恶' : '善良'}阵营直接落败。</b>
+          </div>
+        )}
+        {n && fearmongerAsk(s, n) && s.fearNominated !== n && (
+          <Toggle
+            on={fear}
+            set={setFear}
+            label={`${n}号 是恐惧之灵的目标，但你没记下今天恐惧之灵提名了谁：是恐惧之灵提名的他吗？`}
+            hint={`是的话，${n}号 所在的阵营直接落败。`}
+          />
         )}
         {n && goblinAsk(s, n) && (
           <Toggle on={goblin} set={setGoblin} label={`${n}号 是哥布林：他被提名时公开说了自己是哥布林吗？`} hint="说了的话，邪恶直接获胜。" />
         )}
-        <button className="btn btn-primary btn-block" disabled={!n} onClick={() => g.commit((x) => execute(x, n, '被处决', { fearmongerNominated: fear, goblinClaimed: goblin }))}>
+        <button className="btn btn-primary btn-block" disabled={!n} onClick={() => g.commit((x) => execute(x, n, '被处决', { fearmongerNominated: x.fearNominated === n || fear, goblinClaimed: goblin }))}>
           {n ? `处决 ${n}号` : '先点出被处决的人'}
         </button>
         {vortoxActive(s) && <p className="evil">涡流在场：今天没人被处决的话，邪恶直接获胜。</p>}
@@ -251,6 +265,7 @@ function DayResult({ g }: { g: Game }) {
         </div>
         <SwNotice s={s} />
         {s.executed !== undefined && <SayBox lines={executionLines(s.executed, s.style)} title="对所有人说" s={s} onStyle={toggleStyle(g)} />}
+        {!s.winner && <CannibalNotice g={g} />}
         <KlutzPrompt g={g} />
         <PixiePrompt g={g} />
         {s.winner ? (
@@ -406,6 +421,94 @@ function DuchessSheet({ g, onClose }: { g: Game; onClose: () => void }) {
         </button>
       </div>
     </Sheet>
+  );
+}
+
+/** 恐惧之灵提名了某人：当场告诉你是不是他的目标 */
+function FearSheet({ g, onClose }: { g: Game; onClose: () => void }) {
+  const s = g.s;
+  const fm = s.seats.find((x) => x.alive && x.role === 'fearmonger')!;
+  const [t, setT] = useState<number[]>(s.fearNominated ? [s.fearNominated] : []);
+  const pv = t.length ? fearPreview(s, t[0]) : null;
+  return (
+    <Sheet title={`恐惧之灵（${fm.n}号）提名了谁？`} onClose={onClose}>
+      <div className="stack">
+        <SeatPicker s={s} selected={t} max={1} onChange={setT} disabled={[fm.n]} label="被提名的人" />
+        {pv && (
+          <div className={`card ${pv.lethal ? 'card-evil' : ''}`}>
+            <b>{pv.text}</b>
+          </div>
+        )}
+        {pv?.lethal && <p className="dim">记下来以后，处决时网页会自动结算，不用再问你。</p>}
+        <button
+          className="btn btn-primary btn-block"
+          disabled={!t.length}
+          onClick={() => {
+            g.commit((st) => fearmongerNominates(st, t[0]));
+            onClose();
+          }}
+        >
+          记下来，继续投票
+        </button>
+      </div>
+    </Sheet>
+  );
+}
+
+/** 食人族今天换了能力：吃到邪恶时显示网页给的假能力，可以手动换 */
+function CannibalNotice({ g }: { g: Game }) {
+  const s = g.s;
+  const [open, setOpen] = useState(false);
+  const c = s.seats.find((x) => x.alive && x.role === 'cannibal');
+  const ate = s.lastExecution && s.lastExecution.night === s.night ? seatOf(s, s.lastExecution.seat) : null;
+  if (!c || !s.gained[c.n] || (!ate && !s.cannibalPoisoned)) return null;
+  const cur = s.gained[c.n];
+  const night = new Set<string>(scriptOf(s).otherNights);
+  const firstOnly = new Set<string>(scriptOf(s).firstNight.filter((x) => !night.has(x)));
+  const options = scriptOf(s).roles.filter((r) => ROLES[r].team === 'townsfolk' && r !== 'cannibal');
+  return (
+    <div className={`card ${s.cannibalPoisoned ? 'card-warn' : ''} stack`} style={{ gap: 8 }}>
+      {s.cannibalPoisoned ? (
+        <>
+          <b>食人族（{c.n}号）吃到了邪恶玩家：他中毒了</b>
+          <p>
+            网页给他的假能力：<b className="good">【{roleName(cur)}】</b>。之后按这个能力叫醒他，给的信息可以是假的，直到下一个善良玩家被处决死亡。
+          </p>
+          <button className="btn btn-outline btn-sm" onClick={() => setOpen(true)}>
+            换一个假能力
+          </button>
+        </>
+      ) : (
+        <p>
+          食人族（{c.n}号）现在拥有<b className="good">【{roleName(cur)}】</b>的能力（他自己不会被告知）。
+        </p>
+      )}
+      {open && (
+        <Sheet title="食人族的假能力" onClose={() => setOpen(false)}>
+          <div className="choices">
+            {options.map((r) => (
+              <button
+                key={r}
+                className={`choice${r === cur ? ' sel' : ''}`}
+                onClick={() => {
+                  g.commit((st) => setCannibalFake(st, r));
+                  setOpen(false);
+                }}
+              >
+                <span className="lab">{roleName(r)}</span>
+                <span className="why">
+                  {night.has(r)
+                    ? '之后每晚会按这个能力叫醒他，给假信息。'
+                    : firstOnly.has(r)
+                      ? '只在第一晚行动：之后不会再叫醒他，他会以为自己没事做。'
+                      : '白天能力：他来找你时，按中毒给假信息。'}
+                </span>
+              </button>
+            ))}
+          </div>
+        </Sheet>
+      )}
+    </div>
   );
 }
 
