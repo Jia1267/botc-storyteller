@@ -44,7 +44,7 @@ function finishNight(s: GameState, pick = (slot: string) => (slot === 'lilmonsta
 }
 
 const teams = (s: GameState) => {
-  const c = { townsfolk: 0, outsider: 0, minion: 0, demon: 0 };
+  const c = { townsfolk: 0, outsider: 0, minion: 0, demon: 0, traveller: 0 };
   s.seats.forEach((x) => c[ROLES[x.role].team]++);
   return c;
 };

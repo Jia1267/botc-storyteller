@@ -1,3 +1,4 @@
+import { seatName } from './core';
 import type { SlotId } from './types';
 
 /** 一步的台词：simple = 简洁标准，atmo = 氛围旁白 */
@@ -32,6 +33,8 @@ export const SLOT_TITLE: Record<SlotId, string> = {
   duchess: '公爵夫人的拜访者',
   amnesiac: '失忆者',
   balloonist: '气球驾驶员',
+  bureaucrat: '官员（旅行者）',
+  thief: '窃贼（旅行者）',
 };
 
 const SLOT_LINES: Partial<Record<SlotId, Lines>> = {
@@ -135,6 +138,14 @@ const SLOT_LINES: Partial<Record<SlotId, Lines>> = {
     simple: ['今天拜访公爵夫人的人里，有这么多个是邪恶的。'],
     atmo: ['公爵夫人送来一封密信——', '今天的客人里，心怀不轨的有——'],
   },
+  bureaucrat: {
+    simple: ['请选择一名其他玩家，明天他的投票算 3 票。'],
+    atmo: ['你手里握着官印……明天，谁的一票会变得格外沉重？'],
+  },
+  thief: {
+    simple: ['请选择一名其他玩家，明天他的投票算负数。'],
+    atmo: ['夜色正好下手……明天，你要偷走谁的一票？'],
+  },
   balloonist: {
     simple: ['这名玩家的类型和你之前得知的都不同。'],
     atmo: ['热气球在夜空中升起，你看见了——', '这个人。'],
@@ -150,7 +161,7 @@ export function librarianZeroLines(style: 'simple' | 'atmo'): string[] {
 }
 
 export function dawnLines(deaths: number[], style: 'simple' | 'atmo', extra: { fear?: boolean; leviathanDay?: number } = {}): string[] {
-  const list = deaths.map((n) => `${n}号`).join('、');
+  const list = deaths.map((n) => `${seatName(n)}`).join('、');
   const out =
     style === 'simple'
       ? ['天亮了，大家请睁眼。', deaths.length ? `昨晚，${list} 死了。` : '昨晚是平安夜，没有人死亡。']
@@ -181,7 +192,7 @@ export function nominationLines(style: 'simple' | 'atmo'): string[] {
 
 export function executionLines(n: number | null, style: 'simple' | 'atmo'): string[] {
   if (n === null) return style === 'simple' ? ['今天没有人被处决。'] : ['今天，绞刑架空着。没有人被处决。'];
-  return style === 'simple' ? [`${n}号 被处决了。`] : ['绞索收紧……', `${n}号 被处决了。`];
+  return style === 'simple' ? [`${seatName(n)} 被处决了。`] : ['绞索收紧……', `${seatName(n)} 被处决了。`];
 }
 
 export function endLines(winner: 'good' | 'evil', style: 'simple' | 'atmo'): string[] {

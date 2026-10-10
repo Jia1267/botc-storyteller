@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { FABLED, ROLES, TEAM_NAME, isEvilTeam, roleName, type FabledId, type RoleId, type Team } from '../engine/roles';
 import { recommend, setupLabel, balance } from '../engine/balance';
-import { actorFor, addLog, inPlay, lilMonsta, notInPlay, scriptOf } from '../engine/core';
+import { actorFor, addLog, inPlay, lilMonsta, notInPlay, scriptOf, seatName } from '../engine/core';
 import { SCRIPT_LIST, SCRIPTS } from '../engine/editions';
 import { defaultRng } from '../engine/rng';
 import {
@@ -11,6 +11,8 @@ import {
 } from '../engine/setup';
 import { stepRng, type Game } from '../store';
 import { BottomBar, ChoicePanel, Sheet, SeatPicker } from './common';
+import { AddTravellerSheet } from './Travellers';
+import { removeTravellerAtSetup } from '../engine/travellers';
 import { GrimoireCircle } from './Grimoire';
 import { Icon } from './icons';
 
@@ -65,7 +67,7 @@ function CountStep({ g, onRules, onRoles }: { g: Game; onRules: () => void; onRo
           </span>
           <h2>几个人玩？</h2>
         </div>
-        <p className="dim">不算说书人。选好后网页会自动配一套均衡的角色。</p>
+        <p className="dim">不算说书人。选好后网页会自动配一套均衡的角色。超过 {sc.max} 人就选 {sc.max}，多出来的人下一步加成旅行者。</p>
         <div className="count-grid">
           {counts.map((n) => {
             const [t, o, m] = DISTRIBUTION[n];
@@ -261,7 +263,7 @@ function RolePicker({
   );
 }
 
-type Edit = 'drunk' | 'bluffs' | 'rh' | 'lunatic' | 'amnesiac' | null;
+type Edit = 'drunk' | 'bluffs' | 'rh' | 'lunatic' | 'amnesiac' | 'traveller' | null;
 
 function SeatsStep({ g, onRules }: { g: Game; onRules: () => void }) {
   const s = g.s;
@@ -273,6 +275,8 @@ function SeatsStep({ g, onRules }: { g: Game; onRules: () => void }) {
   const ft = actorFor(s, 'fortuneteller');
 
   const tapSeat = (n: number) => {
+    // 旅行者的位置由"坐在谁旁边"决定，不参与交换
+    if (s.seats.find((x) => x.n === n)?.traveller) return;
     if (first === null) setFirst(n);
     else {
       if (first !== n) g.commit((st) => swapSeats(st, first, n, defaultRng));
@@ -300,11 +304,13 @@ function SeatsStep({ g, onRules }: { g: Game; onRules: () => void }) {
           <Icon name="shuffle" size={18} /> 重新随机座位
         </button>
 
+        <TravellersCard g={g} onAdd={() => setEdit('traveller')} />
+
         {drunk && s.drunkFake && (
           <div className="card">
             <h3>酒鬼</h3>
             <p>
-              {drunk.n}号 是酒鬼，他会以为自己是 <b className="good">【{roleName(s.drunkFake)}】</b>
+              {seatName(drunk.n)} 是酒鬼，他会以为自己是 <b className="good">【{roleName(s.drunkFake)}】</b>
             </p>
             <button className="btn btn-outline btn-sm" style={{ marginTop: 10 }} onClick={() => setEdit('drunk')}>
               更换假身份
@@ -315,7 +321,7 @@ function SeatsStep({ g, onRules }: { g: Game; onRules: () => void }) {
           <div className="card">
             <h3>疯子</h3>
             <p>
-              {lunatic.n}号 是疯子，他会以为自己是恶魔 <b className="evil">【{roleName(s.lunaticFake)}】</b>
+              {seatName(lunatic.n)} 是疯子，他会以为自己是恶魔 <b className="evil">【{roleName(s.lunaticFake)}】</b>
             </p>
             {lilMonsta(s) && <p className="dim">小怪宝在场，按你们的规矩给疯子看涡流。</p>}
             <button className="btn btn-outline btn-sm" style={{ marginTop: 10 }} onClick={() => setEdit('lunatic')}>
@@ -327,7 +333,7 @@ function SeatsStep({ g, onRules }: { g: Game; onRules: () => void }) {
           <div className="card">
             <h3>失忆者</h3>
             <p>
-              {amnesiac.n}号 是失忆者，你偷偷给他的能力：<b className="good">像{roleName(s.amnesiacAbility)}一样</b>
+              {seatName(amnesiac.n)} 是失忆者，你偷偷给他的能力：<b className="good">像{roleName(s.amnesiacAbility)}一样</b>
             </p>
             <p className="dim">{ROLES[s.amnesiacAbility].ability}</p>
             <button className="btn btn-outline btn-sm" style={{ marginTop: 10 }} onClick={() => setEdit('amnesiac')}>
@@ -351,7 +357,7 @@ function SeatsStep({ g, onRules }: { g: Game; onRules: () => void }) {
           <div className="card">
             <h3>占卜的干扰项</h3>
             <p>
-              {s.redHerring}号（{roleName(s.seats[s.redHerring - 1].role)}）：查到他也会得到"有恶魔"。
+              {seatName(s.redHerring)}（{roleName(s.seats[s.redHerring - 1].role)}）：查到他也会得到"有恶魔"。
             </p>
             <button className="btn btn-outline btn-sm" style={{ marginTop: 10 }} onClick={() => setEdit('rh')}>
               看理由 / 更换
@@ -372,12 +378,42 @@ function SeatsStep({ g, onRules }: { g: Game; onRules: () => void }) {
       {edit === 'rh' && <RedHerringEdit g={g} onClose={() => setEdit(null)} />}
       {edit === 'lunatic' && <LunaticEdit g={g} onClose={() => setEdit(null)} />}
       {edit === 'amnesiac' && <AmnesiacEdit g={g} onClose={() => setEdit(null)} />}
+      {edit === 'traveller' && <AddTravellerSheet g={g} onClose={() => setEdit(null)} />}
       <BottomBar>
         <button className="btn btn-primary btn-block" onClick={() => g.commit((st) => startDeal(st))}>
           开始发身份
         </button>
       </BottomBar>
     </main>
+  );
+}
+
+/** 开局时加旅行者：剧本人数上限之外的人、或者知道要早退的人 */
+function TravellersCard({ g, onAdd }: { g: Game; onAdd: () => void }) {
+  const s = g.s;
+  const ts = s.seats.filter((x) => x.traveller);
+  const sc = scriptOf(s);
+  return (
+    <div className="card stack" style={{ gap: 8 }}>
+      <h3 style={{ margin: 0 }}>旅行者</h3>
+      <p className="dim">
+        人数超过剧本上限（这个剧本最多 {sc.max} 人），或者有人知道要早退，可以当旅行者。旅行者不占配板人数。
+      </p>
+      {ts.map((t) => (
+        <div key={t.n} className="row" style={{ justifyContent: 'space-between', flexWrap: 'nowrap' }}>
+          <span>
+            <b>{seatName(t.n)}</b>：{roleName(t.role)}（
+            <span className={t.traveller!.alignment === 'evil' ? 'evil' : 'good'}>{t.traveller!.alignment === 'evil' ? '邪恶' : '善良'}</span>），坐在 {seatName(t.traveller!.after)} 旁边
+          </span>
+          <button className="btn btn-outline btn-sm" onClick={() => g.commit((st) => removeTravellerAtSetup(st, t.n))}>
+            删除
+          </button>
+        </div>
+      ))}
+      <button className="btn btn-outline btn-sm" onClick={onAdd}>
+        加一名旅行者
+      </button>
+    </div>
   );
 }
 

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ROLES, TEAM_NAME, roleName, type RoleId } from '../engine/roles';
 import { balance, recommend } from '../engine/balance';
 import {
-  aliveNeighbors, believedRole, demonSeat, isEvil, isPoisoned, lilMonsta, malfunction, mustLie, scriptOf,
+  aliveNeighbors, believedRole, demonSeat, seatOf, isEvil, isPoisoned, lilMonsta, malfunction, mustLie, scriptOf, seatName,
 } from '../engine/core';
 import {
   completeSlot, currentSlot, effectiveSlot, minionSeats, previewImp, shouldRun, slotActor, slotsFor, type SlotPayload,
@@ -84,7 +84,7 @@ function ActorLine({ s, actor, slot }: { s: GameState; actor: Seat; slot: SlotId
   return (
     <>
       <div className="who">
-        {slot === 'widow' ? '寡妇是' : '叫醒'} <b>{actor.n}号</b>
+        {slot === 'widow' ? '寡妇是' : '叫醒'} <b>{seatName(actor.n)}</b>
         {why}
         {slot === 'scarletwoman' && '（红唇女郎，白天已接任恶魔）'}
       </div>
@@ -95,11 +95,11 @@ function ActorLine({ s, actor, slot }: { s: GameState; actor: Seat; slot: SlotId
 
 const wake = (n: number) => (
   <>
-    轻拍 <b>{n}号</b> 的肩膀，让他睁眼。
+    轻拍 <b>{seatName(n)}</b> 的肩膀，让他睁眼。
   </>
 );
 const sleep = '让他闭眼。';
-const seatsText = (ns: number[]) => ns.map((n) => `${n}号`).join('、');
+const seatsText = (ns: number[]) => ns.map((n) => `${seatName(n)}`).join('、');
 
 function useDone(g: Game) {
   return (p: SlotPayload) => g.commit((st) => completeSlot(st, p));
@@ -170,6 +170,8 @@ function SlotBody({ g, s, slot, actor }: { g: Game; s: GameState; slot: SlotId; 
     case 'monk':
     case 'butler':
     case 'fearmonger':
+    case 'bureaucrat':
+    case 'thief':
       return <TargetStep g={g} s={s} actor={actor!} slot={slot} />;
     case 'washerwoman':
     case 'librarian':
@@ -261,7 +263,7 @@ function MinionInfoStep({ g, s }: { g: Game; s: GameState }) {
             轻拍爪牙 <b>{ms}</b> 的肩膀，让{one ? '他' : '他们'}睁眼。
           </>,
           <>
-            用手指向恶魔：<b>{d.n}号</b>。
+            用手指向恶魔：<b>{seatName(d.n)}</b>。
           </>,
           one ? '等他看清，再让他闭眼。' : '等他们互相看清彼此，再让他们闭眼。',
         ]}
@@ -346,10 +348,10 @@ function DawnStep({ g, s }: { g: Game; s: GameState }) {
 
 /* ---------------- 选一个人：投毒者 / 僧侣 / 管家 / 恐惧之灵 ---------------- */
 
-function TargetStep({ g, s, actor, slot }: StepProps & { slot: 'poisoner' | 'monk' | 'butler' | 'fearmonger' }) {
+function TargetStep({ g, s, actor, slot }: StepProps & { slot: 'poisoner' | 'monk' | 'butler' | 'fearmonger' | 'bureaucrat' | 'thief' }) {
   const done = useDone(g);
   const [t, setT] = useState<number[]>([]);
-  const notSelf = slot === 'monk' || slot === 'butler';
+  const notSelf = slot === 'monk' || slot === 'butler' || slot === 'bureaucrat' || slot === 'thief';
   const bad = malfunction(s, actor.n);
   const note =
     slot === 'poisoner'
@@ -358,8 +360,10 @@ function TargetStep({ g, s, actor, slot }: StepProps & { slot: 'poisoner' | 'mon
         ? bad
           ? '他的保护今晚无效（中毒/酒鬼）。照常让他选，别露馅。'
           : '被保护的人今晚不会被恶魔杀死。'
-        : slot === 'fearmonger'
-          ? `现在的目标：${s.fearTarget ? `${s.fearTarget}号` : '还没有'}。选了新目标，天亮时要公开宣布"恐惧之灵选择了一名新的目标"。`
+        : slot === 'bureaucrat' || slot === 'thief'
+          ? `明天数票时，那个人举手算${slot === 'bureaucrat' ? ' 3 票' : '负 1 票'}，网页会在白天提醒你。${bad ? '（他中毒了：照常让他选，但无效）' : ''}`
+          : slot === 'fearmonger'
+          ? `现在的目标：${s.fearTarget ? `${seatName(s.fearTarget)}` : '还没有'}。选了新目标，天亮时要公开宣布"恐惧之灵选择了一名新的目标"。`
           : '明天白天提醒自己：只有主人投票时，管家才能投票。';
   return (
     <>
@@ -370,7 +374,7 @@ function TargetStep({ g, s, actor, slot }: StepProps & { slot: 'poisoner' | 'mon
       <Tips role={slot === 'fearmonger' ? 'fearmonger' : believedRole(s, actor)} drunk={actor.role === 'drunk'} />
       <BottomBar wide>
         <button className="btn btn-primary btn-block" disabled={!t.length} onClick={() => done({ kind: 'target', target: t[0] })}>
-          {t.length ? `确认：${t[0]}号，下一步` : '先点出他指的人'}
+          {t.length ? `确认：${seatName(t[0])}，下一步` : '先点出他指的人'}
         </button>
       </BottomBar>
     </>
@@ -428,7 +432,7 @@ function PairStep({ g, s, actor, kind }: StepProps & { kind: PairKind }) {
         点「给他看」展示 <b>【{roleName(value.role)}】</b>。
       </>,
       <>
-        用手指向 <b>{value.seats[0]}号</b> 和 <b>{value.seats[1]}号</b>。
+        用手指向 <b>{seatName(value.seats[0])}</b> 和 <b>{seatName(value.seats[1])}</b>。
       </>,
     );
   } else if (value) items.push('比出 0（握拳）：场上没有外来者。');
@@ -486,7 +490,7 @@ function NumberStep({ g, s, actor, kind }: StepProps & { kind: 'chef' | 'empath'
     <>
       {kind === 'empath' && (
         <p className="muted">
-          他两边最近的存活玩家：{nb.map((n) => `${n}号（${roleName(s.seats[n - 1].role)}）`).join('、')}
+          他两边最近的存活玩家：{nb.map((n) => `${seatName(n)}（${roleName(seatOf(s, n).role)}）`).join('、')}
         </p>
       )}
       <ChoicePanel s={s} choices={choices} sel={sel} rec={rec} onSel={setSel} manual={manual} manualLabel="手动选数字" />
@@ -634,7 +638,7 @@ function ImpOutcome({ g, s, actor, target, slot }: StepProps & { target: number;
   if (pv.kind === 'starpass' && picked)
     items.push(
       <>
-        轻拍 <b>{picked}号</b>，让他睁眼。
+        轻拍 <b>{seatName(picked)}</b>，让他睁眼。
       </>,
       `点「给他看」：你现在是${dname}。`,
       '让他闭眼。',
@@ -682,7 +686,7 @@ function RevealStep({ g, s, actor, kind }: StepProps & { kind: 'ravenkeeper' | '
         </>
       ) : (
         <p className="muted">
-          今天被处决的是 <b>{subject}号</b>（{roleName(s.seats[subject - 1].role)}）。
+          今天被处决的是 <b>{seatName(subject)}</b>（{roleName(seatOf(s, subject).role)}）。
         </p>
       )}
       {subject ? (
@@ -767,7 +771,7 @@ function LunaticStep({ g, s, actor }: StepProps) {
           items={[
             d ? wake(d.n) : '叫醒真恶魔。',
             <>
-              用手指向 <b>{actor.n}号</b>，点「给他看」：这名玩家是疯子。
+              用手指向 <b>{seatName(actor.n)}</b>，点「给他看」：这名玩家是疯子。
             </>,
             sleep,
           ]}
@@ -785,12 +789,12 @@ function LunaticStep({ g, s, actor }: StepProps) {
   const informed: ReactNode[] = !t.length
     ? []
     : lilMonsta(s)
-      ? [`等会儿在"小怪宝"那一步告诉爪牙们：疯子是 ${actor.n}号，今晚他选了 ${t[0]}号。`]
+      ? [`等会儿在"小怪宝"那一步告诉爪牙们：疯子是 ${seatName(actor.n)}，今晚他选了 ${seatName(t[0])}。`]
       : d
         ? [
             wake(d.n),
             <>
-              用手指向 <b>{actor.n}号</b>（疯子），再指向 <b>{t[0]}号</b>（疯子选的人）。
+              用手指向 <b>{seatName(actor.n)}</b>（疯子），再指向 <b>{seatName(t[0])}</b>（疯子选的人）。
             </>,
             sleep,
           ]
@@ -836,18 +840,18 @@ function LilMonstaStep({ g, s }: { g: Game; s: GameState }) {
           </>,
           locked ? (
             <>
-              告诉他们：小怪宝今晚由 <b>{locked[0]}号</b>（红唇女郎）照看。
+              告诉他们：小怪宝今晚由 <b>{seatName(locked[0])}</b>（红唇女郎）照看。
             </>
           ) : last ? (
             <>
-              今晚要<b>重新问</b>他们由谁照看小怪宝（只能是爪牙，可以换人；昨晚是 {last}号）。你在下面点出来。
+              今晚要<b>重新问</b>他们由谁照看小怪宝（只能是爪牙，可以换人；昨晚是 {seatName(last)}）。你在下面点出来。
             </>
           ) : (
             '让他们商量，指出由谁照看小怪宝（只能是爪牙）。你在下面点出来。'
           ),
           lunatic ? (
             <>
-              指向 <b>{lunatic.n}号</b>，告诉他们：这名玩家是疯子{s.ns?.lunaticPick ? `，今晚他选了 ${s.ns.lunaticPick}号` : ''}。
+              指向 <b>{seatName(lunatic.n)}</b>，告诉他们：这名玩家是疯子{s.ns?.lunaticPick ? `，今晚他选了 ${seatName(s.ns.lunaticPick)}` : ''}。
             </>
           ) : null,
           '让他们闭眼。',
@@ -900,7 +904,7 @@ function LilKill({ g, s, babysitter }: { g: Game; s: GameState; babysitter: numb
       <Tips role="lilmonsta" />
       <BottomBar wide>
         <button className="btn btn-primary btn-block" disabled={!kill} onClick={() => kill && done({ kind: 'lilmonsta', babysitter, kill })}>
-          {kill ? `完成：${babysitter}号 照看，${kill}号 死亡` : '先选今晚谁死'}
+          {kill ? `完成：${seatName(babysitter)} 照看，${seatName(kill)} 死亡` : '先选今晚谁死'}
         </button>
       </BottomBar>
     </>
@@ -926,7 +930,7 @@ function WidowStep({ g, s, actor }: StepProps) {
           wake(actor.n),
           '点「给寡妇看魔典」，把只读魔典给她看。',
           '她看完后指一名玩家：这个人中毒（寡妇活着就一直中毒）。你在下面点出来。',
-          `让寡妇（${actor.n}号）闭眼。`,
+          `让寡妇（${seatName(actor.n)}）闭眼。`,
           <>
             <b>还没完：</b>下一屏要再叫醒一名善良玩家，告诉他"寡妇在场"。
           </>,
@@ -960,7 +964,7 @@ function WidowInform({ g, s, actor, target, onBack }: StepProps & { target: numb
   return (
     <>
       <div className="card card-warn stack" style={{ gap: 6 }}>
-        <b style={{ color: 'var(--warn)' }}>寡妇（{actor.n}号）毒了 {target}号。现在告诉一名善良玩家：寡妇在场</b>
+        <b style={{ color: 'var(--warn)' }}>寡妇（{seatName(actor.n)}）毒了 {seatName(target)}。现在告诉一名善良玩家：寡妇在场</b>
         <p className="dim">规则要求：寡妇在场时，一定要有一名善良玩家知道。不说他是谁中的毒。</p>
       </div>
       <div className="dim">告诉谁？</div>
@@ -975,7 +979,7 @@ function WidowInform({ g, s, actor, target, onBack }: StepProps & { target: numb
       />
       <DoBox
         items={[
-          `确认寡妇（${actor.n}号）已经闭眼。`,
+          `确认寡妇（${seatName(actor.n)}）已经闭眼。`,
           who ? wake(who) : '叫醒你选的那名善良玩家。',
           '点「给他看」：寡妇在场。',
           sleep,
@@ -1085,7 +1089,7 @@ function DuchessStep({ g, s }: { g: Game; s: GameState }) {
       <DoBox
         items={s.duchessVisitors.flatMap((n) => [
           <>
-            轻拍 <b>{n}号</b>，伸出 <b>{c && c.value.falseFor === n ? c.value.falseNum : real}</b> 根手指，然后让他闭眼。
+            轻拍 <b>{seatName(n)}</b>，伸出 <b>{c && c.value.falseFor === n ? c.value.falseNum : real}</b> 根手指，然后让他闭眼。
           </>,
         ])}
       />
@@ -1113,7 +1117,7 @@ function BalloonStep({ g, s, actor }: StepProps) {
         已经给过的类型：{s.balloonShown.length ? s.balloonShown.map((t) => TEAM_NAME[t]).join('、') : '还没有'}
       </p>
       <ChoicePanel s={s} choices={choices} sel={sel} rec={rec} onSel={(i) => i >= 0 && setSel(i)} />
-      <DoBox items={[wake(actor.n), c ? <>用手指向 <b>{c.value.seat}号</b>。</> : null, sleep]} />
+      <DoBox items={[wake(actor.n), c ? <>用手指向 <b>{seatName(c.value.seat)}</b>。</> : null, sleep]} />
       <SayBox lines={slotLines('balloonist', s.style)} title="小声说" s={s} onStyle={toggleStyle(g)} />
       <Tips role="balloonist" />
       <BottomBar wide>

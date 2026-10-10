@@ -1,5 +1,5 @@
 import { isEvilTeam, ROLES } from './roles';
-import { aliveSeats, isEvil } from './core';
+import { aliveSeats, isEvil, isTraveller } from './core';
 import type { Rng } from './rng';
 import type { GameState } from './types';
 
@@ -51,7 +51,7 @@ export function balance(s: GameState): Balance {
   if (s.phase !== 'setup' && s.phase !== 'deal') {
     const evil0 = s.seats.filter((x) => isEvilTeam(ROLES[x.startRole].team)).length;
     const good0 = s.count - evil0;
-    const alive = aliveSeats(s);
+    const alive = aliveSeats(s).filter((x) => !isTraveller(x));
     const aliveEvil = alive.filter(isEvil).length;
     const aliveGood = alive.length - aliveEvil;
 

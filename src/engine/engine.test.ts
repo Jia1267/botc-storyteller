@@ -34,7 +34,7 @@ function runToDawn(s: GameState) {
 }
 
 const teamCounts = (roles: RoleId[]) => {
-  const c = { townsfolk: 0, outsider: 0, minion: 0, demon: 0 };
+  const c = { townsfolk: 0, outsider: 0, minion: 0, demon: 0, traveller: 0 };
   roles.forEach((r) => c[ROLES[r].team]++);
   return c;
 };
@@ -50,7 +50,7 @@ describe('配板', () => {
         const baron = roles.includes('baron') ? 2 : 0;
         expect(roles.length).toBe(n);
         expect(new Set(roles).size).toBe(n);
-        expect(c).toEqual({ townsfolk: t - baron, outsider: o + baron, minion: m, demon: d });
+        expect(c).toEqual({ townsfolk: t - baron, outsider: o + baron, minion: m, demon: d, traveller: 0 });
       }
     }
   });
@@ -72,9 +72,9 @@ describe('配板', () => {
     }
     expect(teamCounts(s.seats.map((x) => x.role)).outsider).toBe(0);
     replaceRole(s, minionSeat.n, 'baron', rng);
-    expect(teamCounts(s.seats.map((x) => x.role))).toEqual({ townsfolk: 5, outsider: 2, minion: 2, demon: 1 });
+    expect(teamCounts(s.seats.map((x) => x.role))).toEqual({ townsfolk: 5, outsider: 2, minion: 2, demon: 1, traveller: 0 });
     replaceRole(s, minionSeat.n, 'poisoner', rng);
-    expect(teamCounts(s.seats.map((x) => x.role))).toEqual({ townsfolk: 7, outsider: 0, minion: 2, demon: 1 });
+    expect(teamCounts(s.seats.map((x) => x.role))).toEqual({ townsfolk: 7, outsider: 0, minion: 2, demon: 1, traveller: 0 });
   });
 
   it('随机配板的首夜信息位（F4）最多 2 个，换下男爵时也不超', () => {

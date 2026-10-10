@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import { ROLES, TEAM_NAME, isEvilTeam, roleName, type Team } from '../engine/roles';
 import { balance, leanTag, whyPrefix, type Choice } from '../engine/balance';
-import { believedRole, isPoisoned, seatOf } from '../engine/core';
+import { believedRole, isEvil, isPoisoned, seatOf, seatName } from '../engine/core';
 import type { GameState } from '../engine/types';
 import { Icon } from './icons';
 
@@ -11,6 +11,10 @@ export interface CardContent {
   title?: string;
   big: string[];
   team?: Team;
+  /** 旅行者的阵营由说书人定，覆盖按角色类型推出来的阵营 */
+  alignment?: 'good' | 'evil';
+  /** 卡片最下面的一句重点（例如邪恶旅行者得知恶魔是谁） */
+  note?: string;
   ability?: string;
 }
 
@@ -127,16 +131,16 @@ export function SeatPicker({
     <div className="stack" style={{ gap: 8 }}>
       {label && <div className="dim">{label}</div>}
       <div className="seat-grid">
-        {s.seats.map((x) => (
+        {s.seats.filter((x) => !x.left).map((x) => (
           <button
             key={x.n}
-            className={`seat-btn${selected.includes(x.n) ? ' sel' : ''}${x.alive ? '' : ' dead'}${isEvilTeam(ROLES[x.role].team) ? ' evil-r' : ''}`}
+            className={`seat-btn${selected.includes(x.n) ? ' sel' : ''}${x.alive ? '' : ' dead'}${isEvil(x) ? ' evil-r' : ''}`}
             disabled={disabled.includes(x.n)}
             aria-pressed={selected.includes(x.n)}
-            aria-label={`${x.n}号 ${roleName(x.role)}${x.alive ? '' : ' 已死亡'}`}
+            aria-label={`${seatName(x.n)} ${roleName(x.role)}${x.alive ? '' : ' 已死亡'}`}
             onClick={() => tap(x.n)}
           >
-            <span className="num">{x.n}</span>
+            <span className="num">{seatName(x.n).replace('号', '')}</span>
             <span className="nm">{ROLES[x.role].short}</span>
           </button>
         ))}
@@ -270,6 +274,8 @@ export interface Mark {
 export function seatMarks(s: GameState, n: number): Mark[] {
   const x = seatOf(s, n);
   const out: Mark[] = [];
+  if (x.traveller) out.push({ key: 'trav', short: x.traveller.alignment === 'evil' ? '恶' : '善', text: `旅行者，阵营：${x.traveller.alignment === 'evil' ? '邪恶' : '善良'}`, cls: x.traveller.alignment === 'evil' ? 'm-evil' : undefined });
+  if (s.voteMods[n]) out.push({ key: 'vote', short: s.voteMods[n] > 0 ? '×3' : '负', text: `今天他的票算 ${s.voteMods[n]} 票` });
   if (x.role === 'drunk') out.push({ key: 'drunk', short: '醉', text: `酒鬼：以为自己是【${roleName(believedRole(s, x))}】`, cls: 'm-drunk' });
   if (x.role === 'lunatic') out.push({ key: 'lunatic', short: '疯', text: `疯子：以为自己是【${roleName(believedRole(s, x))}】`, cls: 'm-drunk' });
   if (isPoisoned(s, n))
@@ -301,12 +307,20 @@ export function ShowCard({ c, onDone }: { c: CardContent; onDone: () => void }) 
           <div key={b}>{b}</div>
         ))}
       </div>
-      {c.team && (
-        <div className="team" style={{ color: isEvilTeam(c.team) ? 'var(--evil)' : 'var(--good)', borderColor: 'currentColor' }}>
-          {TEAM_NAME[c.team]} · {isEvilTeam(c.team) ? '邪恶阵营' : '善良阵营'}
+      {c.team && (() => {
+        const evil = c.alignment ? c.alignment === 'evil' : isEvilTeam(c.team);
+        return (
+          <div className="team" style={{ color: evil ? 'var(--evil)' : 'var(--good)', borderColor: 'currentColor' }}>
+            {TEAM_NAME[c.team]} · {evil ? '邪恶阵营' : '善良阵营'}
+          </div>
+        );
+      })()}
+      {c.ability && <div className="ab">{c.ability}</div>}
+      {c.note && (
+        <div className="ab" style={{ color: 'var(--evil)', fontWeight: 700 }}>
+          {c.note}
         </div>
       )}
-      {c.ability && <div className="ab">{c.ability}</div>}
       <button className="btn btn-ghost btn-block done" onClick={onDone}>
         看完了
       </button>

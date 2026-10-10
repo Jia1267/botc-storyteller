@@ -30,8 +30,8 @@ export const SCRIPTS: Record<ScriptId, ScriptDef> = {
       'virgin', 'slayer', 'soldier', 'mayor', 'butler', 'drunk', 'recluse', 'saint', 'poisoner', 'spy', 'scarletwoman', 'baron', 'imp',
     ],
     fabled: [],
-    firstNight: ['dusk', 'minionInfo', 'demonInfo', 'poisoner', 'washerwoman', 'librarian', 'investigator', 'chef', 'empath', 'fortuneteller', 'butler', 'spy', 'dawn'],
-    otherNights: ['dusk', 'poisoner', 'monk', 'scarletwoman', 'imp', 'ravenkeeper', 'empath', 'fortuneteller', 'undertaker', 'butler', 'spy', 'dawn'],
+    firstNight: ['dusk', 'bureaucrat', 'thief', 'minionInfo', 'demonInfo', 'poisoner', 'washerwoman', 'librarian', 'investigator', 'chef', 'empath', 'fortuneteller', 'butler', 'spy', 'dawn'],
+    otherNights: ['dusk', 'bureaucrat', 'thief', 'poisoner', 'monk', 'scarletwoman', 'imp', 'ravenkeeper', 'empath', 'fortuneteller', 'undertaker', 'butler', 'spy', 'dawn'],
     f4Cap: true,
   },
   spooky: {
@@ -45,8 +45,8 @@ export const SCRIPTS: Record<ScriptId, ScriptDef> = {
       'fearmonger', 'widow', 'scarletwoman', 'vortox', 'lilmonsta',
     ],
     fabled: ['sentinel', 'duchess'],
-    firstNight: ['dusk', 'minionInfo', 'lunatic', 'demonInfo', 'lilmonsta', 'widow', 'fearmonger', 'pixie', 'chef', 'empath', 'chambermaid', 'dawn'],
-    otherNights: ['dusk', 'duchess', 'fearmonger', 'scarletwoman', 'lunatic', 'vortox', 'lilmonsta', 'empath', 'chambermaid', 'dawn'],
+    firstNight: ['dusk', 'bureaucrat', 'thief', 'minionInfo', 'lunatic', 'demonInfo', 'lilmonsta', 'widow', 'fearmonger', 'pixie', 'chef', 'empath', 'chambermaid', 'dawn'],
+    otherNights: ['dusk', 'bureaucrat', 'thief', 'duchess', 'fearmonger', 'scarletwoman', 'lunatic', 'vortox', 'lilmonsta', 'empath', 'chambermaid', 'dawn'],
   },
   whispers: {
     id: 'whispers',
@@ -58,8 +58,8 @@ export const SCRIPTS: Record<ScriptId, ScriptDef> = {
       'artist', 'balloonist', 'fisherman', 'savant', 'amnesiac', 'cannibal', 'lunatic', 'mutant', 'widow', 'goblin', 'leviathan',
     ],
     fabled: [],
-    firstNight: ['dusk', 'amnesiac', 'lunatic', 'widow', 'balloonist', 'dawn'],
-    otherNights: ['dusk', 'amnesiac', 'lunatic', 'balloonist', 'dawn'],
+    firstNight: ['dusk', 'bureaucrat', 'thief', 'amnesiac', 'lunatic', 'widow', 'balloonist', 'dawn'],
+    otherNights: ['dusk', 'bureaucrat', 'thief', 'amnesiac', 'lunatic', 'balloonist', 'dawn'],
   },
 };
 

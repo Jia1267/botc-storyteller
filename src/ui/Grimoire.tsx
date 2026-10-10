@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
-import { FABLED, ROLES, isEvilTeam, roleName } from '../engine/roles';
-import { aliveCount, seatOf } from '../engine/core';
+import { FABLED, ROLES, roleName } from '../engine/roles';
+import { aliveCount, seatOf, seatName, circleOrder, isEvil } from '../engine/core';
 import type { GameState } from '../engine/types';
 import { BalanceMeter, Sheet, TeamChip, seatMarks } from './common';
 import { Icon } from './icons';
@@ -22,15 +22,17 @@ export function GrimoireCircle({
   hub?: ReactNode;
   readOnly?: boolean;
 }) {
-  const N = s.seats.length;
+  // 按圆桌顺序摆（旅行者坐在中间）
+  const order = circleOrder(s).map((n) => seatOf(s, n));
+  const N = order.length;
   const R = 41;
   const size = Math.min(17, ((2 * Math.PI * R) / N) * 0.86);
   return (
     <div className="grim">
-      {s.seats.map((x, i) => {
+      {order.map((x, i) => {
         const a = (-90 + (i * 360) / N) * (Math.PI / 180);
         const marks = seatMarks(s, x.n);
-        const evil = isEvilTeam(ROLES[x.role].team);
+        const evil = isEvil(x);
         return (
           <button
             key={x.n}
@@ -38,9 +40,9 @@ export function GrimoireCircle({
             style={{ left: `${50 + R * Math.cos(a)}%`, top: `${50 + R * Math.sin(a)}%`, width: `${size}%`, height: `${size}%`, cursor: readOnly ? 'default' : 'pointer' }}
             onClick={() => !readOnly && onSeat?.(x.n)}
             tabIndex={readOnly ? -1 : 0}
-            aria-label={`${x.n}号 ${roleName(x.role)}${x.alive ? '' : ' 已死亡'}${marks.map((m) => '，' + m.text).join('')}`}
+            aria-label={`${seatName(x.n)} ${roleName(x.role)}${x.alive ? '' : ' 已死亡'}${marks.map((m) => '，' + m.text).join('')}`}
           >
-            <span className="tn">{x.n}</span>
+            <span className="tn">{seatName(x.n).replace('号', '')}</span>
             <span className="tr">{ROLES[x.role].short}</span>
             {marks.length > 0 && (
               <span className="marks">
@@ -64,10 +66,10 @@ export function GrimoireList({ s, onSeat }: { s: GameState; onSeat?: (n: number)
     <div className="glist">
       {s.seats.map((x) => (
         <button key={x.n} className={`gi${x.alive ? '' : ' dead'}`} onClick={() => onSeat?.(x.n)} disabled={!onSeat} style={onSeat ? undefined : { cursor: 'default', color: 'inherit' }}>
-          <span className="n">{x.n}号</span>
-          <span className={`r ${isEvilTeam(ROLES[x.role].team) ? 'evil' : 'good'}`}>{roleName(x.role)}</span>
+          <span className="n">{seatName(x.n)}</span>
+          <span className={`r ${isEvil(x) ? 'evil' : 'good'}`}>{roleName(x.role)}</span>
           <span className="chips grow" style={{ justifyContent: 'flex-end' }}>
-            {!x.alive && <span className="chip">已死亡</span>}
+            {!x.alive && <span className="chip">{x.left ? '离场' : '已死亡'}</span>}
             {seatMarks(s, x.n).map((m) => (
               <span key={m.key} className={`chip${m.cls === 'm-poison' ? ' chip-poison' : m.cls === 'm-drunk' ? ' chip-warn' : m.cls === 'm-evil' ? ' chip-evil' : ''}`}>
                 {m.short}
@@ -85,7 +87,7 @@ export function SeatDetail({ s, n, onClose }: { s: GameState; n: number; onClose
   const def = ROLES[x.role];
   const marks = seatMarks(s, n);
   return (
-    <Sheet title={`${n}号 · ${def.name}`} onClose={onClose}>
+    <Sheet title={`${seatName(n)} · ${def.name}`} onClose={onClose}>
       <div className="stack">
         <div className="chips">
           <TeamChip team={def.team} />
@@ -156,7 +158,7 @@ export function GrimoirePanel({ s, detail = false }: { s: GameState; detail?: bo
 function SetupFacts({ s }: { s: GameState }) {
   return (
     <div className="chips">
-      {s.demonChar === 'lilmonsta' && <span className="chip chip-evil">小怪宝：{s.babysitter ? `${s.babysitter}号 照看` : '还没人照看'}</span>}
+      {s.demonChar === 'lilmonsta' && <span className="chip chip-evil">小怪宝：{s.babysitter ? `${seatName(s.babysitter)} 照看` : '还没人照看'}</span>}
       {s.drunkFake && s.seats.some((x) => x.role === 'drunk') && <span className="chip chip-warn">酒鬼以为是：{roleName(s.drunkFake)}</span>}
       {s.lunaticFake && <span className="chip chip-warn">疯子以为是：{roleName(s.lunaticFake)}</span>}
       {s.bluffs.length > 0 && <span className="chip">恶魔伪装：{s.bluffs.map(roleName).join('、')}</span>}

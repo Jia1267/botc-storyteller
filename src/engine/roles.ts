@@ -1,4 +1,4 @@
-export type Team = 'townsfolk' | 'outsider' | 'minion' | 'demon';
+export type Team = 'townsfolk' | 'outsider' | 'minion' | 'demon' | 'traveller';
 
 export type RoleId =
   | 'washerwoman' | 'librarian' | 'investigator' | 'chef' | 'empath' | 'fortuneteller'
@@ -10,7 +10,9 @@ export type RoleId =
   | 'chambermaid' | 'artist' | 'pixie' | 'cannibal' | 'balloonist' | 'fisherman' | 'savant' | 'amnesiac'
   | 'klutz' | 'lunatic' | 'mutant'
   | 'fearmonger' | 'widow' | 'goblin'
-  | 'vortox' | 'lilmonsta' | 'leviathan';
+  | 'vortox' | 'lilmonsta' | 'leviathan'
+  // 旅行者（暗流涌动）
+  | 'scapegoat' | 'gunslinger' | 'beggar' | 'bureaucrat' | 'thief';
 
 /** 传奇角色：说书人的角色，不发给玩家 */
 export type FabledId = 'sentinel' | 'duchess';
@@ -331,7 +333,37 @@ const R: RoleDef[] = [
     ability: '所有玩家都知道利维坦在场。如果超过一名善良玩家被处决，邪恶阵营获胜。第五个白天结束时，邪恶阵营获胜。',
     tips: ['第一个天亮时公开宣布"利维坦在场"。', '他晚上不杀人。', '第 2 个善良玩家被处决，或第 5 天结束，邪恶获胜。'],
   },
+
+  /* ---------- 旅行者：迟到/早退的人，阵营由说书人定 ---------- */
+  {
+    id: 'scapegoat', name: '替罪羊', short: '替罪羊', team: 'traveller', weight: 0, bluff: 0,
+    ability: '如果和你同阵营的玩家被处决，你可能会代替他被处决。',
+    tips: ['处决和他同阵营的人时，你可以改成处决替罪羊（网页会在处决面板里问你）。'],
+  },
+  {
+    id: 'gunslinger', name: '枪手', short: '枪手', team: 'traveller', weight: 0, bluff: 0,
+    ability: '每个白天，在第一次投票计票之后，你可以选择一名投过票的玩家：他死亡。',
+    tips: ['每天一次：第一次投票数完后，他可以公开选一名刚才举手的人，那人死亡。', '他中毒时开枪无效。'],
+  },
+  {
+    id: 'beggar', name: '乞丐', short: '乞丐', team: 'traveller', weight: 0, bluff: 0,
+    ability: '你必须用别人给的投票标记才能投票。死去的玩家可以把他的投票标记给你，这样你会得知他的阵营。你不会中毒也不会醉酒。',
+    tips: ['他自己没有票，要死人把最后一票给他才能投。', '有死人给他票时，私下告诉乞丐那个死人是善良还是邪恶。'],
+  },
+  {
+    id: 'bureaucrat', name: '官员', short: '官员', team: 'traveller', weight: 0, bluff: 0,
+    ability: '每晚，你选择一名其他玩家：明天他的投票算作 3 票。',
+    tips: ['每晚入夜后第一个叫醒他。', '第二天数票时，那个人举手算 3 票（网页会在白天提醒你）。'],
+  },
+  {
+    id: 'thief', name: '窃贼', short: '窃贼', team: 'traveller', weight: 0, bluff: 0,
+    ability: '每晚，你选择一名其他玩家：明天他的投票算作负数。',
+    tips: ['每晚入夜后叫醒他。', '第二天数票时，那个人举手算 −1 票（网页会在白天提醒你）。'],
+  },
 ];
+
+/** 暗流涌动的 5 个旅行者 */
+export const TRAVELLER_ROLES: RoleId[] = ['scapegoat', 'gunslinger', 'beggar', 'bureaucrat', 'thief'];
 
 export interface FabledDef {
   id: FabledId;
@@ -356,6 +388,7 @@ export const TEAM_NAME: Record<Team, string> = {
   outsider: '外来者',
   minion: '爪牙',
   demon: '恶魔',
+  traveller: '旅行者',
 };
 
 export const rolesOfTeam = (t: Team): RoleId[] => R.filter((r) => r.team === t).map((r) => r.id);

@@ -1,5 +1,6 @@
+import { isEvil, seatName } from '../engine/core';
 import type { ReactNode } from 'react';
-import { ROLES, TEAM_NAME, isEvilTeam, roleName, type Team } from '../engine/roles';
+import { ROLES, TEAM_NAME, TRAVELLER_ROLES, isEvilTeam, roleName, type Team } from '../engine/roles';
 import { SCRIPTS, type ScriptId } from '../engine/editions';
 import { endLines } from '../engine/scripts';
 import { rulesFor } from '../engine/rulesSpeech';
@@ -54,17 +55,18 @@ export function EndScreen({ g }: { g: Game }) {
           <p className="dim" style={{ marginBottom: 8 }}>
             可以把手机给大家传着看。
           </p>
-          <GrimoireCircle s={s} readOnly hub={<b>{s.count} 人局</b>} />
+          <GrimoireCircle s={s} readOnly hub={<b>{s.count} 人局{s.seats.length > s.count && <small><br />+{s.seats.length - s.count} 旅行者</small>}</b>} />
           <div className="stack" style={{ gap: 4, marginTop: 12 }}>
             {s.seats.map((x) => (
               <div key={x.n} className="row" style={{ justifyContent: 'space-between', borderBottom: '1px solid var(--line)', padding: '6px 0' }}>
                 <span>
-                  <b>{x.n}号</b>{' '}
-                  <span className={isEvilTeam(ROLES[x.role].team) ? 'evil' : 'good'}>
+                  <b>{seatName(x.n)}</b>{' '}
+                  <span className={isEvil(x) ? 'evil' : 'good'}>
                     {x.startRole !== x.role ? `${roleName(x.startRole)} → ${roleName(x.role)}` : roleName(x.role)}
                   </span>
                   {x.role === 'drunk' && s.drunkFake && <span className="dim">（以为是{roleName(s.drunkFake)}）</span>}
                   {x.role === 'lunatic' && s.lunaticFake && <span className="dim">（以为是{roleName(s.lunaticFake)}）</span>}
+                  {x.traveller && <span className="dim">（旅行者，{x.traveller.alignment === 'evil' ? '邪恶' : '善良'}）</span>}
                 </span>
                 <span className="dim">{x.alive ? '存活' : `第${x.death?.night}${x.death?.when === 'night' ? '夜' : '天'} ${x.death?.cause}`}</span>
               </div>
@@ -124,6 +126,20 @@ export function RolesRef({ script, onClose }: { script: ScriptId; onClose: () =>
           ))}
         </div>
       ))}
+      <div style={{ marginBottom: 18 }}>
+        <h3 style={{ fontSize: 18, color: 'var(--gold)', margin: '8px 0 0' }}>{TEAM_NAME.traveller}（人多或有人早退时用）</h3>
+        {TRAVELLER_ROLES.map((id) => ROLES[id]).map((r) => (
+          <div key={r.id} className="ref-role">
+            <h3>{r.name}</h3>
+            <p>{r.ability}</p>
+            <ul>
+              {r.tips.map((tip) => (
+                <li key={tip}>{tip}</li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </div>
     </Overlay>
   );
 }

@@ -44,7 +44,7 @@ export default function App() {
       : s.phase === 'day'
         ? '白天'
         : s.phase === 'deal'
-          ? `${s.dealIndex + 1} / ${s.count}`
+          ? `${s.dealIndex + 1} / ${s.seats.length}`
           : s.phase === 'setup'
             ? '开局设置'
             : '复盘';

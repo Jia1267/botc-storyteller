@@ -3,11 +3,41 @@ import { SCRIPTS, type ScriptDef } from './editions';
 import type { GameState, LogEntry, Seat } from './types';
 
 export const scriptOf = (s: GameState): ScriptDef => SCRIPTS[s.script];
-export const seatOf = (s: GameState, n: number): Seat => s.seats[n - 1];
+
+/** 旅行者的座位号从 101 开始，显示成"旅1、旅2"，原来的座位号不变 */
+export const TRAVELLER_BASE = 100;
+export function seatName(n: number | string | null | undefined): string {
+  if (typeof n === 'number' && n > TRAVELLER_BASE) return `旅${n - TRAVELLER_BASE}`;
+  return `${n ?? '—'}号`;
+}
+
+export const seatOf = (s: GameState, n: number): Seat => (n <= s.count ? s.seats[n - 1] : s.seats.find((x) => x.n === n)!);
 export const teamOf = (r: RoleId): Team => ROLES[r].team;
-export const isEvil = (st: Seat) => isEvilTeam(teamOf(st.role));
+export const isTraveller = (st: Seat) => teamOf(st.role) === 'traveller';
+/** 旅行者的阵营由说书人定，其他人看角色类型 */
+export const isEvil = (st: Seat) => (st.traveller ? st.traveller.alignment === 'evil' : isEvilTeam(teamOf(st.role)));
 export const aliveSeats = (s: GameState) => s.seats.filter((x) => x.alive);
-export const aliveCount = (s: GameState) => aliveSeats(s).length;
+/** 存活人数（不算旅行者）：红唇女郎、只剩 2 人、镇长都按这个算 */
+export const aliveCount = (s: GameState) => s.seats.filter((x) => x.alive && !isTraveller(x)).length;
+/** 能投票的存活玩家（算上旅行者）：处决门槛按这个算 */
+export const aliveVoters = (s: GameState) => s.seats.filter((x) => x.alive).length;
+
+/** 圆桌顺序：1..N，旅行者插在他左手边那个人的后面；离场的旅行者不在桌上 */
+export function circleOrder(s: GameState): number[] {
+  const regular = s.seats.filter((x) => !x.traveller).map((x) => x.n);
+  const out: number[] = [];
+  const insertAfter = (anchor: number) => {
+    for (const t of s.seats.filter((x) => x.traveller && !x.left && x.traveller.after === anchor)) {
+      out.push(t.n);
+      insertAfter(t.n);
+    }
+  };
+  for (const n of regular) {
+    out.push(n);
+    insertAfter(n);
+  }
+  return out;
+}
 export const findRole = (s: GameState, r: RoleId) => s.seats.find((x) => x.role === r);
 export const inPlay = (s: GameState, r: RoleId) => s.seats.some((x) => x.role === r) || s.demonChar === r;
 
@@ -79,11 +109,14 @@ export function believedRole(s: GameState, st: Seat): RoleId {
 
 /** 左右两边最近的存活玩家（不含自己） */
 export function aliveNeighbors(s: GameState, n: number): number[] {
-  const N = s.count;
+  const order = circleOrder(s);
+  const N = order.length;
+  const i = order.indexOf(n);
   const out: number[] = [];
+  if (i < 0) return out;
   for (const dir of [-1, 1]) {
     for (let k = 1; k < N; k++) {
-      const m = ((n - 1 + dir * k + N * 2) % N) + 1;
+      const m = order[(i + dir * k + N * 2) % N];
       if (m === n) break;
       if (seatOf(s, m).alive) {
         if (!out.includes(m)) out.push(m);
@@ -94,7 +127,15 @@ export function aliveNeighbors(s: GameState, n: number): number[] {
   return out;
 }
 
-export const seatLabel = (s: GameState, n: number) => `${n}号（${roleName(seatOf(s, n).role)}）`;
+/** 圆桌上紧挨着的左右两个人（不管死活） */
+export function seatNeighbors(s: GameState, n: number): number[] {
+  const order = circleOrder(s);
+  const i = order.indexOf(n);
+  if (i < 0) return [];
+  return [order[(i - 1 + order.length) % order.length], order[(i + 1) % order.length]];
+}
+
+export const seatLabel = (s: GameState, n: number) => `${seatName(n)}（${roleName(seatOf(s, n).role)}）`;
 
 export function addLog(s: GameState, phase: LogEntry['phase'], text: string, truth?: boolean) {
   s.log.push({ night: s.night, phase, text, truth: truth === undefined ? undefined : truth ? 'true' : 'false' });

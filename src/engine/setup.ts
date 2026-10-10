@@ -1,6 +1,6 @@
 import { ROLES, roleName, type FabledId, type RoleId } from './roles';
 import { balance, recommend, type Choice } from './balance';
-import { actorFor, inPlay, isEvil, lilMonsta, notInPlay, scriptOf, scriptRolesOf } from './core';
+import { actorFor, inPlay, isEvil, lilMonsta, notInPlay, scriptOf, scriptRolesOf, seatName } from './core';
 import { SCRIPTS, type ScriptId } from './editions';
 import { pick, sample, seeded, shuffle, type Rng } from './rng';
 import type { GameState, Seat } from './types';
@@ -177,6 +177,8 @@ export function newGame(): GameState {
     savantDay: 0,
     duchessVisitors: [],
     goodExecutions: 0,
+    voteMods: {},
+    gunslingerDay: 0,
     bluffs: [],
     redHerring: null,
     setupZ: 0,
@@ -209,8 +211,15 @@ export function setScript(s: GameState, script: ScriptId) {
   s.setupStep = 'count';
 }
 
+/** 重新配板时保留已经加进来的旅行者 */
+function withTravellers(s: GameState, seats: Seat[]): Seat[] {
+  const tr = s.seats.filter((x) => x.traveller);
+  for (const t of tr) if (t.traveller!.after <= 100 && t.traveller!.after > seats.length) t.traveller!.after = seats.length;
+  return [...seats, ...tr];
+}
+
 function applySetup(s: GameState, x: RandomSetup, rng: Rng) {
-  s.seats = seatsFrom(shuffle(x.roles, rng));
+  s.seats = withTravellers(s, seatsFrom(shuffle(x.roles, rng)));
   s.demonChar = x.demonChar;
   refreshSetup(s, rng);
 }
@@ -304,8 +313,8 @@ export function swapSeats(s: GameState, a: number, b: number, rng: Rng) {
 }
 
 export function shuffleSeats(s: GameState, rng: Rng) {
-  const roles = shuffle(s.seats.map((x) => x.role), rng);
-  s.seats = seatsFrom(roles);
+  const roles = shuffle(s.seats.filter((x) => !x.traveller).map((x) => x.role), rng);
+  s.seats = withTravellers(s, seatsFrom(roles));
   refreshRedHerring(s, rng);
 }
 
@@ -407,28 +416,28 @@ export function redHerringChoices(s: GameState, rng: Rng): Choice<number>[] {
   const plain = good.filter((x) => x.n !== ft.n && ROLES[x.role].team === 'townsfolk');
   if (plain.length) {
     const p = pick(plain, rng);
-    out.push({ key: 'plain', label: `${p.n}号（${roleName(p.role)}）`, value: p.n, lean: 0, truth: true, standard: true, reason: '随便一名善良镇民，标准做法。' });
+    out.push({ key: 'plain', label: `${seatName(p.n)}（${roleName(p.role)}）`, value: p.n, lean: 0, truth: true, standard: true, reason: '随便一名善良镇民，标准做法。' });
   }
   const saint = good.find((x) => x.role === 'saint');
   if (saint)
-    out.push({ key: 'saint', label: `${saint.n}号（圣徒）`, value: saint.n, lean: -2, truth: true, reason: '干扰项放在圣徒身上：好人可能把圣徒当恶魔处决，直接输。大帮邪恶。' });
-  out.push({ key: 'self', label: `${ft.n}号（${roleName(ft.role)}自己）`, value: ft.n, lean: -1, truth: true, reason: '占卜的人自己当干扰项：他查到自己会得到"有"，会怀疑自己。帮邪恶。' });
+    out.push({ key: 'saint', label: `${seatName(saint.n)}（圣徒）`, value: saint.n, lean: -2, truth: true, reason: '干扰项放在圣徒身上：好人可能把圣徒当恶魔处决，直接输。大帮邪恶。' });
+  out.push({ key: 'self', label: `${seatName(ft.n)}（${roleName(ft.role)}自己）`, value: ft.n, lean: -1, truth: true, reason: '占卜的人自己当干扰项：他查到自己会得到"有"，会怀疑自己。帮邪恶。' });
   const recluse = good.find((x) => x.role === 'recluse');
   if (recluse)
-    out.push({ key: 'recluse', label: `${recluse.n}号（陌客）`, value: recluse.n, lean: 1, truth: true, reason: '陌客本来就可能被当成恶魔，干扰集中在一个人身上，帮善良。' });
+    out.push({ key: 'recluse', label: `${seatName(recluse.n)}（陌客）`, value: recluse.n, lean: 1, truth: true, reason: '陌客本来就可能被当成恶魔，干扰集中在一个人身上，帮善良。' });
   return out;
 }
 
 export function startDeal(s: GameState) {
   s.phase = 'deal';
   s.dealIndex = 0;
-  const lines = [`开局：${scriptOf(s).name}，${s.count} 人。${s.seats.map((x) => `${x.n}号${roleName(x.role)}`).join('、')}`];
+  const lines = [`开局：${scriptOf(s).name}，${s.count} 人。${s.seats.map((x) => `${seatName(x.n)}${roleName(x.role)}`).join('、')}`];
   if (lilMonsta(s)) lines.push('恶魔是小怪宝（无人扮演，每晚由爪牙照看）');
   if (s.drunkFake && inPlay(s, 'drunk')) lines.push(`酒鬼以为自己是【${roleName(s.drunkFake)}】`);
   if (s.lunaticFake) lines.push(`疯子以为自己是【${roleName(s.lunaticFake)}】`);
   if (s.amnesiacAbility) lines.push(`失忆者的能力：像${roleName(s.amnesiacAbility)}一样`);
   if (s.bluffs.length) lines.push(`恶魔伪装：${s.bluffs.map(roleName).join('、')}`);
-  if (s.redHerring) lines.push(`占卜干扰项：${s.redHerring}号`);
+  if (s.redHerring) lines.push(`占卜干扰项：${seatName(s.redHerring)}`);
   if (s.fabled.includes('sentinel')) lines.push(`传奇角色哨兵：外来者 ${s.sentinelDelta > 0 ? '+1' : s.sentinelDelta < 0 ? '−1' : '不变'}`);
   if (s.fabled.includes('duchess')) lines.push('传奇角色：公爵夫人');
   for (const text of lines) s.log.push({ night: 0, phase: 'setup', text });

@@ -11,6 +11,10 @@ export interface Seat {
   death?: { night: number; when: 'night' | 'day'; cause: string };
   /** 一次性能力已用（贞洁者、猎手、艺术家、渔夫） */
   used?: boolean;
+  /** 旅行者：阵营由说书人定；坐在 after 号的顺时针下一位 */
+  traveller?: { alignment: 'good' | 'evil'; after: number };
+  /** 旅行者中途离场 */
+  left?: boolean;
 }
 
 export type Phase = 'setup' | 'deal' | 'night' | 'day' | 'end';
@@ -21,7 +25,8 @@ export type SlotId =
   | 'chef' | 'empath' | 'fortuneteller' | 'butler' | 'spy' | 'monk' | 'scarletwoman' | 'imp'
   | 'ravenkeeper' | 'undertaker' | 'dawn'
   | 'lunatic' | 'lilmonsta' | 'widow' | 'fearmonger' | 'pixie' | 'chambermaid' | 'vortox'
-  | 'duchess' | 'amnesiac' | 'balloonist';
+  | 'duchess' | 'amnesiac' | 'balloonist'
+  | 'bureaucrat' | 'thief';
 
 export interface NightState {
   /** 当前所在的夜晚顺序位置 */
@@ -93,6 +98,10 @@ export interface GameState {
   duchessVisitors: number[];
   /** 被处决的善良玩家数（利维坦） */
   goodExecutions: number;
+  /** 明天投票的加成：官员 = 3，窃贼 = -1 */
+  voteMods: Record<number, number>;
+  /** 枪手最近一次开枪是第几天 */
+  gunslingerDay: number;
   /** 恶魔的 3 个伪装 */
   bluffs: RoleId[];
   /** 占卜师干扰项 */

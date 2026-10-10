@@ -1,6 +1,6 @@
 import { ROLES, TEAM_NAME, roleName, type Team } from './roles';
 import type { Choice } from './balance';
-import { inPlay, isDemonSeat, isEvil, malfunction, mustLie, scriptOf, seatOf } from './core';
+import { circleOrder, inPlay, isDemonSeat, isEvil, isTraveller, malfunction, mustLie, scriptOf, seatNeighbors, seatOf, seatName } from './core';
 import { BALLOON_TYPES, chefCount } from './info';
 import { pick, shuffle, type Rng } from './rng';
 import type { GameState } from './types';
@@ -16,17 +16,15 @@ interface Stmt {
 
 const typeOf = (s: GameState, n: number): Team => (isDemonSeat(s, n) ? 'demon' : ROLES[seatOf(s, n).role].team);
 
-/** 座位上的左右邻居（不管死活） */
-const seatNeighbors = (s: GameState, n: number) => [((n - 2 + s.count) % s.count) + 1, (n % s.count) + 1];
 
 /** 从魔典生成一堆可以说的陈述，每条都知道真假 */
 export function statements(s: GameState, actorN: number, rng: Rng): Stmt[] {
   const out: Stmt[] = [];
-  const others = s.seats.filter((x) => x.n !== actorN).map((x) => x.n);
+  const others = s.seats.filter((x) => x.n !== actorN && !isTraveller(x)).map((x) => x.n);
   for (let i = 0; i < 6; i++) {
     const [a, b] = shuffle(others, rng);
     const truth = isEvil(seatOf(s, a)) || isEvil(seatOf(s, b));
-    out.push({ text: `${Math.min(a, b)}号 和 ${Math.max(a, b)}号 之中至少有一个是邪恶玩家`, truth, strong: false });
+    out.push({ text: `${seatName(Math.min(a, b))} 和 ${seatName(Math.max(a, b))} 之中至少有一个是邪恶玩家`, truth, strong: false });
   }
   for (let i = 0; i < 6; i++) {
     const x = pick(others, rng);
@@ -34,7 +32,7 @@ export function statements(s: GameState, actorN: number, rng: Rng): Stmt[] {
     const claim = rng() < 0.5 ? real : pick(BALLOON_TYPES.filter((t) => t !== real), rng);
     const evilT = (t: Team) => t === 'minion' || t === 'demon';
     out.push({
-      text: `${x}号 是${TEAM_NAME[claim]}`, truth: claim === real, strong: claim === real && evilT(real),
+      text: `${seatName(x)} 是${TEAM_NAME[claim]}`, truth: claim === real, strong: claim === real && evilT(real),
       harsh: claim !== real && evilT(claim) !== evilT(real),
     });
   }
@@ -47,7 +45,7 @@ export function statements(s: GameState, actorN: number, rng: Rng): Stmt[] {
     out.push({ text: `恶魔坐在${odd ? '单' : '双'}数号座位`, truth: (d.n % 2 === 1) === odd, strong: false });
     const x = pick(others.filter((n) => n !== d.n), rng);
     const near = seatNeighbors(s, x).includes(d.n);
-    out.push({ text: `恶魔就坐在 ${x}号 旁边`, truth: near, strong: near });
+    out.push({ text: `恶魔就坐在 ${seatName(x)} 旁边`, truth: near, strong: near });
   }
   const adj = chefCount(s) > 0;
   const sayAdj = rng() < 0.5;
@@ -99,20 +97,21 @@ export function fishermanChoices(s: GameState, actorN: number, rng: Rng): Choice
   const others = s.seats.filter((x) => x.n !== actorN);
   const d = s.seats.find((x) => isDemonSeat(s, x.n));
   if (d) {
-    const start = d.n - Math.floor(rng() * 3);
-    const three = [0, 1, 2].map((k) => ((start - 1 + k + s.count * 2) % s.count) + 1);
-    out.push({ key: 'range', label: `恶魔就在 ${three.map((n) => `${n}号`).join('、')} 这三个人之中。`, value: '', lean: 1, truth: true, reason: '直接缩小恶魔范围，帮善良。' });
+    const order = circleOrder(s);
+    const start = order.indexOf(d.n) - Math.floor(rng() * 3);
+    const three = [0, 1, 2].map((k) => order[(start + k + order.length * 2) % order.length]);
+    out.push({ key: 'range', label: `恶魔就在 ${three.map((n) => `${seatName(n)}`).join('、')} 这三个人之中。`, value: '', lean: 1, truth: true, reason: '直接缩小恶魔范围，帮善良。' });
   }
   const trusty = others.filter((x) => x.alive && ROLES[x.role].team === 'townsfolk');
   if (trusty.length) {
     const t = pick(trusty, rng);
-    out.push({ key: 'trust', label: `你可以相信 ${t.n}号 说的话。`, value: '', lean: 0, truth: true, standard: true, reason: `${t.n}号 是善良的${roleName(t.role)}。` });
+    out.push({ key: 'trust', label: `你可以相信 ${seatName(t.n)} 说的话。`, value: '', lean: 0, truth: true, standard: true, reason: `${seatName(t.n)} 是善良的${roleName(t.role)}。` });
   }
   const evil = others.filter((x) => x.alive && isEvil(x));
   const good = others.filter((x) => x.alive && !isEvil(x));
   if (evil.length && good.length) {
     const [a, b] = [pick(evil, rng).n, pick(good, rng).n].sort((x, y) => x - y);
-    out.push({ key: 'pair', label: `多留意 ${a}号 和 ${b}号，其中有你要找的人。`, value: '', lean: 0, truth: true, standard: true, reason: '一个邪恶一个善良，给个方向但不说死。' });
+    out.push({ key: 'pair', label: `多留意 ${seatName(a)} 和 ${seatName(b)}，其中有你要找的人。`, value: '', lean: 0, truth: true, standard: true, reason: '一个邪恶一个善良，给个方向但不说死。' });
   }
   const tips: string[] = [];
   if (inPlay(s, 'vortox')) tips.push('每天都一定要处决一个人，否则你们会直接输。');
@@ -128,11 +127,11 @@ export function fishermanChoices(s: GameState, actorN: number, rng: Rng): Choice
     // 温和的假建议：让他去怀疑两个好人
     if (good.length >= 2) {
       const [a, b] = shuffle(good, rng).slice(0, 2).map((x) => x.n).sort((x, y) => x - y);
-      out.push({ key: 'mild', label: `多留意 ${a}号 和 ${b}号，其中有你要找的人。`, value: '', lean: 0, truth: false, standard: true, reason: `他中毒/醉酒：这两人其实都是善良的，轻度误导。` });
+      out.push({ key: 'mild', label: `多留意 ${seatName(a)} 和 ${seatName(b)}，其中有你要找的人。`, value: '', lean: 0, truth: false, standard: true, reason: `他中毒/醉酒：这两人其实都是善良的，轻度误导。` });
     }
     if (evil.length) {
       const e = pick(evil, rng);
-      out.push({ key: 'mislead', label: `你可以相信 ${e.n}号 说的话。`, value: '', lean: -2, truth: false, reason: `他中毒/醉酒：${e.n}号 其实是邪恶的，强烈误导，大帮邪恶。` });
+      out.push({ key: 'mislead', label: `你可以相信 ${seatName(e.n)} 说的话。`, value: '', lean: -2, truth: false, reason: `他中毒/醉酒：${seatName(e.n)} 其实是邪恶的，强烈误导，大帮邪恶。` });
     }
   }
   return out.map((c) => ({ ...c, value: c.label }));
