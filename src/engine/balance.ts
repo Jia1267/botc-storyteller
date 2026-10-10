@@ -1,5 +1,5 @@
 import { isEvilTeam, ROLES } from './roles';
-import { aliveSeats, isDemonSeat, isEvil, isTraveller } from './core';
+import { aliveSeats, isDemonSeat, isEvil, isTraveller, scriptOf } from './core';
 import type { Rng } from './rng';
 import type { GameState } from './types';
 
@@ -41,12 +41,15 @@ export function setupLabel(z: number): string {
 
 /**
  * 局势指数：-100（邪恶大优势）到 +100（善良大优势）。
- * 由配板、人数、时间、信息四部分相加，每部分都能用一句话讲清楚。
+ * 由配板、人数、时间、信息四部分相加（有的剧本再加"邪恶补偿"），每部分都能用一句话讲清楚。
  */
 export function balance(s: GameState): Balance {
   const parts: BalancePart[] = [];
   const setupPart = clamp(s.setupZ * 15, -25, 25) * 0.6;
   parts.push({ name: '配板', value: setupPart, text: `配板${setupLabel(s.setupZ)}` });
+  // 实战里邪恶不容易赢的剧本：多算给善良方几分，推荐就会更常帮邪恶
+  const boost = scriptOf(s).evilBoost ?? 0;
+  if (boost) parts.push({ name: '邪恶补偿', value: boost, text: `${scriptOf(s).name}里邪恶不容易赢：局势多算给善良方 ${boost} 分，推荐会更常帮邪恶` });
 
   if (s.phase !== 'setup' && s.phase !== 'deal') {
     const evil0 = s.seats.filter((x) => !x.traveller && (x.alignment ? x.alignment === 'evil' : isEvilTeam(ROLES[x.startRole].team))).length;

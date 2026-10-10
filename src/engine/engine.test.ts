@@ -447,4 +447,22 @@ describe('平衡', () => {
     expect(recommend(cs, -20, rng)).toBe(2);
     expect(recommend(cs, 0, rng)).toBe(1);
   });
+
+  it('暗流涌动有邪恶补偿 +10：同样的局面，推荐更早开始帮邪恶', () => {
+    const roles: RoleId[] = ['washerwoman', 'chef', 'empath', 'monk', 'soldier', 'mayor', 'virgin', 'poisoner', 'spy', 'imp'];
+    const s = game(roles);
+    const b = balance(s);
+    expect(b.parts.find((p) => p.name === '邪恶补偿')?.value).toBe(10);
+    // 拿掉补偿就是原来的分数
+    const raw = b.score - 10;
+    // 好人拿到几条真信息后：原来还算均势，现在已经推荐帮邪恶
+    s.infoTrue = Math.max(0, Math.ceil((4 - raw) / 0.5));
+    expect(balance(s).score - 10).toBeLessThan(12);
+    expect(balance(s).score).toBeGreaterThanOrEqual(12);
+    const cs = [
+      { key: 'evil', label: '', value: 1, lean: -1, reason: '', truth: true },
+      { key: 'std', label: '', value: 2, lean: 0, reason: '', truth: true, standard: true },
+    ];
+    expect(recommend(cs, balance(s).score, seeded(1))).toBe(0);
+  });
 });

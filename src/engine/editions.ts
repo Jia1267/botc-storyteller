@@ -18,6 +18,11 @@ export interface ScriptDef {
   f4Cap?: boolean;
   /** 剧本图（public/scripts 下的文件名） */
   image: string;
+  /**
+   * 邪恶补偿：实战里邪恶不容易赢的剧本，局势分多算给善良方这么多分，推荐更常帮邪恶。越大邪恶越强。
+   * （不动一键配板：按角色强弱往偏邪恶挑会让男爵几乎每局都在、投毒者几乎消失）
+   */
+  evilBoost?: number;
 }
 
 export const SCRIPTS: Record<ScriptId, ScriptDef> = {
@@ -36,6 +41,8 @@ export const SCRIPTS: Record<ScriptId, ScriptDef> = {
     otherNights: ['dusk', 'bureaucrat', 'thief', 'poisoner', 'monk', 'scarletwoman', 'imp', 'ravenkeeper', 'empath', 'fortuneteller', 'undertaker', 'butler', 'spy', 'dawn'],
     f4Cap: true,
     image: 'tb.jpg',
+    // 实测几局邪恶很少赢
+    evilBoost: 10,
   },
   alvsal: {
     id: 'alvsal',
