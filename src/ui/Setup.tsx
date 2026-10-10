@@ -5,9 +5,9 @@ import { actorFor, addLog, inPlay, lilMonsta, notInPlay, scriptOf, seatName } fr
 import { SCRIPT_LIST, SCRIPTS, type ScriptId } from '../engine/editions';
 import { defaultRng } from '../engine/rng';
 import {
-  DISTRIBUTION, F4, MAX_F4, amnesiacChoices, bluffChoices, drunkFakeChoices, evilTownsfolkChoices, godfatherChoices, godfatherMod, marionetteFakeChoices,
-  redHerringChoices, replaceDemon, replaceRole, rerollRoles, sentinelChoices, setCount, setEvilTownsfolk, setGodfatherDelta, setScript, setSentinelDelta,
-  setupReasons, shuffleSeats, startDeal, swapSeats, toggleFabled,
+  DISTRIBUTION, F4, MAX_F4, alchemistChoices, amnesiacChoices, bluffChoices, drunkFakeChoices, evilTownsfolkChoices, godfatherChoices, godfatherModFor,
+  marionetteFakeChoices, redHerringChoices, replaceDemon, replaceRole, rerollRoles, sentinelChoices, setAlchemistAbility, setCount, setEvilTownsfolk,
+  setGodfatherDelta, setScript, setSentinelDelta, setupReasons, shuffleSeats, startDeal, swapSeats, toggleFabled,
 } from '../engine/setup';
 import { stepRng, type Game } from '../store';
 import { BottomBar, ChoicePanel, Sheet, SeatPicker } from './common';
@@ -27,7 +27,7 @@ export function SetupScreen({ g, onRules, onRoles, onSheet }: { g: Game; onRules
 function ScriptStep({ g }: { g: Game }) {
   const [sheet, setSheet] = useState<ScriptId | null>(null);
   return (
-    <main className="main">
+    <main className="main home-scene">
       <div className="stack">
         <div className="hero">
           <h1>钟楼说书人</h1>
@@ -67,7 +67,7 @@ function CountStep({ g, onRules, onRoles, onSheet }: { g: Game; onRules: () => v
   const sc = scriptOf(g.s);
   const counts = Array.from({ length: sc.max - sc.min + 1 }, (_, i) => i + sc.min);
   return (
-    <main className="main">
+    <main className="main home-scene">
       <div className="stack">
         <div className="step-head">
           <span className="kicker">
@@ -165,7 +165,7 @@ function RolesStep({ g }: { g: Game }) {
           );
         })}
         {sc.fabled.length > 0 && <FabledCard g={g} />}
-        {godfatherMod(s.script, roles) && <GodfatherCard g={g} />}
+        {godfatherModFor(s) && <GodfatherCard g={g} />}
         <button className="btn btn-outline btn-sm" onClick={() => g.commit((st) => (st.setupStep = 'count'))}>
           改人数
         </button>
@@ -292,7 +292,7 @@ function RolePicker({
   );
 }
 
-type Edit = 'drunk' | 'bluffs' | 'rh' | 'lunatic' | 'amnesiac' | 'traveller' | 'marionette' | 'etf' | null;
+type Edit = 'drunk' | 'bluffs' | 'rh' | 'lunatic' | 'amnesiac' | 'traveller' | 'marionette' | 'etf' | 'alchemist' | null;
 
 function SeatsStep({ g, onRules }: { g: Game; onRules: () => void }) {
   const s = g.s;
@@ -380,6 +380,9 @@ function SeatsStep({ g, onRules }: { g: Game; onRules: () => void }) {
               {seatName(alchemist.n)} 是炼金术士，他拥有 <b className="evil">【{roleName(s.alchemistAbility)}】</b> 的能力（他仍然是善良的）。
             </p>
             <p className="dim">{ROLES[s.alchemistAbility].ability}</p>
+            <button className="btn btn-outline btn-sm" style={{ marginTop: 10 }} onClick={() => setEdit('alchemist')}>
+              看理由 / 更换
+            </button>
           </div>
         )}
         {etf && (
@@ -445,6 +448,7 @@ function SeatsStep({ g, onRules }: { g: Game; onRules: () => void }) {
       {edit === 'traveller' && <AddTravellerSheet g={g} onClose={() => setEdit(null)} />}
       {edit === 'marionette' && <MarionetteEdit g={g} onClose={() => setEdit(null)} />}
       {edit === 'etf' && <EvilTownsfolkEdit g={g} onClose={() => setEdit(null)} />}
+      {edit === 'alchemist' && <AlchemistEdit g={g} onClose={() => setEdit(null)} />}
       <BottomBar>
         <button className="btn btn-primary btn-block" onClick={() => g.commit((st) => startDeal(st))}>
           开始发身份
@@ -492,6 +496,22 @@ export function MarionetteEdit({ g, onClose }: { g: Game; onClose: () => void })
   return (
     <Sheet title="提线木偶以为自己是" onClose={onClose}>
       <ChoicePanel s={s} choices={choices} sel={sel} rec={rec} defaultOpen moreLabel="其他角色" onSel={(i) => i >= 0 && g.commit((st) => (st.marionetteFake = choices[i].value))} />
+    </Sheet>
+  );
+}
+
+/** 炼金术士拥有哪个爪牙的能力（默认不在场的那个，说书人可以换） */
+function AlchemistEdit({ g, onClose }: { g: Game; onClose: () => void }) {
+  const s = g.s;
+  const choices = useMemo(() => alchemistChoices(s), [s]);
+  const rec = useMemo(() => recommend(choices, balance(s).score, stepRng(s, 8)), [choices, s]);
+  const sel = choices.findIndex((c) => c.value === s.alchemistAbility);
+  return (
+    <Sheet title="炼金术士拥有的爪牙能力" onClose={onClose}>
+      <div className="stack">
+        <p className="dim">换成教父会让外来者 ±1，网页会自动调整人数。</p>
+        <ChoicePanel s={s} choices={choices} sel={sel} rec={rec} defaultOpen moreLabel="可选的爪牙能力" onSel={(i) => i >= 0 && g.commit((st) => setAlchemistAbility(st, choices[i].value, defaultRng))} />
+      </div>
     </Sheet>
   );
 }

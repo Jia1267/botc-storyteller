@@ -259,7 +259,7 @@ export type SlotPayload =
   | { kind: 'general'; answer: 'good' | 'evil' | 'neither'; truth: boolean }
   | { kind: 'hadikhia'; picks: number[]; live: boolean[] }
   | { kind: 'barber'; swap: [number, number] | null }
-  | { kind: 'plague'; ability: RoleId; to?: number }
+  | { kind: 'plague'; ability: RoleId; to?: number; baron?: { seat: number; role: RoleId }[]; marionette?: number }
   | { kind: 'sailor'; target: number; drunk: number }
   | { kind: 'innkeeper'; picks: [number, number]; drunk: number }
   | { kind: 'gambler'; target: number; role: RoleId }
@@ -748,6 +748,19 @@ export function completeSlot(s: GameState, p: SlotPayload) {
         if (p.ability === 'spy' && p.to) {
           s.gained[p.to] = 'spy';
           addLog(s, 'night', `瘟疫医生死了：爪牙 ${seatName(p.to)} 获得间谍的能力（相克规则），已告知他`);
+        } else if (p.ability === 'baron' && p.baron) {
+          for (const b of p.baron) {
+            const x = seatOf(s, b.seat);
+            x.role = b.role;
+            x.used = false;
+          }
+          addLog(s, 'night', `瘟疫医生死了，说书人获得男爵的能力（相克规则）：${p.baron.map((b) => `${seatName(b.seat)} 变成${roleName(b.role)}`).join('，')}，已告知他们`);
+        } else if (p.ability === 'marionette' && p.marionette) {
+          const x = seatOf(s, p.marionette);
+          s.marionetteFake = x.role;
+          x.role = 'marionette';
+          delete x.alignment;
+          addLog(s, 'night', `瘟疫医生死了，说书人获得提线木偶的能力（相克规则）：${seatName(x.n)} 变成提线木偶（他以为自己还是${roleName(s.marionetteFake)}），已告知恶魔`);
         } else {
           s.stAbility = p.ability;
           addLog(s, 'night', `瘟疫医生死了：说书人获得【${roleName(p.ability)}】的能力`);

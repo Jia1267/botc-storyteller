@@ -4,7 +4,7 @@ import {
   aliveCount, aliveNeighbors, circleOrder, deathShield, findRole, isDemonSeat, isEvil, malfunction, mustLie, notInPlay, scriptOf, scriptRolesOf,
   seatLabel, seatOf, seatName, teamOf,
 } from './core';
-import { pick, type Rng } from './rng';
+import { pick, shuffle, type Rng } from './rng';
 import type { GameState, Seat } from './types';
 
 /** 洗衣妇/图书管理员/调查员的信息：一个角色 + 两名玩家；role 为 null 表示"场上没有外来者" */
@@ -610,20 +610,57 @@ export function sweetheartChoices(s: GameState, rng: Rng): Choice<number>[] {
   return out;
 }
 
-/** 瘟疫医生死了：说书人拿哪个爪牙能力（间谍按相克规则给一名活着的爪牙） */
+/**
+ * 瘟疫医生死了：说书人拿剧本里任意一个爪牙的能力（官方规则），有相克规则的按相克规则：
+ * 间谍 → 由一名活着的爪牙获得；男爵 → 至多两名玩家变成不在场的外来者；
+ * 提线木偶 → 恶魔旁边一名活着的好人变成提线木偶（邪恶已经比开局多就无事发生）。
+ */
 export interface PlagueInfo {
   ability: RoleId;
   to?: number;
+  baron?: { seat: number; role: RoleId }[];
+  marionette?: number;
 }
 export function plagueChoices(s: GameState, rng: Rng): Choice<PlagueInfo>[] {
-  const minion = pickOr(s.seats.filter((x) => x.alive && ROLES[x.role].team === 'minion' && x.role !== 'marionette'), rng);
+  const minions = scriptRolesOf(s, 'minion');
   const out: Choice<PlagueInfo>[] = [];
-  if (minion)
+  const minion = pickOr(s.seats.filter((x) => x.alive && ROLES[x.role].team === 'minion' && x.role !== 'marionette'), rng);
+  if (minions.includes('spy') && minion)
     out.push({ key: 'spy', label: `间谍能力给 ${seatName(minion.n)}（${roleName(minion.role)}）`, value: { ability: 'spy', to: minion.n }, lean: 0, truth: true, standard: true, reason: '相克规则：由一名活着的爪牙获得间谍能力，每晚看魔典。影响适中。' });
-  out.push({ key: 'harpy', label: '说书人获得鹰身女妖的能力', value: { ability: 'harpy' }, lean: -1, truth: true, standard: !minion, reason: '每晚由你选两个人，逼第一个人疯狂指认第二个人，帮邪恶。' });
-  out.push({ key: 'poisoner', label: '说书人获得投毒者的能力', value: { ability: 'poisoner' }, lean: -2, truth: true, reason: '每晚由你毒一个人，信息会被污染，大帮邪恶。' });
+  if (minions.includes('harpy'))
+    out.push({ key: 'harpy', label: '说书人获得鹰身女妖的能力', value: { ability: 'harpy' }, lean: -1, truth: true, reason: '每晚由你选两个人，逼第一个人疯狂指认第二个人，帮邪恶。' });
+  if (minions.includes('poisoner'))
+    out.push({ key: 'poisoner', label: '说书人获得投毒者的能力', value: { ability: 'poisoner' }, lean: -2, truth: true, reason: '每晚由你毒一个人，信息会被污染，大帮邪恶。' });
+  if (minions.includes('baron')) {
+    // 相克：至多两名玩家变成不在场的外来者（不给酒鬼，免得还要给他假身份）
+    const outs = shuffle(notInPlay(s, 'outsider', ['drunk']), rng);
+    const towns = shuffle(s.seats.filter((x) => x.alive && !x.traveller && ROLES[x.role].team === 'townsfolk' && !isEvil(x)), rng);
+    const k = Math.min(2, outs.length, towns.length);
+    if (k > 0) {
+      const baron = towns.slice(0, k).map((x, j) => ({ seat: x.n, role: outs[j] }));
+      out.push({
+        key: 'baron', label: `男爵：${baron.map((b) => `${seatName(b.seat)} 变成${roleName(b.role)}`).join('，')}`, value: { ability: 'baron', baron }, lean: -2, truth: true,
+        reason: '相克规则：至多两名玩家变成不在场的外来者。好人少了镇民能力，大帮邪恶。',
+      });
+    }
+  }
+  if (minions.includes('marionette') && !inPlayRole(s, 'marionette')) {
+    const d = s.seats.find((x) => isDemonSeat(s, x.n) && x.alive);
+    const start = s.seats.filter((x) => !x.traveller && (isEvilTeam(ROLES[x.startRole].team) || x.startRole === 'bountyhunter')).length;
+    const now = s.seats.filter((x) => !x.traveller && isEvil(x)).length;
+    const nb = d ? aliveNeighbors(s, d.n).map((n) => seatOf(s, n)).filter((x) => !isEvil(x) && ['townsfolk', 'outsider'].includes(ROLES[x.role].team)) : [];
+    const m = pickOr(nb, rng);
+    if (m && now <= start)
+      out.push({
+        key: 'marionette', label: `提线木偶：${seatName(m.n)}（${roleName(m.role)}）变成提线木偶`, value: { ability: 'marionette', marionette: m.n }, lean: -2, truth: true,
+        reason: '相克规则：恶魔旁边一名好人变成邪恶的提线木偶，他自己不知道，大帮邪恶。',
+      });
+  }
+  if (!out.some((c) => c.standard) && out.length) out[0] = { ...out[0], standard: true };
   return out;
 }
+
+const inPlayRole = (s: GameState, r: RoleId) => s.seats.some((x) => x.role === r);
 
 /** 瘟疫医生死后，说书人用投毒者能力毒谁（今晚和明天白天） */
 export function stPoisonChoices(s: GameState, rng: Rng): Choice<number>[] {

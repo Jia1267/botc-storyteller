@@ -124,6 +124,8 @@ export interface GameState {
   gunslingerDay: number;
   /** 炼金术士拥有的爪牙能力 */
   alchemistAbility: RoleId | null;
+  /** 说书人手动换过炼金术士的能力（重新配角色时才重置） */
+  alchemistPicked: boolean;
   /** 教父：外来者 +1 / −1 */
   godfatherDelta: number;
   /** 僵怖第一次死亡后假死：看起来死了，其实还活着 */

@@ -52,12 +52,16 @@ export function alchemistAbilityFor(script: ScriptId, roles: RoleId[]): RoleId |
   return SCRIPTS[script].roles.find((r) => ROLES[r].team === 'minion' && !roles.includes(r)) ?? null;
 }
 
-/** 教父的能力在场（教父本人，或拿到教父能力的炼金术士）：外来者 ±1 */
-export const godfatherMod = (script: ScriptId, roles: RoleId[]) => roles.includes('godfather') || alchemistAbilityFor(script, roles) === 'godfather';
+/** 教父的能力在场（教父本人，或拿到教父能力的炼金术士）：外来者 ±1。alch = 说书人手动给炼金术士定的能力 */
+export const godfatherMod = (script: ScriptId, roles: RoleId[], alch?: RoleId | null) =>
+  roles.includes('godfather') || (roles.includes('alchemist') && (alch !== undefined ? alch : alchemistAbilityFor(script, roles)) === 'godfather');
+
+/** 按当前局面（含说书人手动换的炼金术士能力）判断教父的能力在不在场 */
+export const godfatherModFor = (s: GameState) => godfatherMod(s.script, s.seats.map((x) => x.role), s.alchemistPicked ? s.alchemistAbility : undefined);
 
 /** 外来者人数的修正：男爵 +2、气球驾驶员 +1、哨兵 ±1、教父 ±1 */
-const outsiderDelta = (roles: RoleId[], sentinelDelta: number, script: ScriptId = 'tb', godfatherDelta = 1) =>
-  (roles.includes('baron') ? 2 : 0) + (roles.includes('balloonist') ? 1 : 0) + sentinelDelta + (godfatherMod(script, roles) ? godfatherDelta : 0);
+const outsiderDelta = (roles: RoleId[], sentinelDelta: number, script: ScriptId = 'tb', godfatherDelta = 1, alch?: RoleId | null) =>
+  (roles.includes('baron') ? 2 : 0) + (roles.includes('balloonist') ? 1 : 0) + sentinelDelta + (godfatherMod(script, roles, alch) ? godfatherDelta : 0);
 
 export interface RandomSetup {
   /** 每个座位的角色（小怪宝时没有恶魔座位） */
@@ -228,6 +232,7 @@ export function newGame(): GameState {
     voteMods: {},
     gunslingerDay: 0,
     alchemistAbility: null,
+    alchemistPicked: false,
     godfatherDelta: 1,
     zombuulFake: false,
     advocate: null,
@@ -297,7 +302,26 @@ function applySetup(s: GameState, x: RandomSetup, rng: Rng) {
   s.seats = withTravellers(s, seatsFrom(shuffle(x.roles, rng)));
   s.demonChar = x.demonChar;
   s.godfatherDelta = x.godfatherDelta ?? 1;
+  s.alchemistPicked = false;
   refreshSetup(s, rng);
+}
+
+/** 说书人给炼金术士换一个爪牙能力（默认是不在场的那个） */
+export function setAlchemistAbility(s: GameState, r: RoleId, rng: Rng) {
+  s.alchemistAbility = r;
+  s.alchemistPicked = true;
+  normalize(s, rng);
+  refreshSetup(s, rng);
+}
+
+export function alchemistChoices(s: GameState): Choice<RoleId>[] {
+  const roles = s.seats.map((x) => x.role);
+  const auto = alchemistAbilityFor(s.script, roles.includes('alchemist') ? roles : [...roles, 'alchemist']);
+  return scriptRolesOf(s, 'minion').map((r): Choice<RoleId> =>
+    r === auto
+      ? { key: r, label: roleName(r), value: r, lean: 0, truth: true, standard: true, reason: `标准做法：剧本里不在场的爪牙。${ROLES[r].ability}` }
+      : { key: r, label: roleName(r), value: r, lean: 1, truth: true, reason: `和在场的爪牙重复：好人也拥有这个能力，帮善良。${ROLES[r].ability}` },
+  );
 }
 
 /** 选好人数后：生成均衡组合、随机落座、填好推荐的特殊设置 */
@@ -345,7 +369,8 @@ function normalize(s: GameState, rng: Rng, keep?: number) {
   const roles = s.seats.map((x) => x.role);
   // 本来没有外来者时教父只能 +1
   if (o === 0) s.godfatherDelta = 1;
-  const target = Math.max(0, Math.min(scriptRolesOf(s, 'outsider').length, o + outsiderDelta(roles, s.sentinelDelta, s.script, s.godfatherDelta)));
+  const alch = s.alchemistPicked ? s.alchemistAbility : undefined;
+  const target = Math.max(0, Math.min(scriptRolesOf(s, 'outsider').length, o + outsiderDelta(roles, s.sentinelDelta, s.script, s.godfatherDelta, alch)));
   const team = (x: Seat) => ROLES[x.role].team;
   for (let guard = 0; guard < 6; guard++) {
     const outs = s.seats.filter((x) => team(x) === 'outsider');
@@ -441,7 +466,12 @@ export function refreshSetup(s: GameState, rng: Rng) {
   s.marionetteFake = mf.length ? mf[recommend(mf, score, rng)].value : null;
   // 以为自己是炼金术士的酒鬼也会被告知一个爪牙能力
   const roles = s.seats.map((x) => x.role);
-  s.alchemistAbility = alchemistAbilityFor(s.script, s.drunkFake === 'alchemist' ? [...roles, 'alchemist'] : roles);
+  // 说书人手动换过且炼金术士还在场，就保留他的选择
+  const hasAlch = roles.includes('alchemist') || s.drunkFake === 'alchemist';
+  if (!s.alchemistPicked || !hasAlch) {
+    s.alchemistPicked = false;
+    s.alchemistAbility = alchemistAbilityFor(s.script, s.drunkFake === 'alchemist' ? [...roles, 'alchemist'] : roles);
+  }
   // 疯子看到在场的恶魔；小怪宝时给他看涡流
   s.lunaticFake = inPlay(s, 'lunatic') ? (lilMonsta(s) ? 'vortox' : s.demonChar) : null;
   const am = amnesiacChoices(s);
@@ -596,7 +626,7 @@ export function startDeal(s: GameState) {
   if (s.lunaticFake) lines.push(`疯子以为自己是【${roleName(s.lunaticFake)}】`);
   if (s.marionetteFake) lines.push(`提线木偶以为自己是【${roleName(s.marionetteFake)}】`);
   if (s.alchemistAbility) lines.push(`炼金术士拥有【${roleName(s.alchemistAbility)}】的能力`);
-  if (godfatherMod(s.script, s.seats.map((x) => x.role))) lines.push(`教父：外来者 ${s.godfatherDelta > 0 ? '+1' : '−1'}`);
+  if (godfatherModFor(s)) lines.push(`教父：外来者 ${s.godfatherDelta > 0 ? '+1' : '−1'}`);
   const etf = s.seats.find((x) => x.alignment === 'evil');
   if (etf) lines.push(`邪恶镇民（赏金猎人）：${seatName(etf.n)}${roleName(etf.role)}`);
   if (s.amnesiacAbility) lines.push(`失忆者的能力：像${roleName(s.amnesiacAbility)}一样`);

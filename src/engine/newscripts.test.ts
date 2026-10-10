@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { ROLES, type RoleId } from './roles';
 import { seeded } from './rng';
-import { balancedSetup, godfatherMod, newGame, randomSetup, refreshSetup, setCount, setEvilTownsfolk, setScript, startDeal } from './setup';
+import { balancedSetup, godfatherMod, newGame, randomSetup, refreshSetup, setAlchemistAbility, setCount, setEvilTownsfolk, setScript, startDeal } from './setup';
 import {
   alsaahirCorrect, alsaahirGuess, completeSlot, currentSlot, dealNext, execute, finishDay, harpyPunish, minionSeats, notWakingTonight,
   slotActor, type SlotPayload,
 } from './flow';
 import {
-  bountyChoices, dreamerChoices, flowergirlChoices, generalChoices, generalTruth, harpyPunishChoices, killPreview, stHarpyChoices, stPoisonChoices,
+  bountyChoices, dreamerChoices, flowergirlChoices, generalChoices, generalTruth, harpyPunishChoices, killPreview, plagueChoices, stHarpyChoices, stPoisonChoices,
 } from './info';
 import { recommend, whyPrefix } from './balance';
 import { believedRole, isEvil, isPoisoned, malfunction, seatOf, wakesAs } from './core';
@@ -62,6 +62,23 @@ describe('残阳高照：配板', () => {
     expect(seen.has('godfather')).toBe(true);
     expect(seen.has('alchemist')).toBe(true);
     expect(seen.has('fool')).toBe(true);
+  });
+
+  it('炼金术士的能力说书人可以换；换成重复的魔鬼代言人后教父的外来者修正不再生效', () => {
+    const s = newGame();
+    setScript(s, 'sunset');
+    s.count = 6;
+    s.seats = (['alchemist', 'tealady', 'fool', 'exorcist', 'devilsadvocate', 'zombuul'] as RoleId[]).map((r, i) => ({ n: i + 1, role: r, startRole: r, alive: true }));
+    s.demonChar = 'zombuul';
+    s.godfatherDelta = 1;
+    refreshSetup(s, seeded(1));
+    expect(s.alchemistAbility).toBe('godfather');
+    setAlchemistAbility(s, 'devilsadvocate', seeded(2));
+    expect(s.alchemistAbility).toBe('devilsadvocate');
+    // 6 人局本来 1 个外来者，教父修正没了就回到 1 个
+    expect(s.seats.filter((x) => ROLES[x.role].team === 'outsider')).toHaveLength(1);
+    refreshSetup(s, seeded(3));
+    expect(s.alchemistAbility).toBe('devilsadvocate');
   });
 
   it('炼金术士拿到不在场的爪牙能力，并在那个爪牙的位置醒', () => {
@@ -287,6 +304,46 @@ describe('王不见王：外来者死亡触发', () => {
     const seen = night(s, { stPoisoner: { kind: 'target', target: 3 } });
     expect(seen).toContain('stPoisoner');
     expect(isPoisoned(s, 3)).toBe(true);
+  });
+});
+
+describe('王不见王：瘟疫医生按官方规则可以拿任意爪牙能力', () => {
+  const ROLES9: RoleId[] = ['plaguedoctor', 'librarian', 'empath', 'dreamer', 'general', 'chef', 'savant', 'harpy', 'alhadikhia'];
+
+  it('五个爪牙都能选（男爵、提线木偶按相克规则）', () => {
+    const s = game('alvsal', ROLES9);
+    night(s);
+    day(s, 1);
+    const keys = plagueChoices(s, seeded(1)).map((c) => c.key).sort();
+    expect(keys).toEqual(['baron', 'harpy', 'marionette', 'poisoner', 'spy']);
+  });
+
+  it('男爵：至多两名镇民变成不在场的外来者', () => {
+    const s = game('alvsal', ROLES9);
+    night(s);
+    day(s, 1);
+    const c = plagueChoices(s, seeded(1)).find((x) => x.key === 'baron')!;
+    night(s, { plaguedoctor: { kind: 'plague', ...c.value } });
+    for (const b of c.value.baron!) {
+      expect(s.seats[b.seat - 1].role).toBe(b.role);
+      expect(ROLES[b.role].team).toBe('outsider');
+      expect(isEvil(s.seats[b.seat - 1])).toBe(false);
+    }
+  });
+
+  it('提线木偶：恶魔旁边的好人变成提线木偶，以为自己还是原来的角色', () => {
+    const s = game('alvsal', ROLES9);
+    night(s);
+    day(s, 1);
+    const c = plagueChoices(s, seeded(1)).find((x) => x.key === 'marionette')!;
+    // 恶魔 9号 两边最近的活人：8号（邪恶，不算）和 2号（1号已被处决）
+    expect(c.value.marionette).toBe(2);
+    const before = s.seats[c.value.marionette! - 1].role;
+    night(s, { plaguedoctor: { kind: 'plague', ...c.value } });
+    const m = s.seats[c.value.marionette! - 1];
+    expect(m.role).toBe('marionette');
+    expect(isEvil(m)).toBe(true);
+    expect(s.marionetteFake).toBe(before);
   });
 });
 

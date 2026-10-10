@@ -1866,22 +1866,45 @@ function PlagueStep({ g, s }: { g: Game; s: GameState }) {
   const rec = useMemo(() => recommend(choices, balance(s).score, stepRng(s, 1)), [choices, s]);
   const [sel, setSel] = useState(rec);
   const c = choices[sel] ?? choices[0];
-  const to = c.value.to;
+  const { to, baron, marionette } = c.value;
+  const d = demonSeat(s);
+  const items: ReactNode[] = to
+    ? [wake(to), '点「给他看」：你获得了间谍的能力，每晚可以看魔典。', sleep]
+    : baron
+      ? baron.flatMap((b) => [
+          <>
+            轻拍 <b>{seatName(b.seat)}</b>，点「给 {seatName(b.seat)} 看」：你现在是<b>【{roleName(b.role)}】</b>（仍然是善良的）。然后让他闭眼。
+          </>,
+        ])
+      : marionette
+        ? [
+            `${seatName(marionette)} 不会被告知，他以为自己还是${roleName(seatOf(s, marionette).role)}。`,
+            d ? wake(d.n) : '叫醒恶魔。',
+            <>
+              用手指向 <b>{seatName(marionette)}</b>，点「给恶魔看」：提线木偶。
+            </>,
+            sleep,
+          ]
+        : ['不需要叫醒任何人。', `从明晚起，网页会在${roleName(c.value.ability)}的位置提醒你自己选人。`];
   return (
     <>
       <p className="muted">瘟疫医生（{seatName(pd.n)}）死了：你（说书人）获得一个爪牙的能力，直到游戏结束。</p>
       <ChoicePanel s={s} choices={choices} sel={sel} rec={rec} onSel={(i) => i >= 0 && setSel(i)} moreLabel="换一个能力" />
-      <DoBox
-        items={
-          to
-            ? [wake(to), '点「给他看」：你获得了间谍的能力，每晚可以看魔典。', sleep]
-            : ['不需要叫醒任何人。', `从明晚起，网页会在${roleName(c.value.ability)}的位置提醒你自己选人。`]
-        }
-      />
+      <DoBox items={items} />
+      {baron && (
+        <div className="row">
+          {baron.map((b) => (
+            <button key={b.seat} className="btn btn-ghost grow" onClick={() => ui.showCard({ title: '你现在是', big: [roleName(b.role)], team: 'outsider', ability: ROLES[b.role].ability })}>
+              <Icon name="eye" /> 给 {seatName(b.seat)} 看
+            </button>
+          ))}
+        </div>
+      )}
       <Tips role="plaguedoctor" />
       <BottomBar wide>
         {to && <CardButton onClick={() => ui.showCard({ title: '你获得了这个能力', big: ['间谍'], ability: ROLES.spy.ability })} />}
-        <button className="btn btn-primary grow" onClick={() => done({ kind: 'plague', ability: c.value.ability, to })}>
+        {marionette && <CardButton label="给恶魔看" onClick={() => ui.showCard({ title: '这名玩家是你的', big: ['提线木偶'] })} />}
+        <button className="btn btn-primary grow" onClick={() => done({ kind: 'plague', ...c.value })}>
           完成，下一步
         </button>
       </BottomBar>

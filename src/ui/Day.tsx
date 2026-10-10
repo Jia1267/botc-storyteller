@@ -270,6 +270,7 @@ function ExecSheet({ g, onClose }: { g: Game; onClose: () => void }) {
         {pcChoices && !mmDay && (
           <div className="card card-warn stack" style={{ gap: 8 }}>
             <b>和平主义者在场：{seatName(e)} 是善良的，你可以让他被处决但不死</b>
+            <p className="dim">和平主义者就是给你用来平衡的：局势偏邪恶、好人快撑不住时，可以让他不死。</p>
             <ChoicePanel s={s} choices={pcChoices} sel={pcSel ?? pcRec} rec={pcRec} onSel={(i) => i >= 0 && setPcSel(i)} moreLabel="看另一个选择" />
           </div>
         )}
