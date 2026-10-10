@@ -196,7 +196,7 @@ export function ChoicePanel<T>({
           </div>
           <div className="answer">{cur.label}</div>
           <div className="why">
-            {sel === rec && choices.length > 1 ? whyPrefix(score, choices.length, cur.lean) : ''}
+            {sel === rec && choices.length > 1 ? whyPrefix(score, choices.map((c) => c.lean), cur.lean) : ''}
             {cur.reason}
             {!cur.truth && ' 【这是假信息】'}
           </div>

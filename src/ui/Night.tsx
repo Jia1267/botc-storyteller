@@ -5,13 +5,13 @@ import {
   aliveNeighbors, believedRole, demonSeat, diedOnDay, seatOf, isDemonSeat, isEvil, isPoisoned, lilMonsta, malfunction, mustLie, scriptOf, seatName, teamOf,
 } from '../engine/core';
 import {
-  completeSlot, currentSlot, effectiveSlot, godfatherOutsiders, hadikhiaPreview, minionSeats, previewImp, shouldRun, slotActor, slotsFor,
-  type SlotPayload,
+  completeSlot, currentSlot, effectiveSlot, godfatherOutsiders, hadikhiaPreview, minionSeats, notWakingTonight, previewImp, shouldRun, slotActor,
+  slotsFor, type SlotPayload,
 } from '../engine/flow';
 import {
   balloonistChoices, bountyChoices, chambermaidChoices, chambermaidCount, chefCount, dreamLabel, dreamerChoices, duchessChoices, duchessCount,
   empathCount, flowergirlChoices, fortuneChoices, generalChoices, killPreview, legalNumbers, lilKillChoices, mayorBounceChoices, numberChoices,
-  pairChoices, pairVerdict, pixieChoices, plagueChoices, revealChoices, revealVerdict, seamstressChoices, starpassChoices, stPoisonChoices, sweetheartChoices,
+  pairChoices, pairVerdict, pixieChoices, plagueChoices, revealChoices, revealVerdict, seamstressChoices, starpassChoices, stHarpyChoices, stPoisonChoices, sweetheartChoices,
   widowInformChoices, type PairInfo, type PairKind,
 } from '../engine/info';
 import { SLOT_TITLE, dawnLines, librarianZeroLines, slotLines } from '../engine/scripts';
@@ -228,8 +228,9 @@ function SlotBody({ g, s, slot, actor }: { g: Game; s: GameState; slot: SlotId; 
     case 'marionette':
       return <MarionetteStep g={g} s={s} actor={actor!} />;
     case 'harpy':
+      return <HarpyStep g={g} s={s} actor={actor!} />;
     case 'stHarpy':
-      return <HarpyStep g={g} s={s} actor={slot === 'harpy' ? actor : undefined} />;
+      return <StHarpyStep g={g} s={s} />;
     case 'stPoisoner':
       return <StPoisonStep g={g} s={s} />;
     case 'dreamer':
@@ -272,6 +273,7 @@ function SkipStep({ g }: { g: Game }) {
 
 function DuskStep({ g, s }: { g: Game; s: GameState }) {
   const done = useDone(g);
+  const sleepers = notWakingTonight(s);
   return (
     <>
       <SayBox lines={slotLines('dusk', s.style)} title="对所有人说" s={s} onStyle={toggleStyle(g)} />
@@ -282,6 +284,14 @@ function DuskStep({ g, s }: { g: Game; s: GameState }) {
           s.night === 1 ? '第一晚恶魔不杀人。' : null,
         ]}
       />
+      {sleepers.length > 0 && (
+        <div className="card stack" style={{ gap: 6 }}>
+          <b>今晚不叫醒（按规则，不是漏了）</b>
+          {sleepers.map((t) => (
+            <p key={t}>{t}</p>
+          ))}
+        </div>
+      )}
       <BottomBar wide>
         <button className="btn btn-primary btn-block" onClick={() => done({ kind: 'none' })}>
           所有人都闭眼了
@@ -1380,37 +1390,38 @@ function MarionetteStep({ g, s, actor }: StepProps) {
   );
 }
 
-/** 鹰身女妖（或瘟疫医生死后说书人自己的鹰身女妖能力） */
-function HarpyStep({ g, s, actor }: { g: Game; s: GameState; actor?: Seat }) {
+/** 告诉被鹰身女妖选中的第一个人 */
+function HarpyInform({ mad, second }: { mad: number; second: number }) {
+  return (
+    <DoBox
+      title="然后告诉第一个人"
+      items={[
+        wake(mad),
+        '点「给他看」：鹰身女妖选择了你。',
+        <>
+          用手指向 <b>{seatName(second)}</b>：明天你要疯狂地证明他是邪恶的，否则你们之中可能有人死。
+        </>,
+        sleep,
+      ]}
+    />
+  );
+}
+
+/** 鹰身女妖：由她自己选两个人，你点出来 */
+function HarpyStep({ g, s, actor }: StepProps) {
   const done = useDone(g);
   const ui = useUi();
   const [t, setT] = useState<number[]>([]);
-  const bad = actor ? malfunction(s, actor.n) : false;
+  const bad = malfunction(s, actor.n);
   const [mad, second] = t;
   return (
     <>
-      {actor ? (
-        <>
-          <DoBox items={[wake(actor.n), '让她先指第一个人，再指第二个人。你按顺序点出来。', sleep]} />
-          <SayBox lines={slotLines('harpy', s.style)} title="小声说" s={s} onStyle={toggleStyle(g)} />
-        </>
-      ) : (
-        <p className="muted">瘟疫医生死后你获得了鹰身女妖的能力：由你自己选两个人，不用叫醒鹰身女妖。</p>
-      )}
+      <DoBox items={[wake(actor.n), '让她先指第一个人，再指第二个人。你按顺序点出来。', sleep]} />
+      <SayBox lines={slotLines('harpy', s.style)} title="小声说" s={s} onStyle={toggleStyle(g)} />
       <SeatPicker s={s} selected={t} max={2} onChange={setT} label="先点第一个人（要疯狂的人），再点第二个人" />
       {t.length === 2 && (
         <Reveal key={t.join()}>
-          <DoBox
-            title="然后告诉第一个人"
-            items={[
-              wake(mad),
-              '点「给他看」：鹰身女妖选择了你。',
-              <>
-                用手指向 <b>{seatName(second)}</b>：明天你要疯狂地证明他是邪恶的，否则你们之中可能有人死。
-              </>,
-              sleep,
-            ]}
-          />
+          <HarpyInform mad={mad} second={second} />
           {bad && <p className="dim">她中毒/醉酒：照常走流程，但明天不会有人因此死亡。</p>}
         </Reveal>
       )}
@@ -1419,6 +1430,40 @@ function HarpyStep({ g, s, actor }: { g: Game; s: GameState; actor?: Seat }) {
         {t.length === 2 && <CardButton onClick={() => ui.showCard({ title: '这个角色选择了你', big: ['鹰身女妖'] })} />}
         <button className="btn btn-primary grow" disabled={t.length < 2} onClick={() => done({ kind: 'harpy', mad, second })}>
           {t.length === 2 ? `完成：${seatName(mad)} 要证明 ${seatName(second)} 是邪恶的` : '先按顺序点出两个人'}
+        </button>
+      </BottomBar>
+    </>
+  );
+}
+
+/** 瘟疫医生死后说书人自己的鹰身女妖能力：网页推荐两个人 */
+function StHarpyStep({ g, s }: { g: Game; s: GameState }) {
+  const done = useDone(g);
+  const ui = useUi();
+  const choices = useMemo(() => stHarpyChoices(s, stepRng(s)), [s]);
+  const rec = useMemo(() => recommend(choices, balance(s).score, stepRng(s, 1)), [choices, s]);
+  const [sel, setSel] = useState(rec);
+  const [manual, setManual] = useState<number[]>([]);
+  const pick = sel >= 0 ? choices[sel]?.value : manual.length === 2 ? { mad: manual[0], second: manual[1] } : undefined;
+  return (
+    <>
+      <p className="muted">瘟疫医生死后你获得了鹰身女妖的能力：由你选两个人，不用叫醒鹰身女妖。</p>
+      <ChoicePanel
+        s={s}
+        choices={choices}
+        sel={sel}
+        rec={rec}
+        onSel={setSel}
+        manual={<SeatPicker s={s} selected={manual} max={2} onChange={setManual} label="先点第一个人（要疯狂的人），再点第二个人" />}
+        manualLabel="自己选"
+        moreLabel="换两个人"
+      />
+      {pick && <HarpyInform mad={pick.mad} second={pick.second} />}
+      <p className="dim">明天白天由你判断第一个人有没有做到，网页会在投票区旁边问你。</p>
+      <BottomBar wide>
+        {pick && <CardButton onClick={() => ui.showCard({ title: '这个角色选择了你', big: ['鹰身女妖'] })} />}
+        <button className="btn btn-primary grow" disabled={!pick} onClick={() => pick && done({ kind: 'harpy', mad: pick.mad, second: pick.second })}>
+          {pick ? `完成：${seatName(pick.mad)} 要证明 ${seatName(pick.second)} 是邪恶的` : '先按顺序点出两个人'}
         </button>
       </BottomBar>
     </>

@@ -3,11 +3,13 @@ import { ROLES, type RoleId } from './roles';
 import { seeded } from './rng';
 import { balancedSetup, godfatherMod, newGame, randomSetup, refreshSetup, setCount, setEvilTownsfolk, setScript, startDeal } from './setup';
 import {
-  alsaahirCorrect, alsaahirGuess, completeSlot, currentSlot, dealNext, execute, finishDay, harpyPunish, minionSeats,
+  alsaahirCorrect, alsaahirGuess, completeSlot, currentSlot, dealNext, execute, finishDay, harpyPunish, minionSeats, notWakingTonight,
   slotActor, type SlotPayload,
 } from './flow';
-import { bountyChoices, dreamerChoices, flowergirlChoices, generalChoices, generalTruth, harpyPunishChoices, killPreview, stPoisonChoices } from './info';
-import { recommend } from './balance';
+import {
+  bountyChoices, dreamerChoices, flowergirlChoices, generalChoices, generalTruth, harpyPunishChoices, killPreview, stHarpyChoices, stPoisonChoices,
+} from './info';
+import { recommend, whyPrefix } from './balance';
 import { believedRole, isEvil, isPoisoned, malfunction, seatOf, wakesAs } from './core';
 import type { ScriptId } from './editions';
 import type { GameState, SlotId } from './types';
@@ -85,6 +87,15 @@ describe('残阳高照：僵怖', () => {
     expect(seen).toContain('undertaker');
     execute(s, 5);
     expect(s.winner).toBe('good');
+  });
+
+  it('入夜时说明谁今晚不醒：僵怖（今天有人死）、教父（没有外来者死）', () => {
+    const s = game('sunset', ['undertaker', 'flowergirl', 'recluse', 'godfather', 'zombuul', 'exorcist']);
+    night(s);
+    day(s, 1);
+    const why = notWakingTonight(s);
+    expect(why.some((t) => t.startsWith('僵怖（5号）今晚不醒') && t.includes('1号'))).toBe(true);
+    expect(why.some((t) => t.startsWith('教父（4号）今晚不醒'))).toBe(true);
   });
 
   it('白天没人死，僵怖醒来杀人', () => {
@@ -303,6 +314,21 @@ describe('王不见王：白天与信息', () => {
     const c = cs[recommend(cs, 0, seeded(4))];
     expect(isEvil(seatOf(s, c.value))).toBe(false);
     expect(cs.some((x) => x.key === 'demon' && x.lean === 2)).toBe(true);
+  });
+
+  it('说书人的鹰身女妖能力：有推荐，第一个人是好人；指认恶魔算大帮善良', () => {
+    const s = game('alvsal', AL);
+    const cs = stHarpyChoices(s, seeded(5));
+    const c = cs[recommend(cs, 0, seeded(6))];
+    expect(isEvil(seatOf(s, c.value.mad))).toBe(false);
+    expect(cs.find((x) => x.key === 'demon')).toMatchObject({ lean: 2, value: { second: 9 } });
+  });
+
+  it('推荐理由：想帮的一方没有选项可帮时，如实说挑了影响最小的', () => {
+    // 邪恶优势时想帮善良，但瘟疫医生的选项全是帮邪恶的
+    expect(whyPrefix(-24, [0, -1, -2], 0)).toContain('这里的选项都不帮善良');
+    expect(whyPrefix(-24, [0, 1, -1], 1)).toContain('稍微帮一下善良方');
+    expect(whyPrefix(40, [0, 1, 2], 0)).toContain('这里的选项都不帮邪恶');
   });
 
   it('戏法师：所有爪牙和恶魔都说对才赢', () => {

@@ -643,6 +643,39 @@ export function stPoisonChoices(s: GameState, rng: Rng): Choice<number>[] {
   return out;
 }
 
+/** 瘟疫医生死后，说书人用鹰身女妖能力选两个人：第一个人要疯狂地证明第二个人是邪恶的 */
+export interface HarpyPick {
+  mad: number;
+  second: number;
+}
+export function stHarpyChoices(s: GameState, rng: Rng): Choice<HarpyPick>[] {
+  const alive = s.seats.filter((x) => x.alive);
+  const good = alive.filter((x) => !isEvil(x));
+  const lbl = (p: HarpyPick) => `${seatName(p.mad)} 要证明 ${seatName(p.second)} 是邪恶的`;
+  const out: Choice<HarpyPick>[] = [];
+  const mad = pickOr(good, rng);
+  if (!mad) return out;
+  const others = alive.filter((x) => x.n !== mad.n);
+  const anyone = pickOr(others, rng);
+  if (anyone)
+    out.push({ key: 'mid', label: lbl({ mad: mad.n, second: anyone.n }), value: { mad: mad.n, second: anyone.n }, lean: 0, truth: true, standard: true, reason: '随便两个人，标准做法。' });
+  // 拿信息最有用的好人去指认另一个好人：要么冤枉好人，要么自己可能死
+  const strong = [...good].sort((a, b) => ROLES[b.role].weight - ROLES[a.role].weight)[0];
+  const victim = pickOr(good.filter((x) => x.n !== strong.n), rng);
+  if (victim)
+    out.push({
+      key: 'frame', label: lbl({ mad: strong.n, second: victim.n }), value: { mad: strong.n, second: victim.n }, lean: -1, truth: true,
+      reason: `${roleName(strong.role)}被逼着指认好人 ${seatName(victim.n)}：要么冤枉好人，要么自己可能死，帮邪恶。`,
+    });
+  const minion = pickOr(others.filter((x) => isEvil(x) && !isDemonSeat(s, x.n)), rng);
+  if (minion)
+    out.push({ key: 'minion', label: lbl({ mad: mad.n, second: minion.n }), value: { mad: mad.n, second: minion.n }, lean: 1, truth: true, reason: `${seatName(minion.n)} 真的是爪牙：等于逼好人去指认真凶，帮善良。` });
+  const demon = others.find((x) => isDemonSeat(s, x.n));
+  if (demon)
+    out.push({ key: 'demon', label: lbl({ mad: mad.n, second: demon.n }), value: { mad: mad.n, second: demon.n }, lean: 2, truth: true, reason: `${seatName(demon.n)} 就是恶魔：等于逼好人去指认恶魔，大帮善良。` });
+  return out;
+}
+
 /**
  * 鹰身女妖：第一个人没做到疯狂，谁死。
  * 标准做法是只罚要疯狂的那个人；两人都死是重罚，算帮邪恶。

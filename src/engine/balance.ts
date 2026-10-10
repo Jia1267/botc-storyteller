@@ -127,17 +127,21 @@ export function leanTag(lean: number): string {
 }
 
 /** 推荐理由的开头一句 */
-export function whyPrefix(score: number, choicesCount: number, pickedLean = 0): string {
-  if (choicesCount <= 1) return '只有这一种合规的给法。';
+export function whyPrefix(score: number, leans: number[], pickedLean = 0): string {
+  if (leans.length <= 1) return '只有这一种合规的给法。';
   const t = targetLean(score);
   const sign = score > 0 ? `+${score}` : `${score}`;
+  // 想帮的那一方，这里一个能帮的选项都没有：如实说挑了影响最小的
+  const noneFor = (side: number) => (side > 0 ? Math.max(...leans) <= 0 : Math.min(...leans) >= 0);
   const dir =
-    t < 0
-      ? '这次稍微帮一下邪恶方'
-      : t > 0
-        ? '这次稍微帮一下善良方'
-        : pickedLean === 0
-          ? '按标准做法来'
-          : '两边都可以，这次随机挑了一个';
+    t !== 0 && noneFor(t)
+      ? `本想帮一下${t > 0 ? '善良' : '邪恶'}方，但这里的选项都不帮${t > 0 ? '善良' : '邪恶'}，挑了影响最小的一个`
+      : t < 0
+        ? '这次稍微帮一下邪恶方'
+        : t > 0
+          ? '这次稍微帮一下善良方'
+          : pickedLean === 0
+            ? '按标准做法来'
+            : '两边都可以，这次随机挑了一个';
   return `局势：${scoreLabel(score)}（${sign}），${dir}。`;
 }

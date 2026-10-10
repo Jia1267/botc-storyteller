@@ -24,6 +24,21 @@ const ROLE_SLOTS: SlotId[] = [
 /** 今天白天有外来者死了（教父当晚杀人） */
 export const outsiderDiedToday = (s: GameState) => diedOnDay(s, s.night - 1).some((x) => teamOf(x.role) === 'outsider');
 
+/** 今晚本该醒、但按规则不醒的角色和原因（入夜时告诉说书人，免得以为网页漏了一步） */
+export function notWakingTonight(s: GameState): string[] {
+  if (s.night <= 1) return [];
+  const order = slotsFor(s);
+  const today = diedOnDay(s, s.night - 1);
+  const out: string[] = [];
+  const z = demonSeat(s);
+  if (order.includes('zombuul') && z?.role === 'zombuul' && today.length)
+    out.push(`僵怖（${seatName(z.n)}）今晚不醒：今天白天有人死了（${today.map((x) => seatName(x.n)).join('、')}）。`);
+  if (order.includes('godfather') && !outsiderDiedToday(s))
+    for (const x of s.seats.filter((y) => y.alive && wakesAs(s, y, 'godfather')))
+      out.push(`${x.role === 'godfather' ? '教父' : '炼金术士（有教父的能力）'}（${seatName(x.n)}）今晚不醒：今天白天没有外来者死亡。`);
+  return out;
+}
+
 /** 某人在"今天白天或今晚"死的（心上人、理发师、瘟疫医生） */
 const diedJustNow = (s: GameState, x: Seat) =>
   !x.alive && !!x.death && !x.death.sick && ((x.death.when === 'day' && x.death.night === s.night - 1) || (x.death.when === 'night' && x.death.night === s.night));
