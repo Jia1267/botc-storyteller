@@ -822,7 +822,9 @@ function LilMonstaStep({ g, s }: { g: Game; s: GameState }) {
   const done = useDone(g);
   const minions = s.seats.filter((x) => x.alive && ROLES[x.role].team === 'minion');
   const locked = s.babysitterLocked && s.babysitter ? [s.babysitter] : null;
-  const [bs, setBs] = useState<number[]>(locked ?? (s.babysitter && minions.some((m) => m.n === s.babysitter) ? [s.babysitter] : []));
+  // 每晚都要重新问爪牙，不默认填昨晚的人
+  const [bs, setBs] = useState<number[]>(locked ?? []);
+  const last = s.night > 1 && s.babysitter && !locked ? s.babysitter : null;
   const lunatic = s.seats.find((x) => x.role === 'lunatic' && x.alive);
   const nonMinions = s.seats.filter((x) => !minions.includes(x)).map((x) => x.n);
   return (
@@ -835,6 +837,10 @@ function LilMonstaStep({ g, s }: { g: Game; s: GameState }) {
           locked ? (
             <>
               告诉他们：小怪宝今晚由 <b>{locked[0]}号</b>（红唇女郎）照看。
+            </>
+          ) : last ? (
+            <>
+              今晚要<b>重新问</b>他们由谁照看小怪宝（只能是爪牙，可以换人；昨晚是 {last}号）。你在下面点出来。
             </>
           ) : (
             '让他们商量，指出由谁照看小怪宝（只能是爪牙）。你在下面点出来。'

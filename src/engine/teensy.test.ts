@@ -315,6 +315,26 @@ describe('窃窃私语', () => {
     expect(fishermanChoices(s, 3, seeded(5)).length).toBeGreaterThan(0);
   });
 
+  it('中毒博学者：标准选项两条都假但不把人的阵营说反；重度冤枉的标"大帮邪恶"', () => {
+    for (let k = 0; k < 40; k++) {
+      const s = game('whispers', ['artist', 'savant', 'fisherman', 'widow', 'leviathan', 'mutant'], 'leviathan', { widowPoison: 2 });
+      const cs = savantChoices(s, 2, seeded(100 + k));
+      const std = cs.find((c) => c.standard)!;
+      expect(std.truth).toBe(false);
+      // 不应出现把好人说成爪牙/恶魔、或把邪恶说成镇民/外来者的陈述
+      for (const line of std.value) {
+        const m = line.match(/^(\d+)号 是(镇民|外来者|爪牙|恶魔)$/);
+        if (!m) continue;
+        const real = s.seats[Number(m[1]) - 1];
+        const claimEvil = m[2] === '爪牙' || m[2] === '恶魔';
+        const realEvil = real.role === 'widow' || real.role === 'leviathan';
+        expect(claimEvil).toBe(realEvil);
+      }
+      const harsh = cs.find((c) => c.key === 'harsh');
+      if (harsh) expect(harsh.lean).toBe(-2);
+    }
+  });
+
   it('疯子以为是利维坦：之后的夜晚不醒', () => {
     const s = game('whispers', ['artist', 'savant', 'lunatic', 'goblin', 'leviathan', 'mutant'], 'leviathan');
     finishNight(s);

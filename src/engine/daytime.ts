@@ -10,6 +10,8 @@ interface Stmt {
   truth: boolean;
   /** 真话直接指向邪恶 */
   strong: boolean;
+  /** 假话把某个具体的人阵营说反了（好人说成邪恶 / 邪恶说成好人）：重度误导 */
+  harsh?: boolean;
 }
 
 const typeOf = (s: GameState, n: number): Team => (isDemonSeat(s, n) ? 'demon' : ROLES[seatOf(s, n).role].team);
@@ -30,7 +32,11 @@ export function statements(s: GameState, actorN: number, rng: Rng): Stmt[] {
     const x = pick(others, rng);
     const real = typeOf(s, x);
     const claim = rng() < 0.5 ? real : pick(BALLOON_TYPES.filter((t) => t !== real), rng);
-    out.push({ text: `${x}号 是${TEAM_NAME[claim]}`, truth: claim === real, strong: claim === real && (real === 'minion' || real === 'demon') });
+    const evilT = (t: Team) => t === 'minion' || t === 'demon';
+    out.push({
+      text: `${x}号 是${TEAM_NAME[claim]}`, truth: claim === real, strong: claim === real && evilT(real),
+      harsh: claim !== real && evilT(claim) !== evilT(real),
+    });
   }
   const outs = s.seats.filter((x) => ROLES[x.role].team === 'outsider').length;
   const k = rng() < 0.5 ? outs : Math.max(0, outs + (rng() < 0.5 ? 1 : -1));
@@ -71,9 +77,16 @@ export function savantChoices(s: GameState, actorN: number, rng: Rng): Choice<[s
   }
   if (malfunction(s, actorN) || mustLie(s, 'savant')) {
     for (const c of out) c.standard = false;
-    if (falses.length >= 4) {
-      const p = pair(falses[2], falses[3]);
-      out.push({ key: 'bothFalse', label: label(p), value: p, lean: 0, truth: false, standard: true, reason: '他中毒/醉酒：两条都是假的。' });
+    // 标准假话要温和：不把某个具体的人说成相反阵营；重度冤枉/洗白的单独列出
+    const mild = falses.filter((x) => !x.harsh);
+    const harsh = falses.filter((x) => x.harsh);
+    if (mild.length >= 2) {
+      const p = pair(mild[0], mild[1]);
+      out.push({ key: 'bothFalse', label: label(p), value: p, lean: 0, truth: false, standard: true, reason: '他中毒/醉酒：两条都是假的，但不点名冤枉谁，温和的误导。' });
+    }
+    if (harsh.length && mild.length) {
+      const p = pair(harsh[0], mild[mild.length - 1]);
+      out.push({ key: 'harsh', label: label(p), value: p, lean: -2, truth: false, reason: `两条都是假的，其中「${harsh[0].text}」把一个人的阵营说反了，重度误导，大帮邪恶。` });
     }
     if (mustLie(s, 'savant')) return out.filter((c) => !c.truth).map((c) => ({ ...c, reason: `涡流在场，只能给假信息。${c.reason}` }));
   }

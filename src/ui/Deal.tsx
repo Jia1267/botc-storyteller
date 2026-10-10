@@ -57,7 +57,7 @@ export function DealScreen({ g }: { g: Game }) {
             <p>
               千万别说漏。
               {seat.role === 'lunatic'
-                ? '他夜里选的人不会死，真恶魔会被告知他是谁、选了谁。'
+                ? `他夜里选的人不会死，${lilMonsta(s) ? '爪牙们' : '真恶魔'}会被告知他是谁、选了谁。`
                 : `之后夜里也按【${roleName(shown)}】叫醒他。`}
             </p>
             {seat.role === 'lunatic' && lilMonsta(s) && <p className="dim">小怪宝在场，按你们的规矩给他看涡流。</p>}
