@@ -35,6 +35,24 @@ export const SLOT_TITLE: Record<SlotId, string> = {
   balloonist: '气球驾驶员',
   bureaucrat: '官员（旅行者）',
   thief: '窃贼（旅行者）',
+  alchemist: '炼金术士',
+  godfather: '教父',
+  devilsadvocate: '魔鬼代言人',
+  exorcist: '驱魔人',
+  zombuul: '僵怖',
+  flowergirl: '卖花女孩',
+  marionette: '恶魔得知提线木偶',
+  harpy: '鹰身女妖',
+  stHarpy: '说书人的鹰身女妖能力',
+  stPoisoner: '说书人的投毒者能力',
+  dreamer: '筑梦师',
+  seamstress: '女裁缝',
+  bountyhunter: '赏金猎人',
+  general: '将军',
+  alhadikhia: '哈迪寂亚',
+  sweetheart: '心上人死了：选一人醉酒',
+  barber: '理发师死了：恶魔换角色',
+  plaguedoctor: '瘟疫医生死了：你获得能力',
 };
 
 const SLOT_LINES: Partial<Record<SlotId, Lines>> = {
@@ -150,6 +168,62 @@ const SLOT_LINES: Partial<Record<SlotId, Lines>> = {
     simple: ['这名玩家的类型和你之前得知的都不同。'],
     atmo: ['热气球在夜空中升起，你看见了——', '这个人。'],
   },
+  alchemist: {
+    simple: ['你拥有这个爪牙的能力。'],
+    atmo: ['坩埚里冒出了危险的气味……', '你拥有这个爪牙的能力。'],
+  },
+  godfather: {
+    simple: ['这些外来者在场。'],
+    atmo: ['家族的账本上记着这些名字——', '这些外来者在场。'],
+  },
+  devilsadvocate: {
+    simple: ['请选择一名存活的玩家：如果他明天被处决，他不会死。'],
+    atmo: ['你要为谁辩护？明天的绞索会为他松开。'],
+  },
+  exorcist: {
+    simple: ['请选择一名玩家。'],
+    atmo: ['你举起圣物……今晚要驱逐谁身上的邪祟？'],
+  },
+  zombuul: {
+    simple: ['请选择一名玩家，他会死亡。'],
+    atmo: ['坟墓里的东西醒了……今夜，谁会被拖进黑暗？'],
+  },
+  flowergirl: {
+    simple: ['今天白天，恶魔有没有投过票——'],
+    atmo: ['花篮里有一朵花枯萎了……', '今天，恶魔有没有举起过手——'],
+  },
+  marionette: {
+    simple: ['这名玩家是你的提线木偶。'],
+    atmo: ['看，这一位被你牵着线——他还以为自己是好人。'],
+  },
+  harpy: {
+    simple: ['请选择两名玩家：先指第一个，再指第二个。'],
+    atmo: ['鹰身女妖张开了翅膀……选出两个人。'],
+  },
+  dreamer: {
+    simple: ['请选择一名玩家。', '他是这两个角色之一。'],
+    atmo: ['你在梦里看见了一个人……', '他是这两者之一——'],
+  },
+  seamstress: {
+    simple: ['你要用能力吗？要用就选两名玩家。'],
+    atmo: ['针线在你手中穿梭……要缝合哪两个人的命运？'],
+  },
+  bountyhunter: {
+    simple: ['这名玩家是邪恶的。'],
+    atmo: ['悬赏令上的画像——', '这个人，是邪恶的。'],
+  },
+  general: {
+    simple: ['这是我认为现在占优的阵营——'],
+    atmo: ['将军，战局如何？依我看——'],
+  },
+  alhadikhia: {
+    simple: ['请选择三名玩家。'],
+    atmo: ['哈迪寂亚睁开了眼……选出三个人，让他们自己决定生死。'],
+  },
+  barber: {
+    simple: ['理发师死了。你可以选择两名玩家交换角色，也可以不换。'],
+    atmo: ['理发师的剃刀落进了你的手里……要不要换掉两个人的脸？'],
+  },
 };
 
 export function slotLines(slot: SlotId, style: 'simple' | 'atmo'): string[] {
@@ -160,13 +234,19 @@ export function librarianZeroLines(style: 'simple' | 'atmo'): string[] {
   return style === 'simple' ? ['场上没有外来者。'] : ['书架深处的名单上……一个外来者也没有。'];
 }
 
-export function dawnLines(deaths: number[], style: 'simple' | 'atmo', extra: { fear?: boolean; leviathanDay?: number } = {}): string[] {
+export function dawnLines(
+  deaths: number[], style: 'simple' | 'atmo',
+  extra: { fear?: boolean; leviathanDay?: number; hadikhia?: { picks: number[]; alive: boolean[] }; banshee?: number } = {},
+): string[] {
   const list = deaths.map((n) => `${seatName(n)}`).join('、');
   const out =
     style === 'simple'
       ? ['天亮了，大家请睁眼。', deaths.length ? `昨晚，${list} 死了。` : '昨晚是平安夜，没有人死亡。']
       : ['晨光刺破了黑夜，大家请睁开眼睛。', deaths.length ? `可惜，昨夜 ${list} 再也没有醒来……` : '昨夜，钟楼小镇平安无事。'];
   if (extra.fear) out.push('恐惧之灵选择了一名新的目标。');
+  if (extra.hadikhia?.picks.length)
+    out.push(`恶魔昨晚选择了 ${extra.hadikhia.picks.map((n) => seatName(n)).join('、')}：${extra.hadikhia.picks.map((n, i) => `${seatName(n)}${extra.hadikhia!.alive[i] ? '活着' : '死了'}`).join('，')}。`);
+  if (extra.banshee) out.push(`${seatName(extra.banshee)} 是报丧女妖，被恶魔杀死了！从现在起她每天可以提名两次，投票时算两票。`);
   if (extra.leviathanDay === 1) out.push('另外：利维坦在场。');
   else if (extra.leviathanDay) out.push(`今天是第 ${extra.leviathanDay} 天，利维坦仍在场。`);
   return out;
@@ -190,8 +270,9 @@ export function nominationLines(style: 'simple' | 'atmo'): string[] {
   ];
 }
 
-export function executionLines(n: number | null, style: 'simple' | 'atmo'): string[] {
+export function executionLines(n: number | null, style: 'simple' | 'atmo', survived = false): string[] {
   if (n === null) return style === 'simple' ? ['今天没有人被处决。'] : ['今天，绞刑架空着。没有人被处决。'];
+  if (survived) return style === 'simple' ? [`${seatName(n)} 被处决了，但他没有死。`] : ['绞索收紧……又松开了。', `${seatName(n)} 被处决了，但他没有死。`];
   return style === 'simple' ? [`${seatName(n)} 被处决了。`] : ['绞索收紧……', `${seatName(n)} 被处决了。`];
 }
 

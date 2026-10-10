@@ -1,5 +1,5 @@
 import { isEvilTeam, ROLES } from './roles';
-import { aliveSeats, isEvil, isTraveller } from './core';
+import { aliveSeats, isDemonSeat, isEvil, isTraveller } from './core';
 import type { Rng } from './rng';
 import type { GameState } from './types';
 
@@ -49,7 +49,7 @@ export function balance(s: GameState): Balance {
   parts.push({ name: '配板', value: setupPart, text: `配板${setupLabel(s.setupZ)}` });
 
   if (s.phase !== 'setup' && s.phase !== 'deal') {
-    const evil0 = s.seats.filter((x) => isEvilTeam(ROLES[x.startRole].team)).length;
+    const evil0 = s.seats.filter((x) => !x.traveller && (x.alignment ? x.alignment === 'evil' : isEvilTeam(ROLES[x.startRole].team))).length;
     const good0 = s.count - evil0;
     const alive = aliveSeats(s).filter((x) => !isTraveller(x));
     const aliveEvil = alive.filter(isEvil).length;
@@ -68,7 +68,7 @@ export function balance(s: GameState): Balance {
     let minionExp = 0;
     for (const x of alive) {
       const e = s.exposure[x.n] ?? 0;
-      if (x.role === 'imp') demonExp += e;
+      if (isDemonSeat(s, x.n)) demonExp += e;
       else if (ROLES[x.role].team === 'minion') minionExp += e;
     }
     const is = clamp(demonExp * 6 + minionExp * 3 + s.infoTrue * 0.5 - s.infoFalse * 1.5, -30, 30);

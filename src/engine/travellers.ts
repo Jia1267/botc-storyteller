@@ -57,7 +57,7 @@ export function exileThreshold(s: GameState): number {
 }
 
 export function exile(s: GameState, n: number) {
-  kill(s, n, 'day', '被放逐');
+  kill(s, n, 'day', '被放逐', true);
   addLog(s, 'day', `${seatName(n)}（${roleName(seatOf(s, n).role)}）被放逐`);
 }
 

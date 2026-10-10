@@ -8,13 +8,16 @@ export interface Seat {
   /** 开局时的角色（红唇女郎/爪牙变成恶魔后，复盘要用） */
   startRole: RoleId;
   alive: boolean;
-  death?: { night: number; when: 'night' | 'day'; cause: string };
+  /** sick = 死的时候中毒/醉酒（心上人、理发师、瘟疫医生的能力不触发） */
+  death?: { night: number; when: 'night' | 'day'; cause: string; sick?: boolean };
   /** 一次性能力已用（贞洁者、猎手、艺术家、渔夫） */
   used?: boolean;
   /** 旅行者：阵营由说书人定；坐在 after 号的顺时针下一位 */
   traveller?: { alignment: 'good' | 'evil'; after: number };
   /** 旅行者中途离场 */
   left?: boolean;
+  /** 阵营和角色类型不一致：赏金猎人的邪恶镇民、理发师换角色后保留原阵营 */
+  alignment?: 'good' | 'evil';
 }
 
 export type Phase = 'setup' | 'deal' | 'night' | 'day' | 'end';
@@ -26,7 +29,10 @@ export type SlotId =
   | 'ravenkeeper' | 'undertaker' | 'dawn'
   | 'lunatic' | 'lilmonsta' | 'widow' | 'fearmonger' | 'pixie' | 'chambermaid' | 'vortox'
   | 'duchess' | 'amnesiac' | 'balloonist'
-  | 'bureaucrat' | 'thief';
+  | 'bureaucrat' | 'thief'
+  | 'alchemist' | 'godfather' | 'devilsadvocate' | 'exorcist' | 'zombuul' | 'flowergirl'
+  | 'marionette' | 'harpy' | 'stHarpy' | 'stPoisoner' | 'dreamer' | 'seamstress' | 'bountyhunter' | 'general'
+  | 'alhadikhia' | 'sweetheart' | 'barber' | 'plaguedoctor';
 
 export interface NightState {
   /** 当前所在的夜晚顺序位置 */
@@ -41,6 +47,12 @@ export interface NightState {
   woke: number[];
   /** 疯子今晚选的人 */
   lunaticPick: number | null;
+  /** 驱魔人选中了恶魔：恶魔今晚不醒 */
+  exorcised?: boolean;
+  /** 今晚已经走过的步骤（进度条用：用过一次性能力后这一步不会再"该跑"，但已经算一步） */
+  ran?: number[];
+  /** 哈迪寂亚今晚选的三个人和他们最后的死活（天亮宣布用） */
+  hadikhia?: { picks: number[]; alive: boolean[] };
 }
 
 export interface LogEntry {
@@ -102,6 +114,37 @@ export interface GameState {
   voteMods: Record<number, number>;
   /** 枪手最近一次开枪是第几天 */
   gunslingerDay: number;
+  /** 炼金术士拥有的爪牙能力 */
+  alchemistAbility: RoleId | null;
+  /** 教父：外来者 +1 / −1 */
+  godfatherDelta: number;
+  /** 僵怖第一次死亡后假死：看起来死了，其实还活着 */
+  zombuulFake: boolean;
+  /** 魔鬼代言人某晚选的人（ok = 当时没中毒，保护有效） */
+  advocate: { seat: number; night: number; ok: boolean } | null;
+  /** 驱魔人某晚选的人（不能连选） */
+  exorcistPick: { seat: number; night: number } | null;
+  /** 卖花女孩：恶魔第几天投过票 */
+  demonVotedDay: number;
+  /** 提线木偶以为自己是的善良角色 */
+  marionetteFake: RoleId | null;
+  /** 鹰身女妖某晚的选择：mad 要疯狂证明 second 是邪恶的；done = 白天已经处理 */
+  harpy: { mad: number; second: number; night: number; done: boolean } | null;
+  /** 赏金猎人已经得知过的玩家（最后一个是现在盯着的） */
+  bountyKnown: number[];
+  /** 心上人死后一直醉酒的人 */
+  sweetheartDrunk: number | null;
+  sweetheartResolved: boolean;
+  barberResolved: boolean;
+  /** 瘟疫医生死后说书人获得的爪牙能力 */
+  stAbility: RoleId | null;
+  plagueResolved: boolean;
+  /** 说书人用投毒者能力毒的人 */
+  stPoison: { seat: number; night: number } | null;
+  /** 报丧女妖被恶魔杀死，能力生效的座位 */
+  bansheeActive: number | null;
+  /** 戏法师最近一次猜是第几天 */
+  alsaahirDay: number;
   /** 恶魔的 3 个伪装 */
   bluffs: RoleId[];
   /** 占卜师干扰项 */

@@ -278,10 +278,26 @@ export function seatMarks(s: GameState, n: number): Mark[] {
   if (s.voteMods[n]) out.push({ key: 'vote', short: s.voteMods[n] > 0 ? '×3' : '负', text: `今天他的票算 ${s.voteMods[n]} 票` });
   if (x.role === 'drunk') out.push({ key: 'drunk', short: '醉', text: `酒鬼：以为自己是【${roleName(believedRole(s, x))}】`, cls: 'm-drunk' });
   if (x.role === 'lunatic') out.push({ key: 'lunatic', short: '疯', text: `疯子：以为自己是【${roleName(believedRole(s, x))}】`, cls: 'm-drunk' });
+  if (x.role === 'marionette') out.push({ key: 'mario', short: '偶', text: `提线木偶：以为自己是【${roleName(believedRole(s, x))}】`, cls: 'm-evil' });
+  if (!x.traveller && x.alignment) out.push({ key: 'align', short: x.alignment === 'evil' ? '恶' : '善', text: `阵营是${x.alignment === 'evil' ? '邪恶' : '善良'}的（和角色类型不同）`, cls: x.alignment === 'evil' ? 'm-evil' : undefined });
+  if (x.role === 'alchemist' && s.alchemistAbility) out.push({ key: 'alch', short: '炼', text: `拥有【${roleName(s.alchemistAbility)}】的能力` });
+  if (x.role === 'zombuul' && s.zombuulFake) out.push({ key: 'zfake', short: '假', text: '僵怖假死中：大家以为他死了，其实还活着', cls: 'm-evil' });
+  if (s.sweetheartDrunk === n) out.push({ key: 'swd', short: '醉', text: '被心上人弄醉：一直醉酒', cls: 'm-drunk' });
+  if (s.advocate && s.advocate.ok && s.advocate.night === s.night && s.advocate.seat === n) out.push({ key: 'adv', short: '辩', text: '魔鬼代言人保护：明天被处决不会死' });
+  if (s.harpy && !s.harpy.done && s.harpy.night === s.night && s.harpy.mad === n) out.push({ key: 'harpy', short: '狂', text: `要疯狂地证明 ${seatName(s.harpy.second)} 是邪恶的（鹰身女妖）` });
+  if (s.bountyKnown[s.bountyKnown.length - 1] === n) out.push({ key: 'bounty', short: '赏', text: '赏金猎人现在盯着的邪恶玩家' });
+  if (s.bansheeActive === n) out.push({ key: 'banshee', short: '妖', text: '报丧女妖能力生效：每天提名两次、投票算两票' });
   if (isPoisoned(s, n))
     out.push({
       key: 'poison', short: '毒', cls: 'm-poison',
-      text: s.widowPoison === n ? '被寡妇下毒（寡妇活着就一直中毒）' : x.role === 'cannibal' && s.cannibalPoisoned ? '食人族吃到邪恶，中毒中' : '中毒中（今晚和明天白天）',
+      text:
+        s.widowPoison === n
+          ? '被寡妇下毒（寡妇活着就一直中毒）'
+          : x.role === 'cannibal' && s.cannibalPoisoned
+            ? '食人族吃到邪恶，中毒中'
+            : s.stPoison?.seat === n && s.stPoison.night === s.night
+              ? '被说书人用投毒者能力下毒（今晚和明天白天）'
+              : '中毒中（今晚和明天白天）',
     });
   if (s.babysitter === n && s.demonChar === 'lilmonsta') out.push({ key: 'baby', short: '宝', text: '正在照看小怪宝（算作恶魔）', cls: 'm-evil' });
   if (s.fearTarget === n && s.seats.some((y) => y.role === 'fearmonger' && y.alive)) out.push({ key: 'fear', short: '惧', text: '恐惧之灵的目标', cls: 'm-evil' });

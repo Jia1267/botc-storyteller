@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { DrunkEdit, LunaticEdit } from './Setup';
+import { DrunkEdit, LunaticEdit, MarionetteEdit } from './Setup';
 import { ROLES, TEAM_NAME, roleName } from '../engine/roles';
 import { believedRole, lilMonsta, seatName } from '../engine/core';
 import { dealNext } from '../engine/flow';
@@ -25,7 +25,11 @@ export function DealScreen({ g }: { g: Game }) {
             title: '你的身份（旅行者）', big: [roleName(seat.role)], team: 'traveller', alignment: tv.alignment, ability: ROLES[seat.role].ability,
             note: tv.alignment === 'evil' ? `你是邪恶的。${evilTravellerInfo(s)}` : undefined,
           }
-        : { title: '你的身份', big: [roleName(shown)], team: ROLES[shown].team, ability: ROLES[shown].ability },
+        : {
+            title: '你的身份', big: [roleName(shown)], team: ROLES[shown].team, ability: ROLES[shown].ability,
+            // 赏金猎人的邪恶镇民：角色是镇民，阵营是邪恶
+            ...(seat.alignment === 'evil' && !fake ? { alignment: 'evil' as const, note: '你是邪恶阵营的！你不知道其他邪恶玩家是谁，他们也不知道你。' } : {}),
+          },
       () => g.commit((st) => dealNext(st)),
     );
 
@@ -66,7 +70,9 @@ export function DealScreen({ g }: { g: Game }) {
               千万别说漏。
               {seat.role === 'lunatic'
                 ? `他夜里选的人不会死，${lilMonsta(s) ? '爪牙们' : '真恶魔'}会被告知他是谁、选了谁。`
-                : `之后夜里也按【${roleName(shown)}】叫醒他。`}
+                : seat.role === 'marionette'
+                  ? `他其实是邪恶的爪牙，但他不知道。第一晚恶魔会被告知他是谁；之后夜里按【${roleName(shown)}】叫醒他，信息可以是假的。`
+                  : `之后夜里也按【${roleName(shown)}】叫醒他。`}
             </p>
             {seat.role === 'lunatic' && lilMonsta(s) && <p className="dim">小怪宝在场，按你们的规矩给他看涡流。</p>}
             <button className="btn btn-outline btn-sm" onClick={() => setEdit(true)}>
@@ -75,14 +81,16 @@ export function DealScreen({ g }: { g: Game }) {
           </div>
         ) : (
           <p className="dim">
-            他的身份：{roleName(seat.role)}（{TEAM_NAME[ROLES[seat.role].team]}{tv ? `，${tv.alignment === 'evil' ? '邪恶' : '善良'}` : ''}）
+            他的身份：{roleName(seat.role)}（{TEAM_NAME[ROLES[seat.role].team]}{tv ? `，${tv.alignment === 'evil' ? '邪恶' : '善良'}` : ''}{seat.alignment === 'evil' ? '，邪恶阵营' : ''}）
             {tv?.alignment === 'evil' && '。卡片上会告诉他恶魔是谁。'}
+            {seat.alignment === 'evil' && '。赏金猎人在场：他是邪恶的镇民，卡片上会告诉他。'}
           </p>
         )}
         {s.dealIndex === s.seats.length - 1 && <p className="dim">这是最后一位，看完后直接入夜。</p>}
       </div>
       {edit && seat.role === 'drunk' && <DrunkEdit g={g} onClose={() => setEdit(false)} />}
       {edit && seat.role === 'lunatic' && <LunaticEdit g={g} onClose={() => setEdit(false)} />}
+      {edit && seat.role === 'marionette' && <MarionetteEdit g={g} onClose={() => setEdit(false)} />}
       <BottomBar>
         <button className="btn btn-primary btn-block" onClick={show}>
           <Icon name="eye" /> {fake ? `我知道了，给他看【${roleName(shown)}】` : '给他看'}

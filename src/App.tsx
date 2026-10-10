@@ -5,14 +5,14 @@ import { useGame } from './store';
 import { ConfirmButton, Sheet, ShowCard, UiCtx, type CardContent, type Ui } from './ui/common';
 import { DayScreen } from './ui/Day';
 import { DealScreen } from './ui/Deal';
-import { EndScreen, LogView, Overlay, RolesRef, RulesSpeech } from './ui/End';
+import { EndScreen, LogView, Overlay, RolesRef, RulesSpeech, ScriptSheet } from './ui/End';
 import { GrimoirePanel, SpyView, phaseText } from './ui/Grimoire';
 import { Icon } from './ui/icons';
 import { NightScreen } from './ui/Night';
 import { SetupScreen } from './ui/Setup';
 import { Cover, TimerCtx, useTimerState } from './ui/Timer';
 
-type Panel = 'grimoire' | 'cover' | 'menu' | 'roles' | 'rules' | 'log' | null;
+type Panel = 'grimoire' | 'cover' | 'menu' | 'roles' | 'rules' | 'log' | 'sheet' | null;
 
 export default function App() {
   const g = useGame();
@@ -51,7 +51,7 @@ export default function App() {
   const hasSeats = s.seats.length > 0 && !(s.phase === 'setup' && s.setupStep === 'count');
 
   let screen;
-  if (s.phase === 'setup') screen = <SetupScreen g={g} onRules={() => setPanel('rules')} onRoles={() => setPanel('roles')} />;
+  if (s.phase === 'setup') screen = <SetupScreen g={g} onRules={() => setPanel('rules')} onRoles={() => setPanel('roles')} onSheet={() => setPanel('sheet')} />;
   else if (s.phase === 'deal') screen = <DealScreen g={g} />;
   else if (s.phase === 'night') screen = <NightScreen g={g} />;
   else if (s.phase === 'day') screen = <DayScreen g={g} />;
@@ -101,6 +101,7 @@ export default function App() {
         {panel === 'roles' && <RolesRef script={s.script} onClose={() => setPanel(null)} />}
         {panel === 'rules' && <RulesSpeech script={s.script} onClose={() => setPanel(null)} />}
         {panel === 'log' && <LogView s={s} onClose={() => setPanel(null)} />}
+        {panel === 'sheet' && <ScriptSheet script={s.script} onClose={() => setPanel(null)} />}
         {panel === 'menu' && (
           <Sheet title="菜单" onClose={() => setPanel(null)}>
             <div className="stack">
@@ -117,6 +118,9 @@ export default function App() {
               </div>
               <button className="btn btn-ghost btn-block" onClick={() => setPanel('log')}>
                 本局记录
+              </button>
+              <button className="btn btn-ghost btn-block" onClick={() => setPanel('sheet')}>
+                剧本图（可以发给玩家）
               </button>
               <button className="btn btn-ghost btn-block" onClick={() => setPanel('roles')}>
                 角色速查

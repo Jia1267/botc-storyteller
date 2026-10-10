@@ -2,28 +2,30 @@ import { useMemo, useState } from 'react';
 import { FABLED, ROLES, TEAM_NAME, isEvilTeam, roleName, type FabledId, type RoleId, type Team } from '../engine/roles';
 import { recommend, setupLabel, balance } from '../engine/balance';
 import { actorFor, addLog, inPlay, lilMonsta, notInPlay, scriptOf, seatName } from '../engine/core';
-import { SCRIPT_LIST, SCRIPTS } from '../engine/editions';
+import { SCRIPT_LIST, SCRIPTS, type ScriptId } from '../engine/editions';
 import { defaultRng } from '../engine/rng';
 import {
-  DISTRIBUTION, F4, MAX_F4, amnesiacChoices, bluffChoices, drunkFakeChoices, redHerringChoices, replaceDemon,
-  replaceRole, rerollRoles, sentinelChoices, setCount, setScript, setSentinelDelta, setupReasons, shuffleSeats,
-  startDeal, swapSeats, toggleFabled,
+  DISTRIBUTION, F4, MAX_F4, amnesiacChoices, bluffChoices, drunkFakeChoices, evilTownsfolkChoices, godfatherChoices, godfatherMod, marionetteFakeChoices,
+  redHerringChoices, replaceDemon, replaceRole, rerollRoles, sentinelChoices, setCount, setEvilTownsfolk, setGodfatherDelta, setScript, setSentinelDelta,
+  setupReasons, shuffleSeats, startDeal, swapSeats, toggleFabled,
 } from '../engine/setup';
 import { stepRng, type Game } from '../store';
 import { BottomBar, ChoicePanel, Sheet, SeatPicker } from './common';
 import { AddTravellerSheet } from './Travellers';
 import { removeTravellerAtSetup } from '../engine/travellers';
 import { GrimoireCircle } from './Grimoire';
+import { ScriptSheet } from './End';
 import { Icon } from './icons';
 
-export function SetupScreen({ g, onRules, onRoles }: { g: Game; onRules: () => void; onRoles: () => void }) {
+export function SetupScreen({ g, onRules, onRoles, onSheet }: { g: Game; onRules: () => void; onRoles: () => void; onSheet: () => void }) {
   if (g.s.setupStep === 'script') return <ScriptStep g={g} />;
-  if (g.s.setupStep === 'count') return <CountStep g={g} onRules={onRules} onRoles={onRoles} />;
+  if (g.s.setupStep === 'count') return <CountStep g={g} onRules={onRules} onRoles={onRoles} onSheet={onSheet} />;
   if (g.s.setupStep === 'roles') return <RolesStep g={g} />;
   return <SeatsStep g={g} onRules={onRules} />;
 }
 
 function ScriptStep({ g }: { g: Game }) {
+  const [sheet, setSheet] = useState<ScriptId | null>(null);
   return (
     <main className="main">
       <div className="stack">
@@ -34,28 +36,34 @@ function ScriptStep({ g }: { g: Game }) {
         <h2 style={{ fontSize: 22 }}>玩哪个剧本？</h2>
         <div className="choices">
           {SCRIPT_LIST.map((sc) => (
-            <button key={sc.id} className="choice" style={{ padding: '14px 16px' }} onClick={() => g.commit((s) => setScript(s, sc.id))}>
-              <div className="top">
-                <span className="lab" style={{ fontFamily: 'var(--serif)', fontSize: 22 }}>
-                  {sc.name}
+            <div key={sc.id} className="stack" style={{ gap: 4 }}>
+              <button className="choice" style={{ padding: '14px 16px' }} onClick={() => g.commit((s) => setScript(s, sc.id))}>
+                <div className="top">
+                  <span className="lab" style={{ fontFamily: 'var(--serif)', fontSize: 22 }}>
+                    {sc.name}
+                  </span>
+                  <span className="tag tag-mid">
+                    {sc.min === sc.max ? sc.min : `${sc.min}–${sc.max}`} 人
+                  </span>
+                </div>
+                <span className="why">{sc.blurb}</span>
+                <span className="dim" style={{ fontSize: 13 }}>
+                  {sc.roles.length} 个角色{sc.fabled.length ? ` · 传奇角色：${sc.fabled.map((f) => FABLED[f].name).join('、')}` : ''}
                 </span>
-                <span className="tag tag-mid">
-                  {sc.min === sc.max ? sc.min : `${sc.min}–${sc.max}`} 人
-                </span>
-              </div>
-              <span className="why">{sc.blurb}</span>
-              <span className="dim" style={{ fontSize: 13 }}>
-                {sc.roles.length} 个角色{sc.fabled.length ? ` · 传奇角色：${sc.fabled.map((f) => FABLED[f].name).join('、')}` : ''}
-              </span>
-            </button>
+              </button>
+              <button className="btn btn-outline btn-sm" style={{ alignSelf: 'flex-end' }} onClick={() => setSheet(sc.id)}>
+                看{sc.name}的剧本图
+              </button>
+            </div>
           ))}
         </div>
       </div>
+      {sheet && <ScriptSheet script={sheet} onClose={() => setSheet(null)} />}
     </main>
   );
 }
 
-function CountStep({ g, onRules, onRoles }: { g: Game; onRules: () => void; onRoles: () => void }) {
+function CountStep({ g, onRules, onRoles, onSheet }: { g: Game; onRules: () => void; onRoles: () => void; onSheet: () => void }) {
   const sc = scriptOf(g.s);
   const counts = Array.from({ length: sc.max - sc.min + 1 }, (_, i) => i + sc.min);
   return (
@@ -87,6 +95,9 @@ function CountStep({ g, onRules, onRoles }: { g: Game; onRules: () => void; onRo
           </button>
           <button className="btn btn-outline btn-sm grow" onClick={onRoles}>
             角色速查
+          </button>
+          <button className="btn btn-outline btn-sm grow" onClick={onSheet}>
+            剧本图
           </button>
         </div>
         <button className="btn btn-outline btn-sm" onClick={() => g.commit((s) => (s.setupStep = 'script'))}>
@@ -154,6 +165,7 @@ function RolesStep({ g }: { g: Game }) {
           );
         })}
         {sc.fabled.length > 0 && <FabledCard g={g} />}
+        {godfatherMod(s.script, roles) && <GodfatherCard g={g} />}
         <button className="btn btn-outline btn-sm" onClick={() => g.commit((st) => (st.setupStep = 'count'))}>
           改人数
         </button>
@@ -206,6 +218,20 @@ function FabledCard({ g }: { g: Game }) {
   );
 }
 
+/** 教父（或拿到教父能力的炼金术士）：外来者 +1 / −1 */
+function GodfatherCard({ g }: { g: Game }) {
+  const s = g.s;
+  const choices = useMemo(() => godfatherChoices(s), [s]);
+  const rec = useMemo(() => recommend(choices, balance(s).score, stepRng(s, 4)), [choices, s]);
+  const sel = choices.findIndex((c) => c.value === s.godfatherDelta);
+  return (
+    <div className="card stack" style={{ gap: 8 }}>
+      <h3 style={{ margin: 0 }}>{inPlay(s, 'godfather') ? '教父' : '炼金术士拿到了教父的能力'}：外来者 +1 或 −1</h3>
+      <ChoicePanel s={s} choices={choices} sel={sel} rec={rec} moreLabel="外来者人数" onSel={(i) => i >= 0 && g.commit((st) => setGodfatherDelta(st, choices[i].value, defaultRng))} />
+    </div>
+  );
+}
+
 function SentinelPick({ g }: { g: Game }) {
   const s = g.s;
   const choices = useMemo(() => sentinelChoices(s), [s]);
@@ -238,6 +264,9 @@ function RolePicker({
   const note = (r: RoleId) => {
     if (r === 'baron' || current === 'baron') return '男爵会让外来者 +2、镇民 −2，网页会自动调整。';
     if (r === 'balloonist' || current === 'balloonist') return '气球驾驶员会让外来者 +1、镇民 −1，网页会自动调整。';
+    if (r === 'godfather' || current === 'godfather' || r === 'alchemist' || current === 'alchemist') return '教父的能力会让外来者 ±1，网页会自动调整。';
+    if (r === 'marionette') return '提线木偶会被安排坐在恶魔旁边。';
+    if (r === 'bountyhunter') return '赏金猎人在场时，会有一名镇民变成邪恶。';
     if (r === 'lilmonsta') return '小怪宝没有玩家扮演：原来的恶魔座位会变成一个爪牙。';
     if (current === 'lilmonsta') return '换掉小怪宝：会有一个爪牙座位变成这个恶魔。';
     return '';
@@ -263,7 +292,7 @@ function RolePicker({
   );
 }
 
-type Edit = 'drunk' | 'bluffs' | 'rh' | 'lunatic' | 'amnesiac' | 'traveller' | null;
+type Edit = 'drunk' | 'bluffs' | 'rh' | 'lunatic' | 'amnesiac' | 'traveller' | 'marionette' | 'etf' | null;
 
 function SeatsStep({ g, onRules }: { g: Game; onRules: () => void }) {
   const s = g.s;
@@ -272,6 +301,9 @@ function SeatsStep({ g, onRules }: { g: Game; onRules: () => void }) {
   const drunk = s.seats.find((x) => x.role === 'drunk');
   const lunatic = s.seats.find((x) => x.role === 'lunatic');
   const amnesiac = s.seats.find((x) => x.role === 'amnesiac');
+  const marionette = s.seats.find((x) => x.role === 'marionette');
+  const alchemist = s.seats.find((x) => x.role === 'alchemist');
+  const etf = s.seats.find((x) => !x.traveller && x.alignment === 'evil');
   const ft = actorFor(s, 'fortuneteller');
 
   const tapSeat = (n: number) => {
@@ -329,6 +361,38 @@ function SeatsStep({ g, onRules }: { g: Game; onRules: () => void }) {
             </button>
           </div>
         )}
+        {marionette && s.marionetteFake && (
+          <div className="card">
+            <h3>提线木偶</h3>
+            <p>
+              {seatName(marionette.n)} 是提线木偶（邪恶），他会以为自己是 <b className="good">【{roleName(s.marionetteFake)}】</b>
+            </p>
+            <p className="dim">他必须坐在恶魔旁边，网页已经自动安排；你换座位时也会自动调整。</p>
+            <button className="btn btn-outline btn-sm" style={{ marginTop: 10 }} onClick={() => setEdit('marionette')}>
+              看理由 / 更换
+            </button>
+          </div>
+        )}
+        {alchemist && s.alchemistAbility && (
+          <div className="card">
+            <h3>炼金术士</h3>
+            <p>
+              {seatName(alchemist.n)} 是炼金术士，他拥有 <b className="evil">【{roleName(s.alchemistAbility)}】</b> 的能力（他仍然是善良的）。
+            </p>
+            <p className="dim">{ROLES[s.alchemistAbility].ability}</p>
+          </div>
+        )}
+        {etf && (
+          <div className="card">
+            <h3>赏金猎人：邪恶的镇民</h3>
+            <p>
+              {seatName(etf.n)}（{roleName(etf.role)}）是<b className="evil">邪恶</b>的。发身份时会告诉他。
+            </p>
+            <button className="btn btn-outline btn-sm" style={{ marginTop: 10 }} onClick={() => setEdit('etf')}>
+              看理由 / 更换
+            </button>
+          </div>
+        )}
         {amnesiac && s.amnesiacAbility && (
           <div className="card">
             <h3>失忆者</h3>
@@ -379,6 +443,8 @@ function SeatsStep({ g, onRules }: { g: Game; onRules: () => void }) {
       {edit === 'lunatic' && <LunaticEdit g={g} onClose={() => setEdit(null)} />}
       {edit === 'amnesiac' && <AmnesiacEdit g={g} onClose={() => setEdit(null)} />}
       {edit === 'traveller' && <AddTravellerSheet g={g} onClose={() => setEdit(null)} />}
+      {edit === 'marionette' && <MarionetteEdit g={g} onClose={() => setEdit(null)} />}
+      {edit === 'etf' && <EvilTownsfolkEdit g={g} onClose={() => setEdit(null)} />}
       <BottomBar>
         <button className="btn btn-primary btn-block" onClick={() => g.commit((st) => startDeal(st))}>
           开始发身份
@@ -414,6 +480,39 @@ function TravellersCard({ g, onAdd }: { g: Game; onAdd: () => void }) {
         加一名旅行者
       </button>
     </div>
+  );
+}
+
+/** 提线木偶以为自己是哪个善良角色 */
+export function MarionetteEdit({ g, onClose }: { g: Game; onClose: () => void }) {
+  const s = g.s;
+  const choices = useMemo(() => marionetteFakeChoices(s), [s]);
+  const rec = useMemo(() => recommend(choices, balance(s).score, stepRng(s, 5)), [choices, s]);
+  const sel = choices.findIndex((c) => c.value === s.marionetteFake);
+  return (
+    <Sheet title="提线木偶以为自己是" onClose={onClose}>
+      <ChoicePanel s={s} choices={choices} sel={sel} rec={rec} defaultOpen moreLabel="其他角色" onSel={(i) => i >= 0 && g.commit((st) => (st.marionetteFake = choices[i].value))} />
+    </Sheet>
+  );
+}
+
+/** 赏金猎人：哪个镇民是邪恶的 */
+function EvilTownsfolkEdit({ g, onClose }: { g: Game; onClose: () => void }) {
+  const s = g.s;
+  const choices = useMemo(() => evilTownsfolkChoices(s, stepRng(s, 6)), [s]);
+  const rec = useMemo(() => recommend(choices, balance(s).score, stepRng(s, 7)), [choices, s]);
+  const cur = s.seats.find((x) => !x.traveller && x.alignment === 'evil')?.n;
+  const sel = choices.findIndex((c) => c.value === cur);
+  const notTowns = s.seats.filter((x) => x.traveller || ROLES[x.role].team !== 'townsfolk' || x.role === 'bountyhunter').map((x) => x.n);
+  return (
+    <Sheet title="哪个镇民是邪恶的" onClose={onClose}>
+      <div className="stack">
+        {choices.length > 0 && (
+          <ChoicePanel s={s} choices={choices} sel={sel} rec={rec} defaultOpen moreLabel="其他推荐" onSel={(i) => i >= 0 && g.commit((st) => setEvilTownsfolk(st, choices[i].value))} />
+        )}
+        <SeatPicker s={s} selected={cur ? [cur] : []} max={1} onChange={(v) => v.length && g.commit((st) => setEvilTownsfolk(st, v[0]))} disabled={notTowns} label="或者直接点一名镇民" />
+      </div>
+    </Sheet>
   );
 }
 

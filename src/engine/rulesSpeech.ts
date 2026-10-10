@@ -38,19 +38,42 @@ const BY_SCRIPT: Partial<Record<ScriptId, Section[]>> = {
       ],
     },
   ],
+  sunset: [
+    ...TEENSY,
+    {
+      title: '残阳高照要注意',
+      lines: [
+        '这个剧本的恶魔只在"白天没有人死"的那个晚上杀人。',
+        '有些角色能让人"死不了"：有人被处决了却没有死，是正常的。',
+      ],
+    },
+  ],
+  alvsal: [
+    {
+      title: '王不见王要注意',
+      lines: [
+        '恶魔每晚会选三个人。我会对所有人宣布是谁，然后一个一个叫醒你们。',
+        '被叫醒的人：点头表示选择"活"，摇头表示选择"死"。如果三个人都选活，三个人都会死。',
+        '死人被选中也可以选"活"，那他就复活了。天亮时我会宣布这三人谁活着、谁死了。',
+      ],
+    },
+  ],
+};
+
+/** 通用讲稿里"恶魔每晚杀人"那句，按剧本换掉 */
+const NIGHT_KILL: Partial<Record<ScriptId, string>> = {
+  whispers: '这个剧本的恶魔晚上不杀人，后面会讲它怎么赢。',
+  sunset: '从第二晚开始，如果前一个白天没有人死，恶魔会在夜里杀一个人。',
+  alvsal: '从第二晚开始，恶魔每晚会选三个人，让他们自己决定生死（后面细讲）。',
 };
 
 /** 某个剧本的完整讲稿：通用部分 + 剧本特别规则（插在"最后提醒"前） */
 export function rulesFor(script: ScriptId): Section[] {
   const extra = BY_SCRIPT[script] ?? [];
-  // 利维坦晚上不杀人：通用讲稿里"恶魔每晚杀人"那句要换掉
-  const base =
-    script === 'whispers'
-      ? RULES_SPEECH.map((sec) => ({
-          ...sec,
-          lines: sec.lines.map((l) => (l.startsWith('从第二晚开始') ? '这个剧本的恶魔晚上不杀人，后面会讲它怎么赢。' : l)),
-        }))
-      : RULES_SPEECH;
+  const kill = NIGHT_KILL[script];
+  const base = kill
+    ? RULES_SPEECH.map((sec) => ({ ...sec, lines: sec.lines.map((l) => (l.startsWith('从第二晚开始') ? kill : l)) }))
+    : RULES_SPEECH;
   return [...base.slice(0, -1), ...extra, base[base.length - 1]];
 }
 

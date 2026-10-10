@@ -1,7 +1,7 @@
 import { isEvil, seatName } from '../engine/core';
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { ROLES, TEAM_NAME, TRAVELLER_ROLES, isEvilTeam, roleName, type Team } from '../engine/roles';
-import { SCRIPTS, type ScriptId } from '../engine/editions';
+import { SCRIPTS, SCRIPT_LIST, type ScriptId } from '../engine/editions';
 import { endLines } from '../engine/scripts';
 import { rulesFor } from '../engine/rulesSpeech';
 import type { GameState, LogEntry } from '../engine/types';
@@ -66,6 +66,8 @@ export function EndScreen({ g }: { g: Game }) {
                   </span>
                   {x.role === 'drunk' && s.drunkFake && <span className="dim">（以为是{roleName(s.drunkFake)}）</span>}
                   {x.role === 'lunatic' && s.lunaticFake && <span className="dim">（以为是{roleName(s.lunaticFake)}）</span>}
+                  {x.role === 'marionette' && s.marionetteFake && <span className="dim">（以为是{roleName(s.marionetteFake)}）</span>}
+                  {!x.traveller && x.alignment && <span className="dim">（{x.alignment === 'evil' ? '邪恶' : '善良'}阵营）</span>}
                   {x.traveller && <span className="dim">（旅行者，{x.traveller.alignment === 'evil' ? '邪恶' : '善良'}）</span>}
                 </span>
                 <span className="dim">{x.alive ? '存活' : `第${x.death?.night}${x.death?.when === 'night' ? '夜' : '天'} ${x.death?.cause}`}</span>
@@ -140,6 +142,51 @@ export function RolesRef({ script, onClose }: { script: ScriptId; onClose: () =>
           </div>
         ))}
       </div>
+    </Overlay>
+  );
+}
+
+/** 剧本图：给不熟这个剧本的人看，也可以发给玩家 */
+export function ScriptSheet({ script, onClose }: { script: ScriptId; onClose: () => void }) {
+  const [id, setId] = useState<ScriptId>(script);
+  const [msg, setMsg] = useState('');
+  const sc = SCRIPTS[id];
+  const src = `${import.meta.env.BASE_URL}scripts/${sc.image}`;
+  const share = async () => {
+    setMsg('');
+    try {
+      const blob = await (await fetch(src)).blob();
+      const file = new File([blob], `${sc.name}.jpg`, { type: 'image/jpeg' });
+      if (navigator.canShare?.({ files: [file] })) await navigator.share({ files: [file], title: `血染钟楼剧本：${sc.name}` });
+      else setMsg('这个浏览器不能直接分享图片：长按上面的图片，选"发送给朋友"或"保存图片"。');
+    } catch (e) {
+      // 用户自己取消分享不算出错
+      if ((e as Error)?.name !== 'AbortError') setMsg('分享失败：长按上面的图片，选"发送给朋友"或"保存图片"。');
+    }
+  };
+  return (
+    <Overlay title={`剧本图 · ${sc.name}`} onClose={onClose}>
+      <div className="row" style={{ gap: 6, marginBottom: 10 }}>
+        {SCRIPT_LIST.map((x) => (
+          <button key={x.id} className={`btn btn-sm ${x.id === id ? 'btn-primary' : 'btn-outline'}`} onClick={() => { setId(x.id); setMsg(''); }}>
+            {x.name}
+          </button>
+        ))}
+      </div>
+      <p className="dim" style={{ marginBottom: 8 }}>
+        {sc.min}–{sc.max} 人 · {sc.roles.length} 个角色。双指可以放大看。
+      </p>
+      <img src={src} alt={`${sc.name}剧本图`} style={{ width: '100%', borderRadius: 8, display: 'block' }} />
+      <div className="row" style={{ marginTop: 12 }}>
+        <button className="btn btn-primary grow" onClick={share}>
+          分享给玩家
+        </button>
+        <a className="btn btn-outline grow" href={src} download={`${sc.name}.jpg`}>
+          保存图片
+        </a>
+      </div>
+      {msg && <p className="dim" style={{ marginTop: 8 }}>{msg}</p>}
+      <p className="dim" style={{ marginTop: 8 }}>在微信里打开时，长按图片就能直接发给朋友或保存。</p>
     </Overlay>
   );
 }
