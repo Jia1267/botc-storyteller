@@ -1,7 +1,7 @@
 import type { FabledId, RoleId } from './roles';
 import type { SlotId } from './types';
 
-export type ScriptId = 'tb' | 'alvsal' | 'spooky' | 'whispers' | 'sunset';
+export type ScriptId = 'tb' | 'bmr' | 'alvsal' | 'spooky' | 'whispers' | 'sunset';
 
 /** 一个剧本 = 角色表 + 夜晚顺序 */
 export interface ScriptDef {
@@ -43,6 +43,25 @@ export const SCRIPTS: Record<ScriptId, ScriptDef> = {
     image: 'tb.jpg',
     // 实测几局邪恶很少赢
     evilBoost: 10,
+  },
+  bmr: {
+    id: 'bmr',
+    name: '暗月初升',
+    min: 7,
+    max: 15,
+    blurb: '每晚死人多、复活也多：恶魔有四种，好人靠保护和醉酒互相拉扯。',
+    roles: [
+      'grandmother', 'sailor', 'chambermaid', 'exorcist', 'innkeeper', 'gambler', 'gossip', 'courtier', 'professor', 'minstrel',
+      'tealady', 'pacifist', 'fool', 'goon', 'lunatic', 'tinker', 'moonchild',
+      'godfather', 'devilsadvocate', 'assassin', 'mastermind', 'zombuul', 'pukka', 'shabaloth', 'po',
+    ],
+    fabled: [],
+    firstNight: ['dusk', 'bureaucrat', 'thief', 'minionInfo', 'lunatic', 'demonInfo', 'sailor', 'courtier', 'godfather', 'devilsadvocate', 'pukka', 'grandmother', 'chambermaid', 'dawn'],
+    otherNights: [
+      'dusk', 'bureaucrat', 'thief', 'sailor', 'innkeeper', 'courtier', 'gambler', 'devilsadvocate', 'lunatic', 'exorcist',
+      'zombuul', 'pukka', 'shabaloth', 'po', 'assassin', 'godfather', 'gossip', 'professor', 'tinker', 'moonchild', 'chambermaid', 'dawn',
+    ],
+    image: 'bmr.jpg',
   },
   alvsal: {
     id: 'alvsal',
@@ -110,4 +129,4 @@ export const SCRIPTS: Record<ScriptId, ScriptDef> = {
   },
 };
 
-export const SCRIPT_LIST: ScriptDef[] = [SCRIPTS.tb, SCRIPTS.alvsal, SCRIPTS.spooky, SCRIPTS.whispers, SCRIPTS.sunset];
+export const SCRIPT_LIST: ScriptDef[] = [SCRIPTS.tb, SCRIPTS.bmr, SCRIPTS.alvsal, SCRIPTS.spooky, SCRIPTS.whispers, SCRIPTS.sunset];

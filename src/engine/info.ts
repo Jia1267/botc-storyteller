@@ -706,3 +706,92 @@ export function harpyPunishChoices(s: GameState): Choice<number[]>[] {
   });
   return out;
 }
+
+/* ---------------- 暗月初升 ---------------- */
+
+/** 祖母：第一晚得知一名善良玩家（孙子）和他的角色 */
+export interface GrandchildInfo {
+  seat: number;
+  role: RoleId;
+}
+export function grandmotherChoices(s: GameState, actorN: number, rng: Rng): Choice<GrandchildInfo>[] {
+  const good = s.seats.filter((x) => x.n !== actorN && !x.traveller && !isEvil(x));
+  const lbl = (g: GrandchildInfo) => `指向 ${seatName(g.seat)}，给她看【${roleName(g.role)}】`;
+  const out: Choice<GrandchildInfo>[] = [];
+  const mid = pickOr(good, rng);
+  if (!malfunction(s, actorN) && !mustLie(s, 'grandmother')) {
+    if (mid) out.push({ key: 'mid', label: lbl({ seat: mid.n, role: mid.role }), value: { seat: mid.n, role: mid.role }, lean: 0, truth: true, standard: true, reason: '随便一名善良玩家，标准做法。' });
+    const strong = [...good].sort((a, b) => ROLES[b.role].weight - ROLES[a.role].weight)[0];
+    if (strong && strong.n !== mid?.n)
+      out.push({ key: 'strong', label: lbl({ seat: strong.n, role: strong.role }), value: { seat: strong.n, role: strong.role }, lean: 1, truth: true, reason: `${roleName(strong.role)}是关键角色，被祖母"认证"后好人更信任他，帮善良。` });
+    const weak = [...good].sort((a, b) => ROLES[a.role].weight - ROLES[b.role].weight)[0];
+    if (weak && weak.n !== mid?.n && weak.n !== strong?.n)
+      out.push({ key: 'weak', label: lbl({ seat: weak.n, role: weak.role }), value: { seat: weak.n, role: weak.role }, lean: -1, truth: true, reason: `${roleName(weak.role)}能力弱，认证他用处不大，帮邪恶。` });
+    return out;
+  }
+  if (mid) out.push({ key: 'true', label: lbl({ seat: mid.n, role: mid.role }), value: { seat: mid.n, role: mid.role }, lean: 1, truth: true, reason: '中毒/醉酒也可以给真信息。帮善良。' });
+  const g2 = pickOr(good.filter((x) => x.n !== mid?.n), rng);
+  const wrong = pickOr(scriptRolesOf(s, 'townsfolk').filter((r) => r !== g2?.role && r !== 'grandmother'), rng);
+  if (g2 && wrong) out.push({ key: 'wrongRole', label: lbl({ seat: g2.n, role: wrong }), value: { seat: g2.n, role: wrong }, lean: 0, truth: false, standard: true, reason: '假信息：人是好人，但角色说错了。中毒的标准用法。' });
+  const evil = pickOr(s.seats.filter((x) => x.n !== actorN && isEvil(x)), rng);
+  const fake = pickOr(notInPlay(s, 'townsfolk'), rng);
+  if (evil && fake) out.push({ key: 'evil', label: lbl({ seat: evil.n, role: fake }), value: { seat: evil.n, role: fake }, lean: -2, truth: false, reason: `把邪恶玩家 ${seatName(evil.n)} 当成好人给她，替他洗白，大帮邪恶。` });
+  return vortoxOnly(s, 'grandmother', out);
+}
+
+/** 让某人醉酒的推荐：醉的是邪恶玩家帮善良，醉的是善良玩家帮邪恶 */
+function drunkChoice(s: GameState, n: number, extra = ''): Choice<number> {
+  const x = seatOf(s, n);
+  const evil = isEvil(x);
+  return {
+    key: `d${n}`, label: `${seatName(n)}（${roleName(x.role)}）醉酒`, value: n, lean: evil ? 1 : -1, truth: true,
+    reason: `${extra}${evil ? '邪恶玩家的能力今晚失效，帮善良。' : `${roleName(x.role)}的能力失效到明天黄昏，帮邪恶。`}`,
+  };
+}
+
+/** 水手：他或他选的人醉酒（标准做法：选的人醉） */
+export function sailorDrunkChoices(s: GameState, sailorN: number, target: number): Choice<number>[] {
+  if (target === sailorN) return [{ ...drunkChoice(s, sailorN), standard: true, reason: '他选了自己：只能是他自己醉酒。' }];
+  const t = drunkChoice(s, target);
+  const self: Choice<number> = { key: 'self', label: `水手自己（${seatName(sailorN)}）醉酒`, value: sailorN, lean: -1, truth: true, reason: '水手醉酒后失去保护，今晚可能被杀，帮邪恶。' };
+  return [{ ...t, lean: isEvil(seatOf(s, target)) ? 1 : 0, standard: true, reason: `标准做法：他选的人醉。${t.reason}` }, self];
+}
+
+/** 旅店老板：保护的两人中谁醉酒 */
+export function innkeeperDrunkChoices(s: GameState, picks: number[]): Choice<number>[] {
+  const cs = picks.map((n) => drunkChoice(s, n));
+  // 两个都一样时第一个当标准
+  if (cs.length === 2 && cs[0].lean === cs[1].lean) cs[0] = { ...cs[0], lean: 0, standard: true };
+  return cs;
+}
+
+/** 沙巴洛斯：上一晚选的人里死了的，要不要吐出一个复活 */
+export function shabalothReviveChoices(s: GameState): Choice<number | null>[] {
+  if (s.shabalothNight !== s.night - 1) return [];
+  const dead = s.shabalothLast.map((n) => seatOf(s, n)).filter((x) => !x.alive);
+  if (!dead.length) return [];
+  const out: Choice<number | null>[] = [{ key: 'none', label: '不复活任何人', value: null, lean: 0, truth: true, standard: true, reason: '标准做法：吃掉的就吃掉了。' }];
+  for (const x of dead)
+    out.push({
+      key: `r${x.n}`, label: `让 ${seatName(x.n)}（${roleName(x.role)}）复活`, value: x.n, lean: isEvil(x) ? -1 : 1, truth: true,
+      reason: isEvil(x) ? '邪恶玩家回来了，帮邪恶。' : '好人回来了，帮善良。',
+    });
+  return out;
+}
+
+/** 修补匠：今晚要不要让他死 */
+export function tinkerChoices(s: GameState): Choice<boolean>[] {
+  void s;
+  return [
+    { key: 'live', label: '不死', value: false, lean: 0, truth: true, standard: true, reason: '标准做法：大多数晚上不动他。' },
+    { key: 'die', label: '让修补匠今晚死亡', value: true, lean: -1, truth: true, reason: '好人少一个，帮邪恶。' },
+  ];
+}
+
+/** 和平主义者：被处决的善良玩家要不要不死 */
+export function pacifistChoices(s: GameState, n: number): Choice<boolean>[] {
+  return [
+    { key: 'die', label: `照常：${seatName(n)} 死亡`, value: false, lean: 0, truth: true, standard: true, reason: '按正常流程走。' },
+    { key: 'save', label: `和平主义者：${seatName(n)} 不死`, value: true, lean: 1, truth: true, reason: `${seatLabel(s, n)}是善良的，留住他帮善良。` },
+  ];
+}

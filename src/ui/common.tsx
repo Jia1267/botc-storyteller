@@ -286,6 +286,9 @@ export interface Mark {
   cls?: string;
 }
 
+/** 醉酒原因：why 记的是让他醉的角色（或"选了莽夫"） */
+export const drunkWhy = (why: string) => (why === '选了莽夫' ? '选了莽夫' : `被${why}弄醉`);
+
 export function seatMarks(s: GameState, n: number): Mark[] {
   const x = seatOf(s, n);
   const out: Mark[] = [];
@@ -302,6 +305,11 @@ export function seatMarks(s: GameState, n: number): Mark[] {
   if (s.harpy && !s.harpy.done && s.harpy.night === s.night && s.harpy.mad === n) out.push({ key: 'harpy', short: '狂', text: `要疯狂地证明 ${seatName(s.harpy.second)} 是邪恶的（鹰身女妖）` });
   if (s.bountyKnown[s.bountyKnown.length - 1] === n) out.push({ key: 'bounty', short: '赏', text: '赏金猎人现在盯着的邪恶玩家' });
   if (s.bansheeActive === n) out.push({ key: 'banshee', short: '妖', text: '报丧女妖能力生效：每天提名两次、投票算两票' });
+  const td = s.tempDrunk.find((d) => d.seat === n && d.from <= s.night && s.night <= d.to);
+  if (td) out.push({ key: 'tdrunk', short: '醉', text: `醉酒到第 ${td.to} 天黄昏（${drunkWhy(td.why)}）`, cls: 'm-drunk' });
+  if (s.grandchild === n && s.seats.some((y) => y.role === 'grandmother' && y.alive)) out.push({ key: 'gc', short: '孙', text: '祖母的孙子：被恶魔杀死时祖母也死' });
+  if (s.phase === 'night' && s.ns?.innkeeper?.includes(n)) out.push({ key: 'inn', short: '护', text: '今晚受旅店老板保护' });
+  if (x.role === 'po' && s.poCharged) out.push({ key: 'po', short: '蓄', text: '珀上次没选人：下次要选三个', cls: 'm-evil' });
   if (isPoisoned(s, n))
     out.push({
       key: 'poison', short: '毒', cls: 'm-poison',
@@ -312,7 +320,9 @@ export function seatMarks(s: GameState, n: number): Mark[] {
             ? '食人族吃到邪恶，中毒中'
             : s.stPoison?.seat === n && s.stPoison.night === s.night
               ? '被说书人用投毒者能力下毒（今晚和明天白天）'
-              : '中毒中（今晚和明天白天）',
+              : s.pukkaPoison === n
+                ? '被普卡毒了：下一次普卡行动时死亡'
+                : '中毒中（今晚和明天白天）',
     });
   if (s.babysitter === n && s.demonChar === 'lilmonsta') out.push({ key: 'baby', short: '宝', text: '正在照看小怪宝（算作恶魔）', cls: 'm-evil' });
   if (s.fearTarget === n && s.seats.some((y) => y.role === 'fearmonger' && y.alive)) out.push({ key: 'fear', short: '惧', text: '恐惧之灵的目标', cls: 'm-evil' });

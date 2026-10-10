@@ -48,6 +48,15 @@ const BY_SCRIPT: Partial<Record<ScriptId, Section[]>> = {
       ],
     },
   ],
+  bmr: [
+    {
+      title: '暗月初升要注意',
+      lines: [
+        '这个剧本死人多：恶魔可能一晚杀好几个人，也有人能让别人死不了、甚至复活。',
+        '很多角色会让人"醉酒"：醉酒的人能力无效，得到的信息可能是假的，他自己不知道。',
+      ],
+    },
+  ],
   alvsal: [
     {
       title: '王不见王要注意',
@@ -62,6 +71,7 @@ const BY_SCRIPT: Partial<Record<ScriptId, Section[]>> = {
 
 /** 通用讲稿里"恶魔每晚杀人"那句，按剧本换掉 */
 const NIGHT_KILL: Partial<Record<ScriptId, string>> = {
+  bmr: '从第二晚开始，恶魔每晚会杀人（有的恶魔一晚杀好几个）。',
   whispers: '这个剧本的恶魔晚上不杀人，后面会讲它怎么赢。',
   sunset: '从第二晚开始，如果前一个白天没有人死，恶魔会在夜里杀一个人。',
   alvsal: '从第二晚开始，恶魔每晚会选三个人，让他们自己决定生死（后面细讲）。',

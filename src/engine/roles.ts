@@ -16,6 +16,9 @@ export type RoleId =
   // 王不见王
   | 'dreamer' | 'bountyhunter' | 'general' | 'alsaahir' | 'seamstress' | 'banshee'
   | 'sweetheart' | 'barber' | 'plaguedoctor' | 'harpy' | 'marionette' | 'alhadikhia'
+  // 暗月初升
+  | 'grandmother' | 'sailor' | 'innkeeper' | 'gambler' | 'gossip' | 'courtier' | 'professor' | 'minstrel' | 'pacifist'
+  | 'goon' | 'tinker' | 'moonchild' | 'assassin' | 'mastermind' | 'pukka' | 'shabaloth' | 'po'
   // 旅行者（暗流涌动）
   | 'scapegoat' | 'gunslinger' | 'beggar' | 'bureaucrat' | 'thief';
 
@@ -477,6 +480,93 @@ const R: RoleDef[] = [
       '死人选择活会复活。三人最后都活着，就三人都死。',
       '天亮时宣布这三人谁活着、谁死了。',
     ],
+  },
+
+  /* ---------- 暗月初升 ---------- */
+  {
+    id: 'grandmother', name: '祖母', short: '祖母', team: 'townsfolk', weight: 1, bluff: 1.5, info: true,
+    ability: '第一晚，你会得知一名善良玩家和他的角色（你的孙子）。如果恶魔杀死了他，你也会死亡。',
+    tips: ['第一晚指给她一名善良玩家，并给她看那人的角色。', '恶魔夜里杀死孙子时，祖母也跟着死（网页自动处理）。'],
+  },
+  {
+    id: 'sailor', name: '水手', short: '水手', team: 'townsfolk', weight: 1.5, bluff: 2,
+    ability: '每晚，你选择一名存活玩家：你或他之一醉酒到明天黄昏。你不会死亡。',
+    tips: ['他指一个人，由你决定是水手自己醉还是那个人醉（网页按局势推荐）。', '水手健康时任何方式都杀不死他（处决也不行）。'],
+  },
+  {
+    id: 'innkeeper', name: '旅店老板', short: '旅店', team: 'townsfolk', weight: 1.5, bluff: 1.5,
+    ability: '每晚（第一晚除外），你选择两名玩家：他们今晚不会死亡，但其中一人醉酒到明天黄昏。',
+    tips: ['他指两个人：今晚两人都死不了。由你决定其中谁醉酒（网页按局势推荐）。'],
+  },
+  {
+    id: 'gambler', name: '赌徒', short: '赌徒', team: 'townsfolk', weight: 1, bluff: 1,
+    ability: '每晚（第一晚除外），你选择一名玩家并猜他的角色：如果猜错了，你死亡。',
+    tips: ['他指一个人，再在角色表上指一个角色。猜错他就死（他中毒/醉酒时不会死）。', '不告诉他猜得对不对，天亮看他死没死。'],
+  },
+  {
+    id: 'gossip', name: '造谣者', short: '造谣', team: 'townsfolk', weight: 1, bluff: 1,
+    ability: '每个白天，你可以公开发表一个声明。如果它是真的，当晚会有一名玩家死亡。',
+    tips: ['白天他公开说一句话，由你判断真假（网页白天有按钮记录）。', '是真的：当晚由你决定谁死（网页按局势推荐）。'],
+  },
+  {
+    id: 'courtier', name: '侍臣', short: '侍臣', team: 'townsfolk', weight: 1.5, bluff: 1,
+    ability: '整局一次，夜里你可以选择一个角色：那个角色的玩家醉酒三个白天和三个夜晚。',
+    tips: ['每晚问他用不用。用了就在角色表上指一个角色；那个角色在场的话，那名玩家从今晚起醉酒三天三夜。'],
+  },
+  {
+    id: 'professor', name: '教授', short: '教授', team: 'townsfolk', weight: 1.5, bluff: 1,
+    ability: '整局一次，夜里（第一晚除外）你可以选择一名死亡的玩家：如果他是镇民，他复活。',
+    tips: ['每晚问他用不用。选中死去的镇民就复活，天亮宣布；选中别人什么都不发生，能力也用掉。'],
+  },
+  {
+    id: 'minstrel', name: '吟游诗人', short: '吟游', team: 'townsfolk', weight: 1, bluff: 1,
+    ability: '如果有爪牙被处决死亡，除你以外的所有玩家（旅行者除外）醉酒到明天黄昏。',
+    tips: ['处决死了爪牙时网页会提醒你：之后一天一夜所有人的能力都无效，信息可以是假的。'],
+  },
+  {
+    id: 'pacifist', name: '和平主义者', short: '和平', team: 'townsfolk', weight: 1, bluff: 1.5,
+    ability: '被处决的善良玩家可能不会死亡。',
+    tips: ['处决善良玩家时，网页会问你要不要让他不死（按局势推荐）。宣布"他被处决了，但没有死"。'],
+  },
+  {
+    id: 'goon', name: '莽夫', short: '莽夫', team: 'outsider', weight: 0, bluff: 1,
+    ability: '每晚，第一个用能力选择你的玩家醉酒到明天黄昏（能力当场无效），你变成他的阵营。',
+    tips: ['包括恶魔选他杀人：恶魔当晚醉酒，杀人无效。', '他的阵营变了要叫醒他，比大拇指告诉他现在的阵营（网页会提醒）。'],
+  },
+  {
+    id: 'tinker', name: '修补匠', short: '修补', team: 'outsider', weight: -0.5, bluff: 1.5,
+    ability: '你随时可能会死亡。',
+    tips: ['由你决定他什么时候死：每晚网页会问一次，白天也有按钮。'],
+  },
+  {
+    id: 'moonchild', name: '月之子', short: '月之子', team: 'outsider', weight: -1, bluff: 1,
+    ability: '当你得知自己死亡时，你要公开选择一名存活玩家：如果他是善良的，他当晚死亡。',
+    tips: ['他死后（天亮宣布或被处决时），让他公开选一个人。选中善良玩家，那人当晚死亡。'],
+  },
+  {
+    id: 'assassin', name: '刺客', short: '刺客', team: 'minion', weight: -2, bluff: 0,
+    ability: '整局一次，夜里（第一晚除外）你可以选择一名玩家：他死亡，即使他因为某些原因本来不会死。',
+    tips: ['每晚问他用不用。刺客杀人无视士兵、僧侣、茶艺师、旅店老板等一切保护。'],
+  },
+  {
+    id: 'mastermind', name: '主谋', short: '主谋', team: 'minion', weight: -1.5, bluff: 0,
+    ability: '如果恶魔被处决死亡（本该结束游戏），游戏再进行一天。如果那天有玩家被处决，他的阵营落败。',
+    tips: ['恶魔被处决时不要宣布游戏结束，照常入夜。', '下一天处决了善良玩家：邪恶获胜；处决邪恶玩家或没人被处决：善良获胜。'],
+  },
+  {
+    id: 'pukka', name: '普卡', short: '普卡', team: 'demon', weight: 0, bluff: 0,
+    ability: '每晚，你选择一名玩家：他中毒。上一个被你的能力毒的玩家死亡，然后恢复健康。',
+    tips: ['第一晚也要醒：选一个人中毒，没人死。', '之后每晚：先让上一个被毒的人死，再毒新的人。'],
+  },
+  {
+    id: 'shabaloth', name: '沙巴洛斯', short: '沙巴', team: 'demon', weight: 0, bluff: 0,
+    ability: '每晚（第一晚除外），你选择两名玩家：他们死亡。你上一晚选择的玩家中已死亡的人可能会复活。',
+    tips: ['每晚杀两个人。', '上一晚他选的人里死了的，你可以让其中一个复活（反刍），网页按局势推荐。'],
+  },
+  {
+    id: 'po', name: '珀', short: '珀', team: 'demon', weight: 0, bluff: 0,
+    ability: '每晚（第一晚除外），你可以选择一名玩家：他死亡。如果你上次选择时没有选人，今晚你要选择三名玩家：他们死亡。',
+    tips: ['他可以不选人（蓄力）；下一晚就要选三个人，三人都死。'],
   },
 
   /* ---------- 旅行者：迟到/早退的人，阵营由说书人定 ---------- */

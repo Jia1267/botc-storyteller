@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import { roleName } from '../engine/roles';
 import { isEvil, isPoisoned, seatOf, seatName } from '../engine/core';
-import { klutzChoose, klutzNeedsChoice, pixieMad, pixieNeedsCheck } from '../engine/flow';
+import { klutzChoose, klutzNeedsChoice, moonchildChoose, moonchildNeedsChoice, pixieMad, pixieNeedsCheck } from '../engine/flow';
 import type { Game } from '../store';
 import { SayBox, SeatPicker } from './common';
 
 /** 还有没处理的提示（呆瓜选人、小精灵疯狂判定）时，不能进入下一阶段 */
-export const promptPending = (s: Game['s']) => !!klutzNeedsChoice(s) || !!pixieNeedsCheck(s);
+export const promptPending = (s: Game['s']) => !!klutzNeedsChoice(s) || !!pixieNeedsCheck(s) || !!moonchildNeedsChoice(s);
 
 /** 呆瓜死了：让他公开选一名存活玩家 */
 export function KlutzPrompt({ g }: { g: Game }) {
@@ -49,6 +49,27 @@ export function PixiePrompt({ g }: { g: Game }) {
           没有
         </button>
       </div>
+    </div>
+  );
+}
+
+/** 月之子死了：让他公开选一名存活玩家（善良的话当晚死） */
+export function MoonchildPrompt({ g }: { g: Game }) {
+  const s = g.s;
+  const m = moonchildNeedsChoice(s);
+  const [t, setT] = useState<number[]>([]);
+  if (!m) return null;
+  const dead = s.seats.filter((x) => !x.alive).map((x) => x.n);
+  const good = t.length ? !isEvil(seatOf(s, t[0])) : false;
+  return (
+    <div className="card card-warn stack" style={{ gap: 10 }}>
+      <b style={{ color: 'var(--warn)' }}>月之子（{seatName(m.n)}）死了：让他公开选一名存活玩家</b>
+      <p className="dim">他可以先和大家商量一下。选中的人如果是善良的，今晚死亡。不要说出那人的阵营。</p>
+      <SeatPicker s={s} selected={t} max={1} onChange={setT} disabled={[...dead, m.n]} label="他选了谁？" />
+      {t.length > 0 && <p className="dim">{good ? `${seatName(t[0])} 是善良的：今晚会死（只有你知道）。` : `${seatName(t[0])} 是邪恶的：什么都不会发生。`}</p>}
+      <button className="btn btn-primary btn-block" disabled={!t.length} onClick={() => g.commit((st) => moonchildChoose(st, t[0]))}>
+        记下他的选择
+      </button>
     </div>
   );
 }

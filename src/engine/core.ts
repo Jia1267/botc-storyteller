@@ -69,13 +69,18 @@ export function isPoisoned(s: GameState, n: number): boolean {
   if (s.cannibalPoisoned && seatOf(s, n).role === 'cannibal') return true;
   // 瘟疫医生死后，说书人用投毒者能力毒的人
   if (s.stPoison && s.stPoison.seat === n && s.stPoison.night === s.night) return true;
+  // 普卡毒的人：一直中毒到下一次普卡行动（普卡死了就解除）
+  if (s.pukkaPoison === n && s.seats.some((x) => x.role === 'pukka' && reallyAlive(s, x))) return true;
   return false;
 }
+
+/** 醉酒到黄昏（水手、旅店老板、侍臣、吟游诗人、莽夫） */
+export const tempDrunk = (s: GameState, n: number) => s.tempDrunk.some((d) => d.seat === n && d.from <= s.night && s.night <= d.to);
 
 /** 能力失灵：酒鬼、提线木偶（以为自己是好人）、被心上人弄醉的人，或正在中毒 */
 export function malfunction(s: GameState, n: number): boolean {
   const r = seatOf(s, n).role;
-  return r === 'drunk' || r === 'marionette' || s.sweetheartDrunk === n || isPoisoned(s, n);
+  return r === 'drunk' || r === 'marionette' || s.sweetheartDrunk === n || tempDrunk(s, n) || isPoisoned(s, n);
 }
 
 /** 涡流活着且没中毒：镇民能力只给假信息 */
@@ -161,6 +166,8 @@ export function deathShield(s: GameState, n: number): string | null {
     if (nb.length === 2 && nb.includes(n) && nb.every((m) => !isEvil(seatOf(s, m)))) return `受茶艺师（${seatName(t.n)}）保护，不会死`;
   }
   if (st.role === 'fool' && !st.used && !malfunction(s, n)) return '是弄臣，第一次将要死亡时不会死';
+  if (st.role === 'sailor' && !malfunction(s, n)) return '是水手，健康时不会死';
+  if (s.phase === 'night' && s.ns?.innkeeper?.includes(n)) return '今晚受旅店老板保护，不会死';
   return null;
 }
 

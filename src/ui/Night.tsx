@@ -2,15 +2,17 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ROLES, TEAM_NAME, roleName, type RoleId } from '../engine/roles';
 import { balance, recommend } from '../engine/balance';
 import {
-  aliveNeighbors, believedRole, demonSeat, diedOnDay, seatOf, isDemonSeat, isEvil, isPoisoned, lilMonsta, malfunction, mustLie, scriptOf, seatName, teamOf,
+  aliveNeighbors, believedRole, demonSeat, diedOnDay, seatOf, isDemonSeat, isEvil, isPoisoned, lilMonsta, malfunction, mustLie, scriptOf, seatLabel, seatName,
+  teamOf,
 } from '../engine/core';
 import {
-  completeSlot, currentSlot, effectiveSlot, godfatherOutsiders, hadikhiaPreview, minionSeats, notWakingTonight, previewImp, shouldRun, slotActor,
+  completeSlot, currentSlot, effectiveSlot, goonTriggered, godfatherOutsiders, hadikhiaPreview, minionSeats, notWakingTonight, previewImp, shouldRun, slotActor,
   slotsFor, type SlotPayload,
 } from '../engine/flow';
 import {
   balloonistChoices, bountyChoices, chambermaidChoices, chambermaidCount, chefCount, dreamLabel, dreamerChoices, duchessChoices, duchessCount,
-  empathCount, flowergirlChoices, fortuneChoices, generalChoices, killPreview, legalNumbers, lilKillChoices, mayorBounceChoices, numberChoices,
+  empathCount, flowergirlChoices, fortuneChoices, generalChoices, grandmotherChoices, innkeeperDrunkChoices, killPreview, legalNumbers, lilKillChoices,
+  mayorBounceChoices, numberChoices, sailorDrunkChoices, shabalothReviveChoices, tinkerChoices,
   pairChoices, pairVerdict, pixieChoices, plagueChoices, revealChoices, revealVerdict, seamstressChoices, starpassChoices, stHarpyChoices, stPoisonChoices, sweetheartChoices,
   widowInformChoices, type PairInfo, type PairKind,
 } from '../engine/info';
@@ -20,7 +22,7 @@ import { stepRng, type Game } from '../store';
 import { BottomBar, ChoicePanel, DoBox, SayBox, SeatPicker, roleCard, useUi } from './common';
 import { GrimoirePanel } from './Grimoire';
 import { Icon } from './icons';
-import { KlutzPrompt, PixiePrompt, promptPending } from './Prompts';
+import { KlutzPrompt, MoonchildPrompt, PixiePrompt, promptPending } from './Prompts';
 
 interface StepProps {
   g: Game;
@@ -249,6 +251,31 @@ function SlotBody({ g, s, slot, actor }: { g: Game; s: GameState; slot: SlotId; 
       return <BarberStep g={g} s={s} actor={actor!} />;
     case 'plaguedoctor':
       return <PlagueStep g={g} s={s} />;
+    case 'sailor':
+      return <SailorStep g={g} s={s} actor={actor!} />;
+    case 'innkeeper':
+      return <InnkeeperStep g={g} s={s} actor={actor!} />;
+    case 'courtier':
+      return <CourtierStep g={g} s={s} actor={actor!} />;
+    case 'gambler':
+      return <GamblerStep g={g} s={s} actor={actor!} />;
+    case 'grandmother':
+      return <GrandmotherStep g={g} s={s} actor={actor!} />;
+    case 'pukka':
+      return <PukkaStep g={g} s={s} actor={actor!} />;
+    case 'shabaloth':
+      return <ShabalothStep g={g} s={s} actor={actor!} />;
+    case 'po':
+      return <PoStep g={g} s={s} actor={actor!} />;
+    case 'assassin':
+    case 'professor':
+      return <OnceTargetStep g={g} s={s} actor={actor!} slot={slot} />;
+    case 'gossip':
+      return <GossipStep g={g} s={s} />;
+    case 'tinker':
+      return <TinkerStep g={g} s={s} />;
+    case 'moonchild':
+      return <MoonchildStep g={g} s={s} />;
     default:
       return <SkipStep g={g} />;
   }
@@ -374,7 +401,7 @@ function DawnStep({ g, s }: { g: Game; s: GameState }) {
   return (
     <>
       <SayBox
-        lines={dawnLines(deaths, s.style, { fear: s.fearAnnounce, leviathanDay: lev ? s.night : undefined, hadikhia: s.ns!.hadikhia, banshee })}
+        lines={dawnLines(deaths, s.style, { fear: s.fearAnnounce, leviathanDay: lev ? s.night : undefined, hadikhia: s.ns!.hadikhia, banshee, revived: s.ns!.revived })}
         title="对所有人说"
         s={s}
         onStyle={toggleStyle(g)}
@@ -388,6 +415,7 @@ function DawnStep({ g, s }: { g: Game; s: GameState }) {
         ]}
       />
       <KlutzPrompt g={g} />
+      <MoonchildPrompt g={g} />
       <PixiePrompt g={g} />
       {s.winner && (
         <div className={`card ${s.winner === 'good' ? '' : 'card-evil'}`}>
@@ -415,7 +443,7 @@ function TargetStep({
   const ui = useUi();
   const [t, setT] = useState<number[]>([]);
   const notSelf = slot === 'monk' || slot === 'butler' || slot === 'bureaucrat' || slot === 'thief';
-  const bad = malfunction(s, actor.n);
+  const bad = malfunction(s, actor.n) || !!goonTriggered(s, actor, t, slot);
   // 魔鬼代言人、驱魔人：不能和上一晚选同一个人
   const last =
     slot === 'devilsadvocate' && s.advocate?.night === s.night - 1 ? s.advocate.seat : slot === 'exorcist' && s.exorcistPick?.night === s.night - 1 ? s.exorcistPick.seat : null;
@@ -447,6 +475,7 @@ function TargetStep({
       <DoBox items={[wake(actor.n), `让他用手指向一名玩家${notSelf ? '（不能指自己）' : ''}，你在下面点出同一个人。`, sleep]} />
       <SayBox lines={slotLines(slot, s.style)} title="小声说" s={s} onStyle={toggleStyle(g)} />
       <SeatPicker s={s} selected={t} max={1} onChange={setT} disabled={blocked} label="他指了谁？" />
+      <GoonNote s={s} actor={actor} picks={t} slot={slot} />
       <p className="dim">{note}</p>
       {exorcisedDemon && (
         <Reveal key={exorcisedDemon}>
@@ -1129,6 +1158,7 @@ function ChambermaidStep({ g, s, actor }: StepProps) {
       <SayBox lines={slotLines('chambermaid', s.style)} title="小声说" s={s} onStyle={toggleStyle(g)} />
       <p className="dim">今晚因为自己的能力醒来过的人：{s.ns?.woke.length ? seatsText(s.ns.woke) : '还没有'}</p>
       <SeatPicker s={s} selected={picks} max={2} onChange={setPicks} disabled={blocked} label="她指了哪两个人？" />
+      <GoonNote s={s} actor={actor} picks={picks} slot="chambermaid" />
       {picks.length === 2 ? (
         <Reveal key={[...picks].sort().join()}>
           <ChambermaidAnswer g={g} s={s} actor={actor} picks={picks} />
@@ -1156,7 +1186,7 @@ function ChambermaidAnswer({ g, s, actor, picks }: StepProps & { picks: number[]
       <DoBox items={[c ? <>伸出 <b>{c.value}</b> 根手指{c.value === 0 ? '（握拳）' : ''}。</> : null, sleep]} />
       <Tips role="chambermaid" />
       <BottomBar wide>
-        <button className="btn btn-primary btn-block" disabled={!c} onClick={() => c && done({ kind: 'number', num: c.value, truth: c.truth, twist: c.twist })}>
+        <button className="btn btn-primary btn-block" disabled={!c} onClick={() => c && done({ kind: 'number', num: c.value, truth: c.truth, twist: c.twist, picks })}>
           完成，下一步
         </button>
       </BottomBar>
@@ -1292,7 +1322,7 @@ function GodfatherStep({ g, s, actor }: StepProps) {
 function KillStep({ g, s, actor, slot }: StepProps & { slot: 'zombuul' | 'godfather' }) {
   const done = useDone(g);
   const [t, setT] = useState<number[]>([]);
-  const bad = malfunction(s, actor.n);
+  const bad = malfunction(s, actor.n) || !!goonTriggered(s, actor, t, slot);
   const pv = t.length ? killPreview(s, t[0]) : null;
   const outs = diedOnDay(s, s.night - 1).filter((x) => teamOf(x.role) === 'outsider');
   return (
@@ -1305,6 +1335,7 @@ function KillStep({ g, s, actor, slot }: StepProps & { slot: 'zombuul' | 'godfat
       <DoBox items={[wake(actor.n), '让他用手指向一名玩家，你在下面点出来。', sleep]} />
       <SayBox lines={slot === 'godfather' ? ['今天有外来者死了。请选择一名玩家，他会死亡。'] : slotLines('zombuul', s.style)} title="小声说" s={s} onStyle={toggleStyle(g)} />
       <SeatPicker s={s} selected={t} max={1} onChange={setT} label="他要杀谁？" />
+      <GoonNote s={s} actor={actor} picks={t} slot={slot} />
       {pv && (
         <Reveal key={t[0]}>
           <div className={`card${pv.dies && !bad ? ' card-evil' : ''}`}>
@@ -1851,6 +1882,482 @@ function PlagueStep({ g, s }: { g: Game; s: GameState }) {
       <BottomBar wide>
         {to && <CardButton onClick={() => ui.showCard({ title: '你获得了这个能力', big: ['间谍'], ability: ROLES.spy.ability })} />}
         <button className="btn btn-primary grow" onClick={() => done({ kind: 'plague', ability: c.value.ability, to })}>
+          完成，下一步
+        </button>
+      </BottomBar>
+    </>
+  );
+}
+
+/* ---------------- 暗月初升 ---------------- */
+
+/** 莽夫：今晚第一个用能力选他的人醉酒（这次能力无效），莽夫变成他的阵营 */
+function GoonNote({ s, actor, picks, slot }: { s: GameState; actor?: Seat; picks: number[]; slot: SlotId }) {
+  const goon = goonTriggered(s, actor, picks, slot);
+  if (!goon || !actor) return null;
+  const flip = isEvil(goon) !== isEvil(actor);
+  return (
+    <div className="card card-warn stack" style={{ gap: 6 }}>
+      <b style={{ color: 'var(--warn)' }}>{seatName(goon.n)} 是莽夫：{seatName(actor.n)} 今晚第一个选了他</b>
+      <p>{seatName(actor.n)} 当场醉酒到明天黄昏，这次能力无效（照常走流程，别露馅）。</p>
+      {flip && (
+        <p>
+          莽夫变成<b>{isEvil(actor) ? '邪恶' : '善良'}</b>阵营：这一步结束后轻拍 {seatName(goon.n)}，大拇指{isEvil(actor) ? '向下' : '向上'}告诉他现在的阵营。
+        </p>
+      )}
+    </div>
+  );
+}
+
+function SailorStep({ g, s, actor }: StepProps) {
+  const [t, setT] = useState<number[]>([]);
+  const blocked = s.seats.filter((x) => !x.alive).map((x) => x.n);
+  return (
+    <>
+      <DoBox items={[wake(actor.n), '让他指一名存活玩家，你在下面点出来。', sleep]} />
+      <SayBox lines={slotLines('sailor', s.style)} title="小声说" s={s} onStyle={toggleStyle(g)} />
+      <SeatPicker s={s} selected={t} max={1} onChange={setT} disabled={blocked} label="他指了谁？" />
+      <GoonNote s={s} actor={actor} picks={t} slot="sailor" />
+      {t.length ? (
+        <Reveal key={t[0]}>
+          <SailorAnswer g={g} s={s} actor={actor} target={t[0]} />
+        </Reveal>
+      ) : (
+        <>
+          <Tips role="sailor" drunk={actor.role === 'drunk'} />
+          <Pending text="先点出他指的人" />
+        </>
+      )}
+    </>
+  );
+}
+
+function SailorAnswer({ g, s, actor, target }: StepProps & { target: number }) {
+  const done = useDone(g);
+  const choices = useMemo(() => sailorDrunkChoices(s, actor.n, target), [s, actor.n, target]);
+  const rec = useMemo(() => recommend(choices, balance(s).score, stepRng(s, target)), [choices, s, target]);
+  const [sel, setSel] = useState(rec);
+  const c = choices[sel] ?? choices[0];
+  const bad = malfunction(s, actor.n) || !!goonTriggered(s, actor, [target], 'sailor');
+  return (
+    <>
+      {bad ? (
+        <p className="dim">水手中毒/醉酒（或被莽夫灌醉）：照常走流程，但没有人会因为水手醉酒。</p>
+      ) : (
+        <>
+          <div className="dim">谁醉酒到明天黄昏？（不告诉任何人）</div>
+          <ChoicePanel s={s} choices={choices} sel={sel} rec={rec} onSel={(i) => i >= 0 && setSel(i)} />
+        </>
+      )}
+      <Tips role="sailor" drunk={actor.role === 'drunk'} />
+      <BottomBar wide>
+        <button className="btn btn-primary btn-block" onClick={() => done({ kind: 'sailor', target, drunk: c.value })}>
+          完成：{seatName(c.value)} 醉酒，下一步
+        </button>
+      </BottomBar>
+    </>
+  );
+}
+
+function InnkeeperStep({ g, s, actor }: StepProps) {
+  const [t, setT] = useState<number[]>([]);
+  return (
+    <>
+      <DoBox items={[wake(actor.n), '让他指两名玩家，你在下面点出来。', sleep]} />
+      <SayBox lines={slotLines('innkeeper', s.style)} title="小声说" s={s} onStyle={toggleStyle(g)} />
+      <SeatPicker s={s} selected={t} max={2} onChange={setT} label="他指了哪两个人？" />
+      <GoonNote s={s} actor={actor} picks={t} slot="innkeeper" />
+      {t.length === 2 ? (
+        <Reveal key={[...t].sort().join()}>
+          <InnkeeperAnswer g={g} s={s} actor={actor} picks={t as [number, number]} />
+        </Reveal>
+      ) : (
+        <>
+          <Tips role="innkeeper" drunk={actor.role === 'drunk'} />
+          <Pending text="先点出他指的两个人" />
+        </>
+      )}
+    </>
+  );
+}
+
+function InnkeeperAnswer({ g, s, actor, picks }: StepProps & { picks: [number, number] }) {
+  const done = useDone(g);
+  const choices = useMemo(() => innkeeperDrunkChoices(s, picks), [s, picks]);
+  const rec = useMemo(() => recommend(choices, balance(s).score, stepRng(s, picks[0] * 7 + picks[1])), [choices, s, picks]);
+  const [sel, setSel] = useState(rec);
+  const c = choices[sel] ?? choices[0];
+  return (
+    <>
+      <p className="muted">{seatsText(picks)} 今晚都不会死（任何原因）。其中一人醉酒到明天黄昏：</p>
+      <ChoicePanel s={s} choices={choices} sel={sel} rec={rec} onSel={(i) => i >= 0 && setSel(i)} />
+      {(malfunction(s, actor.n) || !!goonTriggered(s, actor, picks, 'innkeeper')) && <p className="dim">旅店老板中毒/醉酒（或被莽夫灌醉）：保护无效，也没有人会醉酒。</p>}
+      <Tips role="innkeeper" drunk={actor.role === 'drunk'} />
+      <BottomBar wide>
+        <button className="btn btn-primary btn-block" onClick={() => done({ kind: 'innkeeper', picks, drunk: c.value })}>
+          完成：保护 {seatsText(picks)}，{seatName(c.value)} 醉酒
+        </button>
+      </BottomBar>
+    </>
+  );
+}
+
+/** 角色表：按类型分组点选一个角色 */
+function RolePick({ s, value, onPick }: { s: GameState; value: RoleId | null; onPick: (r: RoleId) => void }) {
+  return (
+    <div className="stack" style={{ gap: 8 }}>
+      {(['townsfolk', 'outsider', 'minion', 'demon'] as const).map((t) => (
+        <div key={t}>
+          <div className="dim">{TEAM_NAME[t]}</div>
+          <div className="role-grid">
+            {scriptOf(s)
+              .roles.filter((r) => ROLES[r].team === t)
+              .map((r) => (
+                <button key={r} className={`role-chip${t === 'minion' || t === 'demon' ? ' evil-c' : ''}`} style={value === r ? { boxShadow: '0 0 0 2px var(--gold) inset' } : undefined} onClick={() => onPick(r)}>
+                  {roleName(r)}
+                </button>
+              ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function CourtierStep({ g, s, actor }: StepProps) {
+  const done = useDone(g);
+  const [use, setUse] = useState<boolean | null>(null);
+  const [role, setRole] = useState<RoleId | null>(null);
+  const target = role ? s.seats.find((x) => x.role === role) : undefined;
+  return (
+    <>
+      <DoBox items={[wake(actor.n), '问他今晚要不要用能力（整局一次）。要用就让他在角色表上指一个角色。', sleep]} />
+      <SayBox lines={slotLines('courtier', s.style)} title="小声说" s={s} onStyle={toggleStyle(g)} />
+      <div className="seg" role="radiogroup">
+        <button className={use === true ? 'on' : ''} onClick={() => setUse(true)} aria-pressed={use === true}>
+          他要用
+        </button>
+        <button className={use === false ? 'on' : ''} onClick={() => setUse(false)} aria-pressed={use === false}>
+          他不用（摇头）
+        </button>
+      </div>
+      {use && <RolePick s={s} value={role} onPick={setRole} />}
+      {use && role && (
+        <div className="card">
+          <p>
+            {malfunction(s, actor.n)
+              ? '他中毒/醉酒：照常走流程，但没有效果（能力用掉了）。'
+              : target
+                ? `${seatName(target.n)}（${roleName(role)}）从今晚起醉酒三个夜晚、三个白天。`
+                : `【${roleName(role)}】不在场：什么都不会发生，能力用掉了。`}
+          </p>
+        </div>
+      )}
+      <Tips role="courtier" drunk={actor.role === 'drunk'} />
+      <BottomBar wide>
+        <button
+          className="btn btn-primary btn-block"
+          disabled={use === null || (use && !role)}
+          onClick={() => done({ kind: 'courtier', role: use ? role : null })}
+        >
+          {use === false ? '他不用，下一步' : use && role ? '完成，下一步' : use ? '先点出他指的角色' : '先问他用不用'}
+        </button>
+      </BottomBar>
+    </>
+  );
+}
+
+function GamblerStep({ g, s, actor }: StepProps) {
+  const done = useDone(g);
+  const [t, setT] = useState<number[]>([]);
+  const [role, setRole] = useState<RoleId | null>(null);
+  const right = t.length && role ? seatOf(s, t[0]).role === role : null;
+  const bad = malfunction(s, actor.n) || !!goonTriggered(s, actor, t, 'gambler');
+  return (
+    <>
+      <DoBox items={[wake(actor.n), '让他指一名玩家，再在角色表上指一个角色。你在下面点出来。', sleep]} />
+      <SayBox lines={slotLines('gambler', s.style)} title="小声说" s={s} onStyle={toggleStyle(g)} />
+      <SeatPicker s={s} selected={t} max={1} onChange={setT} disabled={[actor.n]} label="他指了谁？" />
+      <GoonNote s={s} actor={actor} picks={t} slot="gambler" />
+      {t.length > 0 && <RolePick s={s} value={role} onPick={setRole} />}
+      {right !== null && (
+        <Reveal key={`${t[0]}-${role}`}>
+          <div className={`card${right ? '' : ' card-evil'}`}>
+            <p>
+              {right
+                ? `猜对了：${seatName(t[0])} 就是${roleName(role!)}，什么都不会发生。`
+                : bad
+                  ? `猜错了（他其实是${roleName(seatOf(s, t[0]).role)}），但赌徒中毒/醉酒：他不会死。`
+                  : `猜错了（他其实是${roleName(seatOf(s, t[0]).role)}）：赌徒今晚死亡。`}
+            </p>
+            <p className="dim">不要告诉他猜得对不对，天亮宣布死讯就好。</p>
+          </div>
+        </Reveal>
+      )}
+      <Tips role="gambler" drunk={actor.role === 'drunk'} />
+      <BottomBar wide>
+        <button className="btn btn-primary btn-block" disabled={right === null} onClick={() => role && done({ kind: 'gambler', target: t[0], role })}>
+          {right === null ? '先点出他指的人和角色' : '完成，下一步'}
+        </button>
+      </BottomBar>
+    </>
+  );
+}
+
+function GrandmotherStep({ g, s, actor }: StepProps) {
+  const done = useDone(g);
+  const ui = useUi();
+  const choices = useMemo(() => grandmotherChoices(s, actor.n, stepRng(s)), [s, actor.n]);
+  const rec = useMemo(() => recommend(choices, balance(s).score, stepRng(s, 1)), [choices, s]);
+  const [sel, setSel] = useState(rec);
+  const c = choices[sel] ?? choices[0];
+  return (
+    <>
+      <ChoicePanel s={s} choices={choices} sel={sel} rec={rec} onSel={(i) => i >= 0 && setSel(i)} />
+      <DoBox
+        items={[
+          wake(actor.n),
+          c ? (
+            <>
+              用手指向 <b>{seatName(c.value.seat)}</b>，点「给她看」：<b>【{roleName(c.value.role)}】</b>。这是她的孙子。
+            </>
+          ) : null,
+          sleep,
+        ]}
+      />
+      <SayBox lines={slotLines('grandmother', s.style)} title="小声说" s={s} onStyle={toggleStyle(g)} />
+      <Tips role="grandmother" drunk={actor.role === 'drunk'} />
+      <BottomBar wide>
+        {c && <CardButton onClick={() => ui.showCard(roleCard(c.value.role, '你的孙子是这个角色'))} />}
+        <button className="btn btn-primary grow" disabled={!c} onClick={() => c && done({ kind: 'grandmother', seat: c.value.seat, role: c.value.role, truth: c.truth })}>
+          完成，下一步
+        </button>
+      </BottomBar>
+    </>
+  );
+}
+
+function PukkaStep({ g, s, actor }: StepProps) {
+  const done = useDone(g);
+  const [t, setT] = useState<number[]>([]);
+  const prev = s.night > 1 ? s.pukkaPoison : null;
+  const bad = malfunction(s, actor.n) || !!goonTriggered(s, actor, t, 'pukka');
+  const pv = prev !== null ? killPreview(s, prev) : null;
+  return (
+    <>
+      {prev !== null && pv && (
+        <div className={`card${pv.dies && !bad ? ' card-evil' : ''}`}>
+          <b>上一个被普卡毒的 {seatName(prev)}：</b>
+          <p>{bad ? '普卡今晚中毒/醉酒：他不会死，也不会有新的人中毒。' : pv.text}</p>
+        </div>
+      )}
+      <DoBox items={[wake(actor.n), '让他指一名玩家（这个人中毒，下一晚死）。你在下面点出来。', sleep]} />
+      <SayBox lines={slotLines('pukka', s.style)} title="小声说" s={s} onStyle={toggleStyle(g)} />
+      <SeatPicker s={s} selected={t} max={1} onChange={setT} label="他指了谁？" />
+      <GoonNote s={s} actor={actor} picks={t} slot="pukka" />
+      {s.night === 1 && <p className="dim">第一晚只下毒，没有人会死。</p>}
+      <Tips role="pukka" />
+      <BottomBar wide>
+        <button className="btn btn-primary btn-block" disabled={!t.length} onClick={() => done({ kind: 'target', target: t[0] })}>
+          {t.length ? `确认：${seatName(t[0])} 中毒，下一步` : '先点出他指的人'}
+        </button>
+      </BottomBar>
+    </>
+  );
+}
+
+function ShabalothStep({ g, s, actor }: StepProps) {
+  const done = useDone(g);
+  const [t, setT] = useState<number[]>([]);
+  const bad = malfunction(s, actor.n) || !!goonTriggered(s, actor, t, 'shabaloth');
+  const choices = useMemo(() => shabalothReviveChoices(s), [s]);
+  const rec = useMemo(() => recommend(choices, balance(s).score, stepRng(s, 3)), [choices, s]);
+  const [sel, setSel] = useState(rec);
+  const revive = choices[sel]?.value ?? null;
+  return (
+    <>
+      <DoBox items={[wake(actor.n), '让他指两名玩家，你在下面点出来。', sleep]} />
+      <SayBox lines={slotLines('shabaloth', s.style)} title="小声说" s={s} onStyle={toggleStyle(g)} />
+      <SeatPicker s={s} selected={t} max={2} onChange={setT} label="他要杀哪两个人？" />
+      <GoonNote s={s} actor={actor} picks={t} slot="shabaloth" />
+      {t.length === 2 && (
+        <Reveal key={[...t].sort().join()}>
+          <div className={`card${bad ? '' : ' card-evil'}`}>
+            {bad ? <p>沙巴洛斯中毒/醉酒：没有人会死。</p> : t.map((n) => <p key={n}>{killPreview(s, n).text}</p>)}
+          </div>
+        </Reveal>
+      )}
+      {choices.length > 0 && (
+        <>
+          <div className="dim">上一晚他吃掉的人里，要不要吐出一个复活？</div>
+          <ChoicePanel s={s} choices={choices} sel={sel} rec={rec} onSel={(i) => i >= 0 && setSel(i)} moreLabel="要不要复活" />
+        </>
+      )}
+      <Tips role="shabaloth" />
+      <BottomBar wide>
+        <button className="btn btn-primary btn-block" disabled={t.length < 2} onClick={() => done({ kind: 'shabaloth', picks: t, revive })}>
+          {t.length < 2 ? '先点出他指的两个人' : `完成${revive ? `：${seatName(revive)} 复活` : ''}，下一步`}
+        </button>
+      </BottomBar>
+    </>
+  );
+}
+
+function PoStep({ g, s, actor }: StepProps) {
+  const done = useDone(g);
+  const [t, setT] = useState<number[]>([]);
+  const need = s.poCharged ? 3 : 1;
+  const bad = malfunction(s, actor.n) || !!goonTriggered(s, actor, t, 'po');
+  return (
+    <>
+      {s.poCharged && (
+        <div className="card card-evil">
+          <b>他上次没有选人：今晚要选三名玩家，他们都会死。</b>
+        </div>
+      )}
+      <DoBox items={[wake(actor.n), s.poCharged ? '让他指三名玩家，你在下面点出来。' : '让他指一名玩家；他也可以不选（下一晚就能选三个）。', sleep]} />
+      <SayBox lines={slotLines('po', s.style)} title="小声说" s={s} onStyle={toggleStyle(g)} />
+      <SeatPicker s={s} selected={t} max={need} onChange={setT} label={s.poCharged ? '他要杀哪三个人？' : '他要杀谁？'} />
+      <GoonNote s={s} actor={actor} picks={t} slot="po" />
+      {t.length === need && (
+        <Reveal key={[...t].sort().join()}>
+          <div className={`card${bad ? '' : ' card-evil'}`}>{bad ? <p>珀中毒/醉酒：没有人会死。</p> : t.map((n) => <p key={n}>{killPreview(s, n).text}</p>)}</div>
+        </Reveal>
+      )}
+      <Tips role="po" />
+      <BottomBar wide>
+        {!s.poCharged && t.length === 0 && (
+          <button className="btn btn-ghost" onClick={() => done({ kind: 'po', picks: [] })}>
+            他今晚不选
+          </button>
+        )}
+        <button className="btn btn-primary grow" disabled={t.length !== need} onClick={() => done({ kind: 'po', picks: t })}>
+          {t.length === need ? '完成，下一步' : `先点出他指的${need === 3 ? '三个' : ''}人`}
+        </button>
+      </BottomBar>
+    </>
+  );
+}
+
+/** 刺客 / 教授：整局一次，先问用不用 */
+function OnceTargetStep({ g, s, actor, slot }: StepProps & { slot: 'assassin' | 'professor' }) {
+  const done = useDone(g);
+  const [use, setUse] = useState<boolean | null>(null);
+  const [t, setT] = useState<number[]>([]);
+  const prof = slot === 'professor';
+  const blocked = prof ? s.seats.filter((x) => x.alive).map((x) => x.n) : [];
+  const bad = malfunction(s, actor.n) || !!goonTriggered(s, actor, t, slot);
+  const x = t.length ? seatOf(s, t[0]) : null;
+  const result = !x
+    ? null
+    : bad
+      ? '他中毒/醉酒：照常走流程，但没有效果（能力用掉了）。'
+      : prof
+        ? teamOf(x.role) === 'townsfolk'
+          ? `${seatName(x.n)}（${roleName(x.role)}）是镇民：他复活了！天亮宣布。`
+          : `${seatName(x.n)} 不是镇民：什么都不会发生，能力用掉了。`
+        : x.alive
+          ? `${seatLabel(s, x.n)} 死亡（刺客无视一切保护）。`
+          : `${seatName(x.n)} 已经死了，什么都不会发生，能力用掉了。`;
+  return (
+    <>
+      <DoBox items={[wake(actor.n), `问他今晚要不要用能力（整局一次）。要用就让他指${prof ? '一名死去的玩家' : '一名玩家'}。`, sleep]} />
+      <SayBox lines={slotLines(slot, s.style)} title="小声说" s={s} onStyle={toggleStyle(g)} />
+      <div className="seg" role="radiogroup">
+        <button className={use === true ? 'on' : ''} onClick={() => setUse(true)} aria-pressed={use === true}>
+          他要用
+        </button>
+        <button className={use === false ? 'on' : ''} onClick={() => setUse(false)} aria-pressed={use === false}>
+          他不用（摇头）
+        </button>
+      </div>
+      {use && <SeatPicker s={s} selected={t} max={1} onChange={setT} disabled={blocked} label={prof ? '他指了哪个死人？' : '他指了谁？'} />}
+      {use && <GoonNote s={s} actor={actor} picks={t} slot={slot} />}
+      {use && result && (
+        <div className={`card${!prof && x?.alive && !bad ? ' card-evil' : ''}`}>
+          <p>{result}</p>
+        </div>
+      )}
+      <Tips role={slot} />
+      <BottomBar wide>
+        <button className="btn btn-primary btn-block" disabled={use === null || (use && !t.length)} onClick={() => done(use ? { kind: 'target', target: t[0] } : { kind: 'none' })}>
+          {use === false ? '他不用，下一步' : use && t.length ? '完成，下一步（能力用掉了）' : use ? '先点出他指的人' : '先问他用不用'}
+        </button>
+      </BottomBar>
+    </>
+  );
+}
+
+function GossipStep({ g, s }: { g: Game; s: GameState }) {
+  const done = useDone(g);
+  const choices = useMemo(() => lilKillChoices(s, stepRng(s, 5)), [s]);
+  const rec = useMemo(() => recommend(choices, balance(s).score, stepRng(s, 6)), [choices, s]);
+  const [sel, setSel] = useState(rec);
+  const [manual, setManual] = useState<number[]>([]);
+  const who = sel >= 0 ? choices[sel]?.value : manual[0];
+  const pv = who ? killPreview(s, who) : null;
+  return (
+    <>
+      <p className="muted">造谣者今天白天的声明是真的：今晚由你决定一名玩家死亡。不用叫醒任何人。</p>
+      <ChoicePanel
+        s={s}
+        choices={choices}
+        sel={sel}
+        rec={rec}
+        onSel={setSel}
+        manual={<SeatPicker s={s} selected={manual} max={1} onChange={setManual} disabled={s.seats.filter((x) => !x.alive).map((x) => x.n)} label="你决定谁死？" />}
+        manualLabel="自己选"
+      />
+      {pv && !pv.dies && <p className="dim">{pv.text}</p>}
+      <BottomBar wide>
+        <button className="btn btn-primary btn-block" disabled={!who} onClick={() => who && done({ kind: 'target', target: who })}>
+          {who ? `完成：${seatName(who)} 死亡` : '先选谁死'}
+        </button>
+      </BottomBar>
+    </>
+  );
+}
+
+function TinkerStep({ g, s }: { g: Game; s: GameState }) {
+  const done = useDone(g);
+  const t = s.seats.find((x) => x.role === 'tinker' && x.alive)!;
+  const choices = useMemo(() => tinkerChoices(s), [s]);
+  const rec = useMemo(() => recommend(choices, balance(s).score, stepRng(s, 7)), [choices, s]);
+  const [sel, setSel] = useState(rec);
+  const c = choices[sel] ?? choices[0];
+  return (
+    <>
+      <p className="muted">修补匠（{seatName(t.n)}）随时可能死：由你决定今晚要不要让他死。不用叫醒任何人。</p>
+      <ChoicePanel s={s} choices={choices} sel={sel} rec={rec} onSel={(i) => i >= 0 && setSel(i)} moreLabel="换一个决定" />
+      <BottomBar wide>
+        <button className="btn btn-primary btn-block" onClick={() => done({ kind: 'yesno', yes: c.value, truth: true })}>
+          {c.value ? `完成：${seatName(t.n)} 今晚死亡` : '完成：他今晚不死'}
+        </button>
+      </BottomBar>
+    </>
+  );
+}
+
+function MoonchildStep({ g, s }: { g: Game; s: GameState }) {
+  const done = useDone(g);
+  const mc = s.seats.find((x) => x.role === 'moonchild');
+  const pick = s.moonchildPick!;
+  const x = seatOf(s, pick);
+  const dies = !!mc && !malfunction(s, mc.n) && x.alive && !isEvil(x);
+  const pv = dies ? killPreview(s, pick) : null;
+  return (
+    <>
+      <p className="muted">
+        月之子（{seatName(mc?.n)}）白天选了 {seatLabel(s, pick)}。
+      </p>
+      <div className={`card${dies && pv?.dies ? ' card-evil' : ''}`}>
+        <p>
+          {dies ? (pv?.dies ? `${seatName(pick)} 是善良的：今晚死亡。` : pv?.text) : isEvil(x) ? `${seatName(pick)} 是邪恶的：什么都不会发生。` : '月之子中毒/醉酒，或那人已经死了：什么都不会发生。'}
+        </p>
+      </div>
+      <DoBox items={['不需要叫醒任何人。', '天亮时统一宣布死讯。']} />
+      <BottomBar wide>
+        <button className="btn btn-primary btn-block" onClick={() => done({ kind: 'none' })}>
           完成，下一步
         </button>
       </BottomBar>

@@ -53,6 +53,19 @@ export const SLOT_TITLE: Record<SlotId, string> = {
   sweetheart: '心上人死了：选一人醉酒',
   barber: '理发师死了：恶魔换角色',
   plaguedoctor: '瘟疫医生死了：你获得能力',
+  sailor: '水手',
+  courtier: '侍臣',
+  pukka: '普卡',
+  grandmother: '祖母',
+  innkeeper: '旅店老板',
+  gambler: '赌徒',
+  shabaloth: '沙巴洛斯',
+  po: '珀',
+  assassin: '刺客',
+  gossip: '造谣者的声明成真：选一人死亡',
+  professor: '教授',
+  tinker: '修补匠',
+  moonchild: '月之子的选择',
 };
 
 const SLOT_LINES: Partial<Record<SlotId, Lines>> = {
@@ -224,6 +237,46 @@ const SLOT_LINES: Partial<Record<SlotId, Lines>> = {
     simple: ['理发师死了。你可以选择两名玩家交换角色，也可以不换。'],
     atmo: ['理发师的剃刀落进了你的手里……要不要换掉两个人的脸？'],
   },
+  sailor: {
+    simple: ['请选择一名存活的玩家。'],
+    atmo: ['水手，今晚你要和谁一起喝酒？'],
+  },
+  courtier: {
+    simple: ['你要用能力吗？要用就在角色表上指一个角色。'],
+    atmo: ['宫廷的酒杯已经斟满……你要灌醉哪一位？'],
+  },
+  pukka: {
+    simple: ['请选择一名玩家。'],
+    atmo: ['普卡吐着信子……今夜，毒牙要咬向谁？'],
+  },
+  grandmother: {
+    simple: ['这是你的孙子，他的角色是——'],
+    atmo: ['你一眼就认出了自己的孙子——', '他是这个角色。'],
+  },
+  innkeeper: {
+    simple: ['请选择两名玩家，今晚他们不会死。'],
+    atmo: ['旅店还有两间空房……你要收留谁过夜？'],
+  },
+  gambler: {
+    simple: ['请选择一名玩家，再在角色表上指出你猜的角色。'],
+    atmo: ['押上你的性命吧……他是谁？'],
+  },
+  shabaloth: {
+    simple: ['请选择两名玩家，他们会死亡。'],
+    atmo: ['沙巴洛斯张开巨口……今夜要吞下哪两个人？'],
+  },
+  po: {
+    simple: ['请选择一名玩家，他会死亡。也可以不选，下次选三个。'],
+    atmo: ['珀在黑暗中蓄力……今夜出手，还是等待？'],
+  },
+  assassin: {
+    simple: ['你要用能力吗？要用就选择一名玩家，他会死亡。'],
+    atmo: ['匕首已经出鞘……今夜要不要动手？'],
+  },
+  professor: {
+    simple: ['你要用能力吗？要用就选择一名死亡的玩家。'],
+    atmo: ['实验室里的灯还亮着……你要试着救活谁？'],
+  },
 };
 
 export function slotLines(slot: SlotId, style: 'simple' | 'atmo'): string[] {
@@ -236,7 +289,7 @@ export function librarianZeroLines(style: 'simple' | 'atmo'): string[] {
 
 export function dawnLines(
   deaths: number[], style: 'simple' | 'atmo',
-  extra: { fear?: boolean; leviathanDay?: number; hadikhia?: { picks: number[]; alive: boolean[] }; banshee?: number } = {},
+  extra: { fear?: boolean; leviathanDay?: number; hadikhia?: { picks: number[]; alive: boolean[] }; banshee?: number; revived?: number[] } = {},
 ): string[] {
   const list = deaths.map((n) => `${seatName(n)}`).join('、');
   const out =
@@ -246,6 +299,7 @@ export function dawnLines(
   if (extra.fear) out.push('恐惧之灵选择了一名新的目标。');
   if (extra.hadikhia?.picks.length)
     out.push(`恶魔昨晚选择了 ${extra.hadikhia.picks.map((n) => seatName(n)).join('、')}：${extra.hadikhia.picks.map((n, i) => `${seatName(n)}${extra.hadikhia!.alive[i] ? '活着' : '死了'}`).join('，')}。`);
+  if (extra.revived?.length) out.push(`${extra.revived.map((n) => seatName(n)).join('、')} 复活了！`);
   if (extra.banshee) out.push(`${seatName(extra.banshee)} 是报丧女妖，被恶魔杀死了！从现在起她每天可以提名两次，投票时算两票。`);
   if (extra.leviathanDay === 1) out.push('另外：利维坦在场。');
   else if (extra.leviathanDay) out.push(`今天是第 ${extra.leviathanDay} 天，利维坦仍在场。`);

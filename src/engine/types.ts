@@ -32,7 +32,9 @@ export type SlotId =
   | 'bureaucrat' | 'thief'
   | 'alchemist' | 'godfather' | 'devilsadvocate' | 'exorcist' | 'zombuul' | 'flowergirl'
   | 'marionette' | 'harpy' | 'stHarpy' | 'stPoisoner' | 'dreamer' | 'seamstress' | 'bountyhunter' | 'general'
-  | 'alhadikhia' | 'sweetheart' | 'barber' | 'plaguedoctor';
+  | 'alhadikhia' | 'sweetheart' | 'barber' | 'plaguedoctor'
+  | 'sailor' | 'courtier' | 'pukka' | 'grandmother' | 'innkeeper' | 'gambler' | 'shabaloth' | 'po' | 'assassin'
+  | 'gossip' | 'professor' | 'tinker' | 'moonchild';
 
 export interface NightState {
   /** 当前所在的夜晚顺序位置 */
@@ -51,6 +53,12 @@ export interface NightState {
   exorcised?: boolean;
   /** 今晚已经走过的步骤（进度条用：用过一次性能力后这一步不会再"该跑"，但已经算一步） */
   ran?: number[];
+  /** 旅店老板今晚保护的人（老板健康时） */
+  innkeeper?: number[];
+  /** 莽夫今晚已经被人选过了 */
+  goonHit?: boolean;
+  /** 今晚复活的人（天亮宣布） */
+  revived?: number[];
   /** 哈迪寂亚今晚选的三个人和他们最后的死活（天亮宣布用） */
   hadikhia?: { picks: number[]; alive: boolean[] };
 }
@@ -145,6 +153,24 @@ export interface GameState {
   bansheeActive: number | null;
   /** 戏法师最近一次猜是第几天 */
   alsaahirDay: number;
+  /** 醉酒到黄昏（水手、旅店老板、侍臣、吟游诗人、莽夫）：第 from 夜到第 to 天（第 N 天跟在第 N 夜后面） */
+  tempDrunk: { seat: number; from: number; to: number; why: string }[];
+  /** 祖母的孙子 */
+  grandchild: number | null;
+  /** 普卡现在毒着的人（下一次普卡行动时死） */
+  pukkaPoison: number | null;
+  /** 沙巴洛斯上一晚选的人 */
+  shabalothLast: number[];
+  shabalothNight: number;
+  /** 珀上一次没选人：今晚要选三个 */
+  poCharged: boolean;
+  /** 造谣者的声明是真的那一天 */
+  gossipTrueDay: number;
+  /** 月之子死后公开选的人（当晚他若是善良的就死） */
+  moonchildPick: number | null;
+  moonchildResolved: boolean;
+  /** 主谋：恶魔被处决后多出来的那一天 */
+  mastermindDay: number;
   /** 恶魔的 3 个伪装 */
   bluffs: RoleId[];
   /** 占卜师干扰项 */

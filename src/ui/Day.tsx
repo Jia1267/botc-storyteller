@@ -6,19 +6,19 @@ import {
   vortoxActive, seatName,
 } from '../engine/core';
 import {
-  LEVIATHAN_DAYS, advocateSaves, alsaahirCorrect, alsaahirGuess, execute, fearPreview, fearmongerAsk, fearmongerNominates, finishDay, goblinAsk,
+  LEVIATHAN_DAYS, advocateSaves, alsaahirCorrect, alsaahirGuess, execute, pacifistCanSave, setGossip, tinkerDies, fearPreview, fearmongerAsk, fearmongerNominates, finishDay, goblinAsk,
   harpyPunish, nominateVirgin, previewSlayer, previewVirgin, setCannibalFake, setDemonVoted, savantVisit, scapegoatFor, setDuchessVisitors,
   slayerShoot, markUsed,
 } from '../engine/flow';
 import { activeTravellers, beggarLearns, exile, gunslingerPreview, gunslingerShoot, leave } from '../engine/travellers';
-import { harpyPunishChoices, killPreview, scarletCanTakeOver } from '../engine/info';
+import { harpyPunishChoices, killPreview, pacifistChoices, scarletCanTakeOver } from '../engine/info';
 import { AMNESIAC_ANSWERS, artistMode, fishermanChoices, savantChoices } from '../engine/daytime';
 import type { GameState, Seat } from '../engine/types';
 import { dayStartLines, endLines, executionLines, nominationLines } from '../engine/scripts';
 import { stepRng, type Game } from '../store';
-import { BottomBar, ChoicePanel, DoBox, SayBox, SeatPicker, Sheet, useUi } from './common';
+import { BottomBar, ChoicePanel, DoBox, SayBox, SeatPicker, Sheet, drunkWhy, useUi } from './common';
 import { GrimoirePanel } from './Grimoire';
-import { KlutzPrompt, PixiePrompt, promptPending } from './Prompts';
+import { KlutzPrompt, MoonchildPrompt, PixiePrompt, promptPending } from './Prompts';
 import { TimerDisplay } from './Timer';
 import { AddTravellerSheet, ExileSheet } from './Travellers';
 
@@ -66,7 +66,7 @@ function demonDeathWarning(s: GameState, n: number, verb: '被处决了' | '死�
   );
 }
 
-type Panel = 'virgin' | 'slayer' | 'exec' | 'artist' | 'fisherman' | 'savant' | 'amnesiac' | 'mutant' | 'duchess' | 'fear' | 'alsaahir' | null;
+type Panel = 'virgin' | 'slayer' | 'exec' | 'artist' | 'fisherman' | 'savant' | 'amnesiac' | 'mutant' | 'duchess' | 'fear' | 'alsaahir' | 'gossip' | 'tinker' | null;
 
 export function DayScreen({ g }: { g: Game }) {
   const s = g.s;
@@ -94,6 +94,7 @@ export function DayScreen({ g }: { g: Game }) {
         </div>
         <SwNotice s={s} />
         <KlutzPrompt g={g} />
+        <MoonchildPrompt g={g} />
         <PixiePrompt g={g} />
         <CannibalNotice g={g} />
         <SecretNotices s={s} />
@@ -161,6 +162,8 @@ export function DayScreen({ g }: { g: Game }) {
       {panel === 'duchess' && <DuchessSheet g={g} onClose={close} />}
       {panel === 'fear' && <FearSheet g={g} onClose={close} />}
       {panel === 'alsaahir' && <AlsaahirSheet g={g} onClose={close} />}
+      {panel === 'gossip' && <GossipSheet g={g} onClose={close} />}
+      {panel === 'tinker' && <TinkerSheet g={g} onClose={close} />}
       <BottomBar wide>
         <button className="btn btn-primary btn-block" onClick={() => setPanel('exec')}>
           所有提名结束，录入处决结果
@@ -194,6 +197,10 @@ function DayAbilities({ s, open }: { s: GameState; open: (p: Panel) => void }) {
   if (amn) items.push(btn('amnesiac', `失忆者（${seatName(amn.n)}）来猜自己的能力`));
   const als = holder('alsaahir');
   if (als && s.alsaahirDay !== s.night) items.push(btn('alsaahir', `戏法师（${seatName(als.n)}）要公开猜谁是爪牙和恶魔`));
+  const gossip = s.seats.find((x) => x.alive && x.role === 'gossip');
+  if (gossip) items.push(btn('gossip', s.gossipTrueDay === s.night ? `造谣者（${seatName(gossip.n)}）今天的声明：已记为真（改）` : `造谣者（${seatName(gossip.n)}）公开说了一句话`));
+  const tinker = s.seats.find((x) => x.alive && x.role === 'tinker');
+  if (tinker) items.push(btn('tinker', `让修补匠（${seatName(tinker.n)}）现在死亡`));
   const mutant = s.seats.find((x) => x.alive && x.role === 'mutant');
   if (mutant) items.push(btn('mutant', `畸形秀演员（${seatName(mutant.n)}）说自己是外来者了`));
   if (s.fabled.includes('duchess')) items.push(btn('duchess', s.duchessVisitors.length ? `公爵夫人的拜访者：${s.duchessVisitors.map((n) => `${seatName(n)}`).join('、')}（改）` : '有人来拜访公爵夫人'));
@@ -227,6 +234,7 @@ function ExecSheet({ g, onClose }: { g: Game; onClose: () => void }) {
   const [fear, setFear] = useState(false);
   const [goblin, setGoblin] = useState(false);
   const [sgSel, setSgSel] = useState<number | null>(null);
+  const [pcSel, setPcSel] = useState<number | null>(null);
   const n = t[0];
   const sg = n ? scapegoatFor(s, n) : undefined;
   const sgChoices = useMemo(() => (n && sg ? scapegoatChoices(s, n, sg.n) : null), [s, n, sg]);
@@ -236,7 +244,12 @@ function ExecSheet({ g, onClose }: { g: Game; onClose: () => void }) {
   const e = subst && sg ? sg.n : n;
   const st = e ? seatOf(s, e) : undefined;
   const lev = s.seats.find((x) => x.role === 'leviathan' && x.alive && !malfunction(s, x.n));
-  const reset = () => { setFear(false); setGoblin(false); };
+  const reset = () => { setFear(false); setGoblin(false); setPcSel(null); };
+  // 和平主义者：被处决的善良玩家可以不死（按局势推荐）
+  const pcChoices = useMemo(() => (e && st?.alive && pacifistCanSave(s, e) ? pacifistChoices(s, e) : null), [s, e, st]);
+  const pcRec = useMemo(() => (pcChoices ? recommend(pcChoices, balance(s).score, stepRng(s, 91)) : 0), [pcChoices, s]);
+  const pacifist = pcChoices ? pcChoices[pcSel ?? pcRec].value : false;
+  const mmDay = !!s.mastermindDay && s.night === s.mastermindDay;
   return (
     <Sheet title="今天的处决结果" onClose={onClose}>
       <div className="stack">
@@ -249,6 +262,17 @@ function ExecSheet({ g, onClose }: { g: Game; onClose: () => void }) {
           label="谁被处决了？"
         />
         {s.seats.some((x) => isTraveller(x) && !x.left) && <p className="dim">旅行者不能被处决，只能放逐。</p>}
+        {mmDay && (
+          <div className="card card-evil">
+            <b>主谋的额外一天：处决了谁，谁的阵营就输（处决善良玩家邪恶赢；处决邪恶玩家或没人被处决，善良赢）。</b>
+          </div>
+        )}
+        {pcChoices && !mmDay && (
+          <div className="card card-warn stack" style={{ gap: 8 }}>
+            <b>和平主义者在场：{seatName(e)} 是善良的，你可以让他被处决但不死</b>
+            <ChoicePanel s={s} choices={pcChoices} sel={pcSel ?? pcRec} rec={pcRec} onSel={(i) => i >= 0 && setPcSel(i)} moreLabel="看另一个选择" />
+          </div>
+        )}
         {sgChoices && (
           <div className="card card-warn stack" style={{ gap: 8 }}>
             <b>替罪羊（{seatName(sg!.n)}）和 {seatName(n)} 同阵营：你可以让替罪羊代替他被处决</b>
@@ -280,7 +304,7 @@ function ExecSheet({ g, onClose }: { g: Game; onClose: () => void }) {
         <button
           className="btn btn-primary btn-block"
           disabled={!n}
-          onClick={() => g.commit((x) => execute(x, n, '被处决', { fearmongerNominated: x.fearNominated === e || fear, goblinClaimed: goblin, scapegoat: subst }))}
+          onClick={() => g.commit((x) => execute(x, n, '被处决', { fearmongerNominated: x.fearNominated === e || fear, goblinClaimed: goblin, scapegoat: subst, pacifist }))}
         >
           {n ? `处决 ${seatName(e)}` : '先点出被处决的人'}
         </button>
@@ -326,11 +350,18 @@ function DayResult({ g }: { g: Game }) {
         {s.executed !== undefined && (
           <SayBox lines={executionLines(s.executed, s.style, s.executed !== null && seatOf(s, s.executed).alive)} title="对所有人说" s={s} onStyle={toggleStyle(g)} />
         )}
+        {!s.winner && s.mastermindDay === s.night + 1 && (
+          <div className="card card-evil">
+            <b>恶魔被处决了，但主谋在场：不要宣布游戏结束，照常入夜。</b>
+            <p>明天是额外的一天：处决了谁，谁的阵营就输；没人被处决善良赢（只有你知道）。</p>
+          </div>
+        )}
         {s.executed && s.zombuulFake && seatOf(s, s.executed).role === 'zombuul' && (
           <p className="dim">{seatName(s.executed)} 是僵怖，这是假死：照常宣布他死了，但他其实还活着（只有你知道）。</p>
         )}
         {!s.winner && <CannibalNotice g={g} />}
         <KlutzPrompt g={g} />
+        <MoonchildPrompt g={g} />
         <PixiePrompt g={g} />
         {s.winner ? (
           <>
@@ -857,8 +888,70 @@ function SecretNotices({ s }: { s: GameState }) {
         鹰身女妖：今天留意 <b>{seatName(h.mad)}</b> 有没有努力证明 {seatName(h.second)} 是邪恶的。提名结束前，在下面投票区旁边判断。
       </p>,
     );
+  if (s.mastermindDay && s.night === s.mastermindDay)
+    out.push(<p key="mm">恶魔已经被处决，但主谋在场：今天是额外的一天（不要宣布游戏结束）。今天处决了谁，谁的阵营就输。</p>);
+  const drunk = s.tempDrunk.filter((d) => d.from <= s.night && s.night <= d.to);
+  if (drunk.length)
+    out.push(
+      <p key="drunk">
+        今天醉酒（能力无效、信息可以是假的）：{drunk.map((d) => `${seatName(d.seat)}（${drunkWhy(d.why)}）`).join('、')}。
+      </p>,
+    );
   if (!out.length) return null;
   return <div className="card stack" style={{ gap: 6 }}>{out}</div>;
+}
+
+/** 造谣者：白天公开说了一句话，由说书人判断真假 */
+function GossipSheet({ g, onClose }: { g: Game; onClose: () => void }) {
+  const s = g.s;
+  const gs = s.seats.find((x) => x.alive && x.role === 'gossip')!;
+  const set = (v: boolean) => {
+    g.commit((st) => setGossip(st, gs.n, v));
+    onClose();
+  };
+  return (
+    <Sheet title={`造谣者（${seatName(gs.n)}）的声明`} onClose={onClose}>
+      <div className="stack">
+        <p>他公开说了一句话。按魔典判断这句话是真是假（点右上角书本图标看魔典）。</p>
+        <p className="dim">是真的：今晚由你决定一名玩家死亡（网页晚上会提醒你）。{malfunction(s, gs.n) ? '他现在中毒/醉酒：真的也不会有人死。' : ''}</p>
+        <div className="row">
+          <button className="btn btn-primary grow" onClick={() => set(true)}>
+            是真的
+          </button>
+          <button className="btn btn-outline grow" onClick={() => set(false)}>
+            是假的
+          </button>
+        </div>
+      </div>
+    </Sheet>
+  );
+}
+
+/** 修补匠：说书人决定他现在死 */
+function TinkerSheet({ g, onClose }: { g: Game; onClose: () => void }) {
+  const s = g.s;
+  const t = s.seats.find((x) => x.alive && x.role === 'tinker')!;
+  return (
+    <Sheet title={`修补匠（${seatName(t.n)}）`} onClose={onClose}>
+      <div className="stack">
+        <p>修补匠随时可能死。你决定让他现在死吗？</p>
+        <p className="dim">好人少一个，帮邪恶。通常不用急，每晚网页也会问你一次。</p>
+        <SayBox title="公开宣布" lines={[`${seatName(t.n)} 死了。`]} />
+        <button
+          className="btn btn-danger btn-block"
+          onClick={() => {
+            g.commit((st) => tinkerDies(st));
+            onClose();
+          }}
+        >
+          让他现在死亡
+        </button>
+        <button className="btn btn-outline btn-block" onClick={onClose}>
+          算了
+        </button>
+      </div>
+    </Sheet>
+  );
 }
 
 /** 卖花女孩：白天记下恶魔有没有投票，晚上要告诉她 */

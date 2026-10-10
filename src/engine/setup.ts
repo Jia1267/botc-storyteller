@@ -184,6 +184,12 @@ export function setupReasons(roles: RoleId[]): string[] {
   if (has('marionette')) out.push('有提线木偶：坐在恶魔旁边的"好人"其实是爪牙');
   if (has('bountyhunter')) out.push('有赏金猎人：有一名镇民是邪恶的');
   if (has('harpy')) out.push('有鹰身女妖：每天逼一个人疯狂指认别人，做不到可能死');
+  if (has('shabaloth')) out.push('沙巴洛斯：每晚杀两个人，但可能吐出一个复活');
+  if (has('po')) out.push('珀：可以一晚不杀人，下一晚杀三个');
+  if (has('pukka')) out.push('普卡：每晚下毒，被毒的人第二晚才死');
+  if (has('mastermind')) out.push('有主谋：恶魔被处决后还要再玩一天');
+  if (has('sailor') && has('innkeeper')) out.push('水手 + 旅店老板：好人很难被杀，偏善良');
+  if (has('goon')) out.push('有莽夫：谁先用能力选他，谁就醉酒，他还会变成那人的阵营');
   const f4 = roles.filter((r) => F4.includes(r)).length;
   if (f4 > MAX_F4) out.push(`首夜信息位（洗衣妇/图书管理员/调查员/厨师）有 ${f4} 个：第一晚过后这几个人没事做，邪恶也少了可以假跳的身份`);
   return out;
@@ -238,6 +244,16 @@ export function newGame(): GameState {
     stPoison: null,
     bansheeActive: null,
     alsaahirDay: 0,
+    tempDrunk: [],
+    grandchild: null,
+    pukkaPoison: null,
+    shabalothLast: [],
+    shabalothNight: 0,
+    poCharged: false,
+    gossipTrueDay: 0,
+    moonchildPick: null,
+    moonchildResolved: false,
+    mastermindDay: 0,
     bluffs: [],
     redHerring: null,
     setupZ: 0,
