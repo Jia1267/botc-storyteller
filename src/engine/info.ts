@@ -625,19 +625,51 @@ export function plagueChoices(s: GameState, rng: Rng): Choice<PlagueInfo>[] {
   return out;
 }
 
-/** 鹰身女妖：第一个人没做到疯狂，谁死 */
+/** 瘟疫医生死后，说书人用投毒者能力毒谁（今晚和明天白天） */
+export function stPoisonChoices(s: GameState, rng: Rng): Choice<number>[] {
+  const alive = s.seats.filter((x) => x.alive);
+  const lbl = (x: Seat) => `毒 ${seatName(x.n)}（${roleName(x.role)}）`;
+  const good = alive.filter((x) => !isEvil(x));
+  const strong = [...good].filter((x) => ROLES[x.role].info).sort((a, b) => ROLES[b.role].weight - ROLES[a.role].weight)[0];
+  const mid = pickOr(good.filter((x) => x.n !== strong?.n), rng) ?? strong;
+  const minion = pickOr(alive.filter((x) => isEvil(x) && !isDemonSeat(s, x.n)), rng);
+  const demon = alive.find((x) => isDemonSeat(s, x.n));
+  const out: Choice<number>[] = [];
+  if (mid) out.push({ key: 'mid', label: lbl(mid), value: mid.n, lean: 0, truth: true, standard: true, reason: '随便毒一名善良玩家，标准做法。' });
+  if (strong && strong.n !== mid?.n)
+    out.push({ key: 'strong', label: lbl(strong), value: strong.n, lean: -1, truth: true, reason: `${roleName(strong.role)}拿信息最有用，毒他今晚的信息会变成假的，帮邪恶。` });
+  if (minion) out.push({ key: 'minion', label: lbl(minion), value: minion.n, lean: 1, truth: true, reason: '毒爪牙：他今晚和明天的能力失效，帮善良。' });
+  if (demon) out.push({ key: 'demon', label: lbl(demon), value: demon.n, lean: 2, truth: true, reason: '毒恶魔：今晚恶魔的能力无效，大帮善良。' });
+  return out;
+}
+
+/**
+ * 鹰身女妖：第一个人没做到疯狂，谁死。
+ * 标准做法是只罚要疯狂的那个人；两人都死是重罚，算帮邪恶。
+ */
 export function harpyPunishChoices(s: GameState): Choice<number[]>[] {
   const h = s.harpy!;
-  const lean = (ns: number[]) => Math.max(-2, Math.min(2, ns.reduce((a, n) => a + (isEvil(seatOf(s, n)) ? 1 : -1), 0)));
   const alive = (n: number) => seatOf(s, n).alive;
-  const opts: { key: string; ns: number[]; label: string }[] = [];
-  if (alive(h.mad)) opts.push({ key: 'mad', ns: [h.mad], label: `${seatName(h.mad)} 死亡` });
-  if (alive(h.second)) opts.push({ key: 'second', ns: [h.second], label: `${seatName(h.second)} 死亡` });
-  if (alive(h.mad) && alive(h.second)) opts.push({ key: 'both', ns: [h.mad, h.second], label: `${seatName(h.mad)} 和 ${seatName(h.second)} 都死亡` });
-  const out: Choice<number[]>[] = opts.map((o) => ({
-    key: o.key, label: o.label, value: o.ns, lean: lean(o.ns), truth: true, standard: o.key === 'mad',
-    reason: o.ns.map((n) => `${seatLabel(s, n)}${isEvil(seatOf(s, n)) ? '是邪恶的' : '是善良的'}`).join('；') + '。',
-  }));
-  out.push({ key: 'none', label: '算了，谁都不死', value: [], lean: alive(h.mad) ? -lean([h.mad]) : 0, truth: true, standard: !opts.length, reason: '放他一马。' });
+  const side = (n: number) => `${seatLabel(s, n)}${isEvil(seatOf(s, n)) ? '是邪恶的' : '是善良的'}`;
+  const evil = (n: number) => isEvil(seatOf(s, n));
+  const out: Choice<number[]>[] = [];
+  if (alive(h.mad))
+    out.push({ key: 'mad', label: `${seatName(h.mad)} 死亡`, value: [h.mad], lean: 0, truth: true, standard: true, reason: `标准做法：谁没做到疯狂就罚谁。${side(h.mad)}。` });
+  if (alive(h.second))
+    out.push({
+      key: 'second', label: `${seatName(h.second)} 死亡`, value: [h.second], lean: evil(h.second) ? 1 : -1, truth: true, standard: !alive(h.mad),
+      reason: `${side(h.second)}，${evil(h.second) ? '罚他帮善良' : '罚他帮邪恶'}。`,
+    });
+  if (alive(h.mad) && alive(h.second)) {
+    const bothEvil = evil(h.mad) && evil(h.second);
+    out.push({
+      key: 'both', label: `${seatName(h.mad)} 和 ${seatName(h.second)} 都死亡`, value: [h.mad, h.second], lean: bothEvil ? 2 : -1, truth: true,
+      reason: bothEvil ? '两人都是邪恶的，一下少两个邪恶玩家，大帮善良。' : `一天死两个人是重罚，小镇人数掉得快，帮邪恶。${side(h.mad)}；${side(h.second)}。`,
+    });
+  }
+  out.push({
+    key: 'none', label: '算了，谁都不死', value: [], lean: alive(h.mad) ? (evil(h.mad) ? -1 : 1) : 0, truth: true, standard: !out.length,
+    reason: alive(h.mad) ? `放他一马。${side(h.mad)}，${evil(h.mad) ? '放过他帮邪恶' : '放过他帮善良'}。` : '放他一马。',
+  });
   return out;
 }

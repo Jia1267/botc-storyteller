@@ -123,11 +123,30 @@ export function setupZ(roles: RoleId[], count: number, script: ScriptId = 'tb', 
   return (setupWeight({ roles, demonChar }) - mean) / sd;
 }
 
-/** 一键生成：只从均衡的组合里挑 */
+/**
+ * 一键生成：先随机定一个"这次一定出场"的角色，再在含它的组合里挑最均衡的。
+ * 这样剧本上每个角色都有机会出场（像教父、男爵这种怎么配都不太均衡的角色，也会偶尔出现，配板会标"偏X"）。
+ */
 export function balancedSetup(script: ScriptId, count: number, rng: Rng, sentinelDelta = 0): RandomSetup {
   const z = (x: RandomSetup) => Math.abs(setupZ(x.roles, count, script, x.demonChar));
-  let best = randomSetup(script, count, rng, sentinelDelta);
-  let bestZ = z(best);
+  const anchor = pick(SCRIPTS[script].roles, rng);
+  const has = (x: RandomSetup) => x.roles.includes(anchor) || x.demonChar === anchor;
+  let best: RandomSetup | null = null;
+  let bestZ = Infinity;
+  for (let i = 0; i < 600 && bestZ > 0.5; i++) {
+    const r = randomSetup(script, count, rng, sentinelDelta);
+    if (!has(r)) continue;
+    const rz = z(r);
+    if (rz < bestZ) {
+      best = r;
+      bestZ = rz;
+    }
+  }
+  // 含这个角色怎么配都不均衡（例如 5 人局的男爵）：一半机会照样用，一半换回最均衡的，免得太常见
+  if (best && (bestZ < 0.8 || rng() < 0.5)) return best;
+  // 这个人数下放不进这个角色：不指定角色，直接挑最均衡的
+  best = randomSetup(script, count, rng, sentinelDelta);
+  bestZ = z(best);
   for (let i = 0; i < 300 && bestZ > 0.5; i++) {
     const r = randomSetup(script, count, rng, sentinelDelta);
     const rz = z(r);

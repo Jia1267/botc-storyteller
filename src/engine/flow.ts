@@ -109,7 +109,9 @@ export function shouldRun(s: GameState, slot: SlotId): boolean {
     case 'dusk':
     case 'dawn':
       return true;
+    // 唯一的爪牙是提线木偶（他不知道自己是爪牙）：没有爪牙要互认
     case 'minionInfo':
+      return s.night === 1 && s.count >= 7 && !lilMonsta(s) && minionSeats(s).length > 0;
     case 'demonInfo':
       return s.night === 1 && s.count >= 7 && !lilMonsta(s);
     case 'lilmonsta':
@@ -264,7 +266,7 @@ export function completeSlot(s: GameState, p: SlotPayload) {
       addLog(s, 'night', `爪牙得知恶魔是 ${seatName(demonSeat(s)?.n)}`);
       break;
     case 'demonInfo':
-      addLog(s, 'night', `恶魔得知爪牙：${minionSeats(s).map((x) => `${seatName(x.n)}`).join('、')}；伪装角色：${s.bluffs.map(roleName).join('、')}`);
+      addLog(s, 'night', `恶魔得知爪牙：${minionSeats(s).map((x) => `${seatName(x.n)}`).join('、') || '没有（只有提线木偶）'}；伪装角色：${s.bluffs.map(roleName).join('、')}`);
       break;
     case 'poisoner':
       if (p.kind === 'target') {

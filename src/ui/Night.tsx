@@ -11,7 +11,7 @@ import {
 import {
   balloonistChoices, bountyChoices, chambermaidChoices, chambermaidCount, chefCount, dreamLabel, dreamerChoices, duchessChoices, duchessCount,
   empathCount, flowergirlChoices, fortuneChoices, generalChoices, killPreview, legalNumbers, lilKillChoices, mayorBounceChoices, numberChoices,
-  pairChoices, pairVerdict, pixieChoices, plagueChoices, revealChoices, revealVerdict, seamstressChoices, starpassChoices, sweetheartChoices,
+  pairChoices, pairVerdict, pixieChoices, plagueChoices, revealChoices, revealVerdict, seamstressChoices, starpassChoices, stPoisonChoices, sweetheartChoices,
   widowInformChoices, type PairInfo, type PairKind,
 } from '../engine/info';
 import { SLOT_TITLE, dawnLines, librarianZeroLines, slotLines } from '../engine/scripts';
@@ -331,14 +331,18 @@ function DemonInfoStep({ g, s }: { g: Game; s: GameState }) {
       <DoBox
         items={[
           wake(d.n),
-          <>
-            用手依次指向爪牙：<b>{ms}</b>。
-          </>,
+          ms ? (
+            <>
+              用手依次指向爪牙：<b>{ms}</b>。
+            </>
+          ) : null,
           '点「给他看伪装」，把手机举给他看。',
           sleep,
         ]}
       />
-      <SayBox lines={slotLines('demonInfo', s.style)} title="小声说" s={s} onStyle={toggleStyle(g)} />
+      {!ms && <p className="dim">唯一的爪牙是提线木偶，下一步再单独告诉恶魔，这一步不用指爪牙。</p>}
+      {/* 没有爪牙时只念伪装那一句 */}
+      <SayBox lines={slotLines('demonInfo', s.style).slice(ms ? 0 : 1)} title="小声说" s={s} onStyle={toggleStyle(g)} />
       <p className="muted">伪装角色：{s.bluffs.map(roleName).join('、')}</p>
       <BottomBar wide>
         <CardButton label="给他看伪装" onClick={() => ui.showCard({ title: '这三个角色不在场，你可以伪装成他们', big: s.bluffs.map(roleName) })} />
@@ -1423,15 +1427,27 @@ function HarpyStep({ g, s, actor }: { g: Game; s: GameState; actor?: Seat }) {
 
 function StPoisonStep({ g, s }: { g: Game; s: GameState }) {
   const done = useDone(g);
-  const [t, setT] = useState<number[]>([]);
+  const choices = useMemo(() => stPoisonChoices(s, stepRng(s)), [s]);
+  const rec = useMemo(() => recommend(choices, balance(s).score, stepRng(s, 1)), [choices, s]);
+  const [sel, setSel] = useState(rec);
+  const [manual, setManual] = useState<number[]>([]);
+  const t = sel >= 0 ? choices[sel]?.value : manual[0];
   return (
     <>
       <p className="muted">瘟疫医生死后你获得了投毒者的能力：每晚由你选一个人，他今晚和明天白天中毒。不用叫醒任何人。</p>
-      <SeatPicker s={s} selected={t} max={1} onChange={setT} label="你要毒谁？" />
-      <p className="dim">局势偏善良时毒一个拿信息的好人；偏邪恶时可以毒一个爪牙，或者随便选。</p>
+      <ChoicePanel
+        s={s}
+        choices={choices}
+        sel={sel}
+        rec={rec}
+        onSel={setSel}
+        manual={<SeatPicker s={s} selected={manual} max={1} onChange={setManual} label="你要毒谁？" />}
+        manualLabel="自己选"
+        moreLabel="换一个人"
+      />
       <BottomBar wide>
-        <button className="btn btn-primary btn-block" disabled={!t.length} onClick={() => done({ kind: 'target', target: t[0] })}>
-          {t.length ? `确认：毒 ${seatName(t[0])}，下一步` : '先点出你要毒的人'}
+        <button className="btn btn-primary btn-block" disabled={!t} onClick={() => t && done({ kind: 'target', target: t })}>
+          {t ? `确认：毒 ${seatName(t)}，下一步` : '先选你要毒的人'}
         </button>
       </BottomBar>
     </>

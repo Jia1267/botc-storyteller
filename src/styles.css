@@ -82,6 +82,9 @@ p { margin: 0; }
 }
 .bottombar .inner { max-width: 680px; margin: 0 auto; display: flex; gap: 10px; }
 .bottombar.wide .inner { max-width: 1240px; }
+/* 新的一屏刚出来的 1 秒：按钮先不接受点击，防止连点把下一步也点掉 */
+.bottombar.cooling .inner { opacity: .6; }
+.bottombar .inner { transition: opacity .25s; }
 
 .stack { display: flex; flex-direction: column; gap: 14px; }
 .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }

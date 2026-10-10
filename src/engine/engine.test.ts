@@ -55,9 +55,20 @@ describe('配板', () => {
     }
   });
 
-  it('一键生成的组合是均衡的', () => {
+  it('一键生成的组合绝大多数是均衡的', () => {
     const rng = seeded(2);
-    for (let n = 5; n <= 15; n++) expect(Math.abs(setupZ(balancedRoles(n, rng), n))).toBeLessThanOrEqual(0.5);
+    for (let n = 5; n <= 15; n++) {
+      const zs = Array.from({ length: 60 }, () => Math.abs(setupZ(balancedRoles(n, rng), n)));
+      expect(zs.filter((z) => z < 0.8).length / zs.length).toBeGreaterThanOrEqual(0.8);
+    }
+  });
+
+  it('一键生成时剧本上每个角色都有机会出场', () => {
+    const rng = seeded(4);
+    for (const n of [5, 7, 9]) {
+      const seen = new Set(Array.from({ length: 300 }, () => balancedRoles(n, rng)).flat());
+      for (const r of ['baron', 'saint', 'drunk', 'recluse', 'butler', 'mayor'] as const) expect(seen.has(r)).toBe(true);
+    }
   });
 
   it('换上/换下男爵时外来者数量自动增减', () => {

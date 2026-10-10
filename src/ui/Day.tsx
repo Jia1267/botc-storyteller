@@ -97,7 +97,6 @@ export function DayScreen({ g }: { g: Game }) {
         <PixiePrompt g={g} />
         <CannibalNotice g={g} />
         <SecretNotices s={s} />
-        <HarpyCard g={g} />
         {lev && (
           <div className="card card-warn">
             <p>
@@ -126,6 +125,7 @@ export function DayScreen({ g }: { g: Game }) {
         <FlowergirlCard g={g} />
         <TravellerDay g={g} />
         <SayBox lines={nominationLines(s.style)} title="讨论结束后说" />
+        <HarpyCard g={g} />
         <div className="card">
           <h3>投票规则（你来数票）</h3>
           <p>
@@ -850,6 +850,13 @@ function SecretNotices({ s }: { s: GameState }) {
   if (s.bansheeActive)
     out.push(<p key="b">报丧女妖（<b>{seatName(s.bansheeActive)}</b>）能力生效：每天可以提名两次（死了也行），每次投票举双手算两票。</p>);
   if (s.sweetheartDrunk) out.push(<p key="sw">{seatName(s.sweetheartDrunk)} 被心上人弄醉了：他的能力无效。</p>);
+  const h = s.harpy;
+  if (h && !h.done && h.night === s.night)
+    out.push(
+      <p key="harpy">
+        鹰身女妖：今天留意 <b>{seatName(h.mad)}</b> 有没有努力证明 {seatName(h.second)} 是邪恶的。提名结束前，在下面投票区旁边判断。
+      </p>,
+    );
   if (!out.length) return null;
   return <div className="card stack" style={{ gap: 6 }}>{out}</div>;
 }
@@ -888,7 +895,9 @@ function HarpyCard({ g }: { g: Game }) {
       <b style={{ color: 'var(--warn)' }}>
         鹰身女妖：{seatName(h.mad)} 今天要疯狂地证明 {seatName(h.second)} 是邪恶的
       </b>
-      <p className="dim">看他有没有努力让大家相信。没做到的话，你可以让他们之中一人或两人死亡（当场公开宣布）。</p>
+      <p className="dim">
+        <b>提名结束前再判断</b>：讨论和提名时看他有没有努力让大家相信。没做到的话，你可以让他们之中一人或两人死亡（当场公开宣布）。
+      </p>
       {!fail ? (
         <div className="row">
           <button className="btn btn-outline grow" onClick={() => g.commit((st) => harpyPunish(st, []))}>

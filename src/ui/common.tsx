@@ -28,9 +28,24 @@ export const useUi = () => useContext(UiCtx);
 
 /* ---------------- 布局小件 ---------------- */
 
+/** 新的一屏至少停 1 秒才接受底部按钮的点击：连点时第二下不会把下一步也点掉 */
+export const MIN_PAGE_MS = 1000;
+
 export function BottomBar({ children, wide }: { children: ReactNode; wide?: boolean }) {
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setReady(true), MIN_PAGE_MS);
+    return () => clearTimeout(t);
+  }, []);
   return (
-    <div className={`bottombar${wide ? ' wide' : ''}`}>
+    <div
+      className={`bottombar${wide ? ' wide' : ''}${ready ? '' : ' cooling'}`}
+      onClickCapture={(e) => {
+        if (ready) return;
+        e.preventDefault();
+        e.stopPropagation();
+      }}
+    >
       <div className="inner">{children}</div>
     </div>
   );
@@ -315,6 +330,12 @@ export function seatMarks(s: GameState, n: number): Mark[] {
 /* ---------------- 给玩家看的大字卡 ---------------- */
 
 export function ShowCard({ c, onDone }: { c: CardContent; onDone: () => void }) {
+  // 卡片也至少停 1 秒：连点"给他看"时第二下不会直接点到"看完了"
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setReady(true), MIN_PAGE_MS);
+    return () => clearTimeout(t);
+  }, []);
   return (
     <div className="showcard" role="dialog" aria-label="给玩家看">
       {c.title && <div className="ttl">{c.title}</div>}
@@ -337,7 +358,7 @@ export function ShowCard({ c, onDone }: { c: CardContent; onDone: () => void }) 
           {c.note}
         </div>
       )}
-      <button className="btn btn-ghost btn-block done" onClick={onDone}>
+      <button className="btn btn-ghost btn-block done" style={ready ? undefined : { opacity: 0.6 }} onClick={() => ready && onDone()}>
         看完了
       </button>
     </div>

@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { ROLES, type RoleId } from './roles';
 import { seeded } from './rng';
-import { godfatherMod, newGame, randomSetup, refreshSetup, setCount, setEvilTownsfolk, setScript, startDeal } from './setup';
+import { balancedSetup, godfatherMod, newGame, randomSetup, refreshSetup, setCount, setEvilTownsfolk, setScript, startDeal } from './setup';
 import {
   alsaahirCorrect, alsaahirGuess, completeSlot, currentSlot, dealNext, execute, finishDay, harpyPunish, minionSeats,
   slotActor, type SlotPayload,
 } from './flow';
-import { bountyChoices, dreamerChoices, flowergirlChoices, generalChoices, generalTruth, killPreview } from './info';
+import { bountyChoices, dreamerChoices, flowergirlChoices, generalChoices, generalTruth, harpyPunishChoices, killPreview, stPoisonChoices } from './info';
+import { recommend } from './balance';
 import { believedRole, isEvil, isPoisoned, malfunction, seatOf, wakesAs } from './core';
 import type { ScriptId } from './editions';
 import type { GameState, SlotId } from './types';
@@ -51,6 +52,14 @@ describe('残阳高照：配板', () => {
       expect(x.roles.length).toBe(5);
       expect(outs).toBe(godfatherMod('sunset', x.roles) ? 1 : 0);
     }
+  });
+
+  it('一键配板：6 人局也会出现教父、炼金术士', () => {
+    const rng = seeded(8);
+    const seen = new Set(Array.from({ length: 300 }, () => balancedSetup('sunset', 6, rng).roles).flat());
+    expect(seen.has('godfather')).toBe(true);
+    expect(seen.has('alchemist')).toBe(true);
+    expect(seen.has('fool')).toBe(true);
   });
 
   it('炼金术士拿到不在场的爪牙能力，并在那个爪牙的位置醒', () => {
@@ -280,6 +289,22 @@ describe('王不见王：白天与信息', () => {
     expect(s.harpy!.done).toBe(true);
   });
 
+  it('鹰身女妖：局势均衡时推荐只罚要疯狂的人；两人都死算帮邪恶', () => {
+    const s = game('alvsal', ['librarian', 'empath', 'dreamer', 'general', 'chef', 'harpy', 'alhadikhia']);
+    night(s, { harpy: { kind: 'harpy', mad: 1, second: 6 } });
+    const cs = harpyPunishChoices(s);
+    expect(cs[recommend(cs, 0, seeded(1))].value).toEqual([1]);
+    expect(cs.find((c) => c.key === 'both')!.lean).toBe(-1);
+  });
+
+  it('说书人的投毒者能力：有推荐，均衡时毒一名善良玩家', () => {
+    const s = game('alvsal', AL);
+    const cs = stPoisonChoices(s, seeded(3));
+    const c = cs[recommend(cs, 0, seeded(4))];
+    expect(isEvil(seatOf(s, c.value))).toBe(false);
+    expect(cs.some((x) => x.key === 'demon' && x.lean === 2)).toBe(true);
+  });
+
   it('戏法师：所有爪牙和恶魔都说对才赢', () => {
     const s = game('alvsal', AL);
     night(s);
@@ -301,6 +326,9 @@ describe('王不见王：白天与信息', () => {
     const s = game('alvsal', ['marionette', 'librarian', 'empath', 'dreamer', 'general', 'chef', 'alhadikhia']);
     const seen = night(s);
     expect(seen).toContain('marionette');
+    // 提线木偶是唯一的爪牙：跳过爪牙互认，但恶魔照样得知伪装
+    expect(seen).not.toContain('minionInfo');
+    expect(seen).toContain('demonInfo');
     expect(slotActor(s, 'dawn')).toBeUndefined();
   });
 });
