@@ -122,7 +122,6 @@ export function DayScreen({ g }: { g: Game }) {
           </p>
         </div>
         <DayAbilities s={s} open={setPanel} />
-        <FlowergirlCard g={g} />
         <TravellerDay g={g} />
         <SayBox lines={nominationLines(s.style)} title="讨论结束后说" />
         <HarpyCard g={g} />
@@ -141,6 +140,7 @@ export function DayScreen({ g }: { g: Game }) {
             {tAlive > 0 && <li>旅行者可以提名、投票，但不能被提名处决，只能放逐（见上面"旅行者"）。</li>}
           </ul>
         </div>
+        <FlowergirlCard g={g} />
         <VoteMods s={s} />
         {butler && s.butlerMaster && (
           <div className="card card-warn">
