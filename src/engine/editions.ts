@@ -59,7 +59,7 @@ export const SCRIPTS: Record<ScriptId, ScriptDef> = {
     firstNight: ['dusk', 'bureaucrat', 'thief', 'minionInfo', 'lunatic', 'demonInfo', 'sailor', 'courtier', 'godfather', 'devilsadvocate', 'pukka', 'grandmother', 'chambermaid', 'dawn'],
     otherNights: [
       'dusk', 'bureaucrat', 'thief', 'sailor', 'innkeeper', 'courtier', 'gambler', 'devilsadvocate', 'lunatic', 'exorcist',
-      'zombuul', 'pukka', 'shabaloth', 'po', 'assassin', 'godfather', 'gossip', 'professor', 'tinker', 'moonchild', 'chambermaid', 'dawn',
+      'zombuul', 'pukka', 'shabaloth', 'po', 'assassin', 'godfather', 'professor', 'gossip', 'tinker', 'moonchild', 'chambermaid', 'dawn',
     ],
     image: 'bmr.jpg',
   },
