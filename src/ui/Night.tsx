@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ROLES, TEAM_NAME, roleName, type RoleId } from '../engine/roles';
 import { balance, recommend } from '../engine/balance';
 import {
@@ -84,7 +84,7 @@ function ActorLine({ s, actor, slot }: { s: GameState; actor: Seat; slot: SlotId
   return (
     <>
       <div className="who">
-        叫醒 <b>{actor.n}号</b>
+        {slot === 'widow' ? '寡妇是' : '叫醒'} <b>{actor.n}号</b>
         {why}
         {slot === 'scarletwoman' && '（红唇女郎，白天已接任恶魔）'}
       </div>
@@ -103,6 +103,22 @@ const seatsText = (ns: number[]) => ns.map((n) => `${n}号`).join('、');
 
 function useDone(g: Game) {
   return (p: SlotPayload) => g.commit((st) => completeSlot(st, p));
+}
+
+/** 选完人以后，结果那一段出现在下面：自动滚过去，免得手机上没看到就点了"完成" */
+function Reveal({ children, enabled = true }: { children: ReactNode; enabled?: boolean }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!enabled) return;
+    // 页面在后台时平滑滚动不会播放，直接跳过去
+    const instant = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches || document.hidden;
+    ref.current?.scrollIntoView({ behavior: instant ? 'auto' : 'smooth', block: 'start' });
+  }, [enabled]);
+  return (
+    <div ref={ref} className="stack" style={{ scrollMarginTop: 72 }}>
+      {children}
+    </div>
+  );
 }
 const toggleStyle = (g: Game) => () => g.tweak((st) => (st.style = st.style === 'simple' ? 'atmo' : 'simple'));
 
@@ -506,7 +522,9 @@ function FortuneStep({ g, s, actor }: StepProps) {
       <SayBox lines={slotLines('fortuneteller', s.style)} title="小声说" s={s} onStyle={toggleStyle(g)} />
       <SeatPicker s={s} selected={picks} max={2} onChange={setPicks} label="他指了哪两个人？" />
       {picks.length === 2 ? (
-        <FortuneAnswer key={[...picks].sort().join()} g={g} s={s} actor={actor} picks={picks as [number, number]} />
+        <Reveal key={[...picks].sort().join()}>
+          <FortuneAnswer g={g} s={s} actor={actor} picks={picks as [number, number]} />
+        </Reveal>
       ) : (
         <>
           <Tips role="fortuneteller" drunk={actor.role === 'drunk'} />
@@ -586,7 +604,9 @@ function ImpStep({ g, s, actor, slot }: StepProps & { slot: 'imp' | 'vortox' }) 
       <SayBox lines={slotLines(slot, s.style)} title="小声说" s={s} onStyle={toggleStyle(g)} />
       <SeatPicker s={s} selected={t} max={1} onChange={setT} label="他要杀谁？" />
       {t.length ? (
-        <ImpOutcome key={t[0]} g={g} s={s} actor={actor} target={t[0]} slot={slot} />
+        <Reveal key={t[0]}>
+          <ImpOutcome g={g} s={s} actor={actor} target={t[0]} slot={slot} />
+        </Reveal>
       ) : (
         <>
           <Tips role={slot} />
@@ -665,7 +685,13 @@ function RevealStep({ g, s, actor, kind }: StepProps & { kind: 'ravenkeeper' | '
           今天被处决的是 <b>{subject}号</b>（{roleName(s.seats[subject - 1].role)}）。
         </p>
       )}
-      {subject ? <RevealAnswer key={subject} g={g} s={s} actor={actor} kind={kind} subject={subject} /> : <Pending text="先点出他指的人" />}
+      {subject ? (
+        <Reveal key={subject} enabled={kind === 'ravenkeeper'}>
+          <RevealAnswer g={g} s={s} actor={actor} kind={kind} subject={subject} />
+        </Reveal>
+      ) : (
+        <Pending text="先点出他指的人" />
+      )}
     </>
   );
 }
@@ -775,7 +801,11 @@ function LunaticStep({ g, s, actor }: StepProps) {
       <DoBox items={[wake(actor.n), `他以为自己是${fake}：让他指一名玩家，你在下面点出来（这个人不会死）。`, sleep]} />
       <SayBox lines={slotLines('lunatic', s.style)} title="小声说" s={s} onStyle={toggleStyle(g)} />
       <SeatPicker s={s} selected={t} max={1} onChange={setT} label="疯子指了谁？" />
-      {informed.length > 0 && <DoBox title="然后告诉真恶魔" items={informed} />}
+      {informed.length > 0 && (
+        <Reveal key={t[0]}>
+          <DoBox title="然后告诉真恶魔" items={informed} />
+        </Reveal>
+      )}
       <Tips role="lunatic" />
       <BottomBar wide>
         <button className="btn btn-primary btn-block" disabled={!t.length} onClick={() => done({ kind: 'target', target: t[0] })}>
@@ -864,7 +894,7 @@ function LilKill({ g, s, babysitter }: { g: Game; s: GameState; babysitter: numb
       <Tips role="lilmonsta" />
       <BottomBar wide>
         <button className="btn btn-primary btn-block" disabled={!kill} onClick={() => kill && done({ kind: 'lilmonsta', babysitter, kill })}>
-          完成，下一步
+          {kill ? `完成：${babysitter}号 照看，${kill}号 死亡` : '先选今晚谁死'}
         </button>
       </BottomBar>
     </>
@@ -873,28 +903,45 @@ function LilKill({ g, s, babysitter }: { g: Game; s: GameState; babysitter: numb
 
 /* ---------------- 寡妇 ---------------- */
 
+/** 寡妇分两屏：先让她看魔典下毒，再单独一屏告诉一名善良玩家"寡妇在场" */
 function WidowStep({ g, s, actor }: StepProps) {
   const ui = useUi();
   const [t, setT] = useState<number[]>([]);
+  const [inform, setInform] = useState(false);
+  const goto = (v: boolean) => {
+    setInform(v);
+    window.scrollTo(0, 0);
+  };
+  if (inform && t.length) return <WidowInform g={g} s={s} actor={actor} target={t[0]} onBack={() => goto(false)} />;
   return (
     <>
-      <DoBox items={[wake(actor.n), '点「给寡妇看」，把只读魔典给她看。', '她看完后指一名玩家：这个人中毒（寡妇活着就一直中毒）。你在下面点出来。']} />
+      <DoBox
+        items={[
+          wake(actor.n),
+          '点「给寡妇看魔典」，把只读魔典给她看。',
+          '她看完后指一名玩家：这个人中毒（寡妇活着就一直中毒）。你在下面点出来。',
+          `让寡妇（${actor.n}号）闭眼。`,
+          <>
+            <b>还没完：</b>下一屏要再叫醒一名善良玩家，告诉他"寡妇在场"。
+          </>,
+        ]}
+      />
       <SayBox lines={slotLines('widow', s.style)} title="小声说" s={s} onStyle={toggleStyle(g)} />
       <button className="btn btn-ghost btn-block" onClick={ui.openSpy}>
         <Icon name="eye" /> 给寡妇看魔典
       </button>
       <SeatPicker s={s} selected={t} max={1} onChange={setT} label="她毒了谁？" />
-      {t.length ? <WidowInform key={t[0]} g={g} s={s} actor={actor} target={t[0]} /> : (
-        <>
-          <Tips role="widow" />
-          <Pending text="先点出她毒的人" />
-        </>
-      )}
+      <Tips role="widow" />
+      <BottomBar wide>
+        <button className="btn btn-primary btn-block" disabled={!t.length} onClick={() => goto(true)}>
+          {t.length ? '下一步：告诉一名善良玩家' : '先点出她毒的人'}
+        </button>
+      </BottomBar>
     </>
   );
 }
 
-function WidowInform({ g, s, actor, target }: StepProps & { target: number }) {
+function WidowInform({ g, s, actor, target, onBack }: StepProps & { target: number; onBack: () => void }) {
   const done = useDone(g);
   const ui = useUi();
   const view = useMemo(() => ({ ...s, widowPoison: target }), [s, target]);
@@ -906,7 +953,11 @@ function WidowInform({ g, s, actor, target }: StepProps & { target: number }) {
   const evilSeats = s.seats.filter((x) => isEvil(x) || !x.alive).map((x) => x.n);
   return (
     <>
-      <div className="dim">然后告诉一名善良玩家"寡妇在场"：</div>
+      <div className="card card-warn stack" style={{ gap: 6 }}>
+        <b style={{ color: 'var(--warn)' }}>寡妇（{actor.n}号）毒了 {target}号。现在告诉一名善良玩家：寡妇在场</b>
+        <p className="dim">规则要求：寡妇在场时，一定要有一名善良玩家知道。不说他是谁中的毒。</p>
+      </div>
+      <div className="dim">告诉谁？</div>
       <ChoicePanel
         s={s}
         choices={choices}
@@ -918,12 +969,16 @@ function WidowInform({ g, s, actor, target }: StepProps & { target: number }) {
       />
       <DoBox
         items={[
-          `让寡妇（${actor.n}号）闭眼。`,
+          `确认寡妇（${actor.n}号）已经闭眼。`,
           who ? wake(who) : '叫醒你选的那名善良玩家。',
           '点「给他看」：寡妇在场。',
           sleep,
         ]}
       />
+      <SayBox title="小声说" lines={['寡妇在场。']} />
+      <button className="btn btn-outline btn-sm" onClick={onBack}>
+        返回改她毒的人
+      </button>
       <Tips role="widow" />
       <BottomBar wide>
         <CardButton onClick={() => ui.showCard({ title: '这个角色在场', big: ['寡妇'] })} />
@@ -972,7 +1027,9 @@ function ChambermaidStep({ g, s, actor }: StepProps) {
       <p className="dim">今晚因为自己的能力醒来过的人：{s.ns?.woke.length ? seatsText(s.ns.woke) : '还没有'}</p>
       <SeatPicker s={s} selected={picks} max={2} onChange={setPicks} disabled={blocked} label="她指了哪两个人？" />
       {picks.length === 2 ? (
-        <ChambermaidAnswer key={[...picks].sort().join()} g={g} s={s} actor={actor} picks={picks} />
+        <Reveal key={[...picks].sort().join()}>
+          <ChambermaidAnswer g={g} s={s} actor={actor} picks={picks} />
+        </Reveal>
       ) : (
         <>
           <Tips role="chambermaid" />
