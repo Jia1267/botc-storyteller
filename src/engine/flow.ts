@@ -306,7 +306,7 @@ function setAlignment(x: Seat, evil: boolean) {
 /** 莽夫：这一步会不会触发（今晚第一个用能力选他的人） */
 export function goonTriggered(s: GameState, actor: Seat | undefined, picks: number[], slot: SlotId): Seat | undefined {
   if (!actor || slot === 'lunatic' || s.ns?.goonHit) return undefined;
-  const g = s.seats.find((x) => x.role === 'goon' && picks.includes(x.n) && x.n !== actor.n);
+  const g = s.seats.find((x) => x.role === 'goon' && x.alive && picks.includes(x.n) && x.n !== actor.n && !malfunction(s, x.n));
   return g;
 }
 
@@ -327,11 +327,12 @@ function demonKill(s: GameState, n: number, cause = '被恶魔杀死'): boolean 
 function revive(s: GameState, n: number, why: string) {
   const x = seatOf(s, n);
   if (x.alive) return;
+  const diedTonight = s.phase === 'night' && x.death?.when === 'night' && x.death.night === s.night;
   x.alive = true;
   delete x.death;
   if (s.ns) {
     s.ns.deaths = s.ns.deaths.filter((m) => m !== n);
-    s.ns.revived = [...(s.ns.revived ?? []), n];
+    if (!diedTonight) s.ns.revived = [...(s.ns.revived ?? []), n];
   }
   addLog(s, s.phase === 'night' ? 'night' : 'day', `${seatName(n)} ${why}，复活了`);
 }
@@ -363,6 +364,8 @@ export function completeSlot(s: GameState, p: SlotPayload) {
     s.tempDrunk.push({ seat: actor.n, from: s.night, to: s.night, why: '选了莽夫' });
     const was = isEvil(goon);
     setAlignment(goon, isEvil(actor));
+    // 阵营变了要单独叫醒莽夫告知（网页会弹出一步，不让说书人漏掉）
+    if (was !== isEvil(goon)) ns.goonInform = { seat: goon.n, evil: isEvil(goon) };
     addLog(s, 'night', `${seatName(actor.n)} 选了莽夫（${seatName(goon.n)}）：醉酒到明天黄昏，这次能力无效${was !== isEvil(goon) ? `；莽夫变成${isEvil(goon) ? '邪恶' : '善良'}阵营` : ''}`);
   }
   if (actor) {
@@ -1180,6 +1183,14 @@ export function moonchildChoose(s: GameState, pick: number) {
   s.moonchildResolved = true;
   s.moonchildPick = pick;
   addLog(s, s.phase === 'night' ? 'night' : 'day', `月之子（${seatName(mc?.n)}）公开选择了 ${seatName(pick)}${isEvil(seatOf(s, pick)) ? '（邪恶，不会死）' : '（善良，今晚会死）'}`);
+}
+
+/** 叫醒莽夫告诉他新阵营：说书人做完了 */
+export function goonInformed(s: GameState) {
+  if (s.ns?.goonInform) {
+    addLog(s, 'night', `已叫醒莽夫（${seatName(s.ns.goonInform.seat)}），告诉他现在是${s.ns.goonInform.evil ? '邪恶' : '善良'}阵营`);
+    s.ns.goonInform = undefined;
+  }
 }
 
 /** 卖花女孩：白天记下恶魔投过票 */

@@ -227,7 +227,7 @@ function GodfatherCard({ g }: { g: Game }) {
   return (
     <div className="card stack" style={{ gap: 8 }}>
       <h3 style={{ margin: 0 }}>{inPlay(s, 'godfather') ? '教父' : '炼金术士拿到了教父的能力'}：外来者 +1 或 −1</h3>
-      <ChoicePanel s={s} choices={choices} sel={sel} rec={rec} moreLabel="外来者人数" onSel={(i) => i >= 0 && g.commit((st) => setGodfatherDelta(st, choices[i].value, defaultRng))} />
+      <ChoicePanel s={s} choices={choices} sel={sel} rec={rec} moreLabel="外来者人数" pickedLabel="现在是" onSel={(i) => i >= 0 && g.commit((st) => setGodfatherDelta(st, choices[i].value, defaultRng))} />
     </div>
   );
 }

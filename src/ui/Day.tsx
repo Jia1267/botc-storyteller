@@ -351,6 +351,12 @@ function DayResult({ g }: { g: Game }) {
         {s.executed !== undefined && (
           <SayBox lines={executionLines(s.executed, s.style, s.executed !== null && seatOf(s, s.executed).alive)} title="对所有人说" s={s} onStyle={toggleStyle(g)} />
         )}
+        {s.tempDrunk.some((d) => d.why === '吟游诗人' && d.from === s.night) && (
+          <div className="card card-warn">
+            <b>吟游诗人：爪牙被处决死亡，从现在到明天黄昏，除吟游诗人外所有人都醉酒。</b>
+            <p className="dim">今晚和明天所有人的能力都无效，给的信息可以是假的（网页会提醒你）。不要公开说。</p>
+          </div>
+        )}
         {!s.winner && s.mastermindDay === s.night + 1 && (
           <div className="card card-evil">
             <b>恶魔被处决了，但主谋在场：不要宣布游戏结束，照常入夜。</b>
@@ -891,11 +897,16 @@ function SecretNotices({ s }: { s: GameState }) {
     );
   if (s.mastermindDay && s.night === s.mastermindDay)
     out.push(<p key="mm">恶魔已经被处决，但主谋在场：今天是额外的一天（不要宣布游戏结束）。今天处决了谁，谁的阵营就输。</p>);
-  const drunk = s.tempDrunk.filter((d) => d.from <= s.night && s.night <= d.to);
-  if (drunk.length)
+  // 今天醉酒的活人：同一个人只列一次；吟游诗人触发时合并成一句
+  const drunk = s.tempDrunk.filter((d) => d.from <= s.night && s.night <= d.to && seatOf(s, d.seat).alive);
+  const minstrel = drunk.some((d) => d.why === '吟游诗人') ? s.seats.find((x) => x.role === 'minstrel') : undefined;
+  const single = [...new Map(drunk.filter((d) => !minstrel || d.seat === minstrel.n).map((d) => [d.seat, d])).values()];
+  if (minstrel)
+    out.push(<p key="mdrunk">今天除吟游诗人（{seatName(minstrel.n)}）外，所有活着的人都醉酒（爪牙被处决）：能力无效，信息可以是假的。</p>);
+  if (single.length)
     out.push(
       <p key="drunk">
-        今天醉酒（能力无效、信息可以是假的）：{drunk.map((d) => `${seatName(d.seat)}（${drunkWhy(d.why)}）`).join('、')}。
+        今天醉酒（能力无效、信息可以是假的）：{single.map((d) => `${seatName(d.seat)}（${drunkWhy(d.why)}）`).join('、')}。
       </p>,
     );
   if (!out.length) return null;

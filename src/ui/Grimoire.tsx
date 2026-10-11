@@ -149,7 +149,7 @@ export function GrimoirePanel({ s, detail = false }: { s: GameState; detail?: bo
       {view === 'circle' ? <GrimoireCircle s={s} onSeat={setSeat} hub={<GrimoireHub s={s} />} /> : <GrimoireList s={s} onSeat={setSeat} />}
       <SetupFacts s={s} />
       <BalanceMeter s={s} detail={detail} />
-      <div className="dim">标记：醉=酒鬼 疯=疯子 毒=中毒 宝=照看小怪宝 惧=恐惧之灵目标 获=获得的能力 忆=失忆者能力 知=知道寡妇在场 护=僧侣保护 主=管家主人 扰=占卜干扰项 用=能力已用 变=中途变成恶魔</div>
+      <MarkLegend s={s} />
       {seat !== null && <SeatDetail s={s} n={seat} onClose={() => setSeat(null)} />}
     </div>
   );
@@ -192,4 +192,20 @@ export function SpyView({ s, onDone }: { s: GameState; onDone: () => void }) {
       </div>
     </div>
   );
+}
+
+/** 标记说明：只列当前魔典上出现的标记 */
+const LEGEND: Record<string, string> = {
+  trav: '旅行者阵营', vote: '今天投票加减', drunk: '酒鬼', lunatic: '疯子', mario: '提线木偶', align: '阵营和角色不同',
+  alch: '炼金术士的能力', zfake: '僵怖假死', swd: '被心上人弄醉', adv: '魔鬼代言人保护', harpy: '鹰身女妖要他疯狂',
+  bounty: '赏金猎人盯着', banshee: '报丧女妖', tdrunk: '醉酒到黄昏', gc: '祖母的孙子', inn: '旅店老板保护', po: '珀蓄力',
+  poison: '中毒', baby: '照看小怪宝', fear: '恐惧之灵目标', gained: '获得的能力', amn: '失忆者能力', wknow: '知道寡妇在场',
+  monk: '僧侣保护', master: '管家主人', rh: '占卜干扰项', used: '能力已用', became: '中途换了角色',
+};
+
+function MarkLegend({ s }: { s: GameState }) {
+  const seen = new Map<string, string>();
+  for (const x of s.seats) for (const m of seatMarks(s, x.n)) if (!seen.has(m.key)) seen.set(m.key, `${m.short}=${LEGEND[m.key] ?? m.text}`);
+  if (!seen.size) return null;
+  return <div className="dim">标记：{[...seen.values()].join(' ')}</div>;
 }

@@ -3,8 +3,9 @@ import { ROLES, type RoleId } from './roles';
 import { seeded } from './rng';
 import { balancedSetup, newGame, refreshSetup, setCount, setScript, startDeal } from './setup';
 import {
-  completeSlot, currentSlot, dealNext, execute, finishDay, moonchildChoose, moonchildNeedsChoice, setGossip, type SlotPayload,
+  completeSlot, currentSlot, dealNext, execute, finishDay, goonInformed, moonchildChoose, moonchildNeedsChoice, setGossip, type SlotPayload,
 } from './flow';
+import { lilKillChoices } from './info';
 import { isEvil, isPoisoned, malfunction } from './core';
 import { SCRIPTS } from './editions';
 import type { GameState, SlotId } from './types';
@@ -178,6 +179,45 @@ describe('暗月初升：外来者与爪牙', () => {
     expect(s.seats[2].alive).toBe(true);
     expect(isEvil(s.seats[0])).toBe(true);
     expect(malfunction(s, 7)).toBe(true);
+  });
+
+  it('莽夫变阵营后要单独告知；告知后才清掉', () => {
+    const s = game(['goon', 'innkeeper', 'gambler', 'grandmother', 'professor', 'assassin', 'shabaloth']);
+    night(s);
+    day(s);
+    // 沙巴洛斯先选莽夫：莽夫变邪恶，要叫醒告知
+    for (let guard = 0; guard < 20 && currentSlot(s) !== 'shabaloth'; guard++) completeSlot(s, { kind: 'none' });
+    completeSlot(s, { kind: 'shabaloth', picks: [1, 3], revive: null });
+    expect(s.ns!.goonInform).toEqual({ seat: 1, evil: true });
+    goonInformed(s);
+    expect(s.ns!.goonInform).toBeUndefined();
+  });
+
+  it('莽夫自己醉酒时没有能力：选他的人不醉，他也不变阵营', () => {
+    const s = game(['goon', 'sailor', 'gambler', 'grandmother', 'professor', 'assassin', 'shabaloth']);
+    night(s, { sailor: { kind: 'sailor', target: 1, drunk: 1 } });
+    day(s);
+    // 第 2 夜水手先让莽夫醉，沙巴洛斯再选他：莽夫这时没有能力
+    night(s, { sailor: { kind: 'sailor', target: 3, drunk: 1 }, shabaloth: { kind: 'shabaloth', picks: [1, 4], revive: null } });
+    expect(isEvil(s.seats[0])).toBe(false);
+    expect(s.seats[3].alive).toBe(false);
+  });
+
+  it('今晚刚被杀又被教授救活的人：天亮不宣布复活', () => {
+    const s = game(BASE);
+    night(s);
+    day(s);
+    night(s, { assassin: { kind: 'target', target: 4 }, professor: { kind: 'target', target: 4 } });
+    expect(s.seats[3].alive).toBe(true);
+    expect(s.ns!.revived ?? []).toEqual([]);
+  });
+
+  it('造谣者成真时的推荐不会选一个死不了的人', () => {
+    const s = game(['gossip', 'innkeeper', 'sailor', 'grandmother', 'professor', 'assassin', 'po']);
+    night(s);
+    day(s);
+    const cs = lilKillChoices(s, seeded(1));
+    expect(cs.some((c) => c.value === 3)).toBe(false);
   });
 
   it('主谋：恶魔被处决后再玩一天；那天处决好人邪恶赢', () => {

@@ -349,9 +349,9 @@ export function starpassChoices(s: GameState, impN: number): Choice<number>[] {
 /* ---------------- 幽灵茶会 / 窃窃私语 ---------------- */
 
 /** 通用的"比数字"选项：健康给真数字；中毒/酒鬼/涡流给假数字 */
-function countChoices(s: GameState, ability: RoleId, actorN: number, base: number, max: number): Choice<number>[] {
+function countChoices(s: GameState, ability: RoleId, actorN: number, base: number, max: number, sick = false): Choice<number>[] {
   const lbl = (n: number) => `比 ${n}`;
-  if (!malfunction(s, actorN) && !mustLie(s, ability))
+  if (!sick && !malfunction(s, actorN) && !mustLie(s, ability))
     return [{ key: `n${base}`, label: lbl(base), value: base, lean: 0, truth: true, standard: true, reason: '真实答案。' }];
   const out: Choice<number>[] = [{ key: `n${base}`, label: lbl(base), value: base, lean: 1, truth: true, reason: '中毒/醉酒也可以给真数字。帮善良。' }];
   for (let n = 0; n <= max; n++) {
@@ -366,8 +366,8 @@ function countChoices(s: GameState, ability: RoleId, actorN: number, base: numbe
 /** 侍女：她选的两人今晚有几个因为自己的能力醒过 */
 export const chambermaidCount = (s: GameState, picks: number[]) => picks.filter((n) => s.ns?.woke.includes(n)).length;
 
-export function chambermaidChoices(s: GameState, actorN: number, picks: number[]): Choice<number>[] {
-  return countChoices(s, 'chambermaid', actorN, chambermaidCount(s, picks), 2);
+export function chambermaidChoices(s: GameState, actorN: number, picks: number[], sick = false): Choice<number>[] {
+  return countChoices(s, 'chambermaid', actorN, chambermaidCount(s, picks), 2, sick);
 }
 
 /** 小精灵：第一晚给他看一个在场的镇民 */
@@ -428,7 +428,8 @@ export function balloonistChoices(s: GameState, actorN: number, rng: Rng): Choic
 
 /** 小怪宝：每晚（第一晚除外）由说书人决定谁死 */
 export function lilKillChoices(s: GameState, rng: Rng): Choice<number>[] {
-  const cands = s.seats.filter((x) => x.alive && x.n !== s.babysitter);
+  // 受保护死不了的人不推荐（茶艺师、旅店老板、水手、弄臣）
+  const cands = s.seats.filter((x) => x.alive && x.n !== s.babysitter && !deathShield(s, x.n));
   const good = cands.filter((x) => !isEvil(x)).sort((a, b) => ROLES[b.role].weight - ROLES[a.role].weight);
   if (!good.length) return cands.map((x) => ({ key: `k${x.n}`, label: `${seatName(x.n)}（${roleName(x.role)}）`, value: x.n, lean: 0, truth: true, reason: '只剩这些人可选。' }));
   const strong = good[0];
@@ -798,7 +799,7 @@ export function sailorDrunkChoices(s: GameState, sailorN: number, target: number
 export function innkeeperDrunkChoices(s: GameState, picks: number[]): Choice<number>[] {
   const cs = picks.map((n) => drunkChoice(s, n));
   // 两个都一样时第一个当标准
-  if (cs.length === 2 && cs[0].lean === cs[1].lean) cs[0] = { ...cs[0], lean: 0, standard: true };
+  if (cs.length === 2 && cs[0].lean === cs[1].lean) cs[0] = { ...cs[0], lean: 0, standard: true, reason: `两人差不多，随便挑一个，标准做法。${cs[0].reason}` };
   return cs;
 }
 

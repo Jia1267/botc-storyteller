@@ -6,7 +6,7 @@ import {
   teamOf,
 } from '../engine/core';
 import {
-  completeSlot, currentSlot, effectiveSlot, goonTriggered, godfatherOutsiders, hadikhiaPreview, minionSeats, notWakingTonight, previewImp, shouldRun, slotActor,
+  completeSlot, currentSlot, effectiveSlot, goonInformed, goonTriggered, godfatherOutsiders, hadikhiaPreview, minionSeats, notWakingTonight, previewImp, shouldRun, slotActor,
   slotsFor, type SlotPayload,
 } from '../engine/flow';
 import {
@@ -19,7 +19,8 @@ import {
 import { SLOT_TITLE, dawnLines, librarianZeroLines, slotLines } from '../engine/scripts';
 import type { GameState, Seat, SlotId } from '../engine/types';
 import { stepRng, type Game } from '../store';
-import { BottomBar, ChoicePanel, DoBox, SayBox, SeatPicker, roleCard, useUi } from './common';
+import { BottomBar, ChoicePanel, DoBox, SayBox, SeatPicker, Sheet, drunkWhy, roleCard, useUi } from './common';
+import { shuffle } from '../engine/rng';
 import { GrimoirePanel } from './Grimoire';
 import { Icon } from './icons';
 import { KlutzPrompt, MoonchildPrompt, PixiePrompt, promptPending } from './Prompts';
@@ -64,6 +65,7 @@ export function NightScreen({ g }: { g: Game }) {
         </div>
         <SlotBody g={g} s={s} slot={eff} actor={actor} />
       </div>
+      {s.ns!.goonInform && <GoonInformSheet g={g} />}
     </main>
   );
 }
@@ -73,6 +75,8 @@ function ActorLine({ s, actor, slot }: { s: GameState; actor: Seat; slot: SlotId
   if (actor.role === 'drunk') flags.push(<span key="d" className="chip chip-warn">其实是酒鬼：能力无效，可以给假信息</span>);
   if (actor.role === 'marionette') flags.push(<span key="m" className="chip chip-evil">其实是提线木偶：能力无效，可以给假信息</span>);
   if (s.sweetheartDrunk === actor.n) flags.push(<span key="sw" className="chip chip-warn">被心上人弄醉：能力无效，可以给假信息</span>);
+  const td = s.tempDrunk.find((d) => d.seat === actor.n && d.from <= s.night && s.night <= d.to);
+  if (td) flags.push(<span key="td" className="chip chip-warn">醉酒（{drunkWhy(td.why)}）：能力无效，可以给假信息</span>);
   if (isPoisoned(s, actor.n)) flags.push(<span key="p" className="chip chip-poison">中毒：能力无效，可以给假信息</span>);
   if (mustLie(s, slot as RoleId) && ROLES[slot as RoleId]) flags.push(<span key="v" className="chip chip-evil">涡流在场：只能给假信息</span>);
   if (!actor.alive && !(actor.role === 'zombuul' && s.zombuulFake)) flags.push(<span key="x" className="chip">今晚刚死</span>);
@@ -882,7 +886,9 @@ function LunaticStep({ g, s, actor }: StepProps) {
   const d = demonSeat(s);
   const fake = s.lunaticFake ? roleName(s.lunaticFake) : '恶魔';
 
-  // 第一晚：只是告诉真恶魔谁是疯子
+  // 7 人以上：第一晚像真恶魔一样叫醒他，给假的爪牙和伪装
+  if (s.night === 1 && s.count >= 7) return <LunaticFirstNight g={g} s={s} actor={actor} />;
+  // 5–6 人：第一晚只是告诉真恶魔谁是疯子
   if (s.night === 1) {
     return (
       <>
@@ -925,7 +931,8 @@ function LunaticStep({ g, s, actor }: StepProps) {
   return (
     <>
       <DoBox items={[wake(actor.n), `他以为自己是${fake}：让他指一名玩家，你在下面点出来（这个人不会死）。`, sleep]} />
-      <SayBox lines={slotLines('lunatic', s.style)} title="小声说" s={s} onStyle={toggleStyle(g)} />
+      {/* 按他以为的恶魔念台词（例如普卡是下毒，不是杀人） */}
+      <SayBox lines={(s.lunaticFake && slotLines(s.lunaticFake as SlotId, s.style).length ? slotLines(s.lunaticFake as SlotId, s.style) : slotLines('lunatic', s.style))} title="小声说" s={s} onStyle={toggleStyle(g)} />
       <SeatPicker s={s} selected={t} max={1} onChange={setT} label="疯子指了谁？" />
       {informed.length > 0 && (
         <Reveal key={t[0]}>
@@ -936,6 +943,67 @@ function LunaticStep({ g, s, actor }: StepProps) {
       <BottomBar wide>
         <button className="btn btn-primary btn-block" disabled={!t.length} onClick={() => done({ kind: 'target', target: t[0] })}>
           {t.length ? '完成，下一步' : '先点出疯子指的人'}
+        </button>
+      </BottomBar>
+    </>
+  );
+}
+
+/** 疯子第一晚（7 人以上）：他以为自己是恶魔，给他看假的爪牙和伪装；再告诉真恶魔谁是疯子 */
+function LunaticFirstNight({ g, s, actor }: StepProps) {
+  const done = useDone(g);
+  const ui = useUi();
+  const [t, setT] = useState<number[]>([]);
+  const d = demonSeat(s);
+  const fake = s.lunaticFake ? roleName(s.lunaticFake) : '恶魔';
+  const nMin = minionSeats(s).length;
+  // 假爪牙随便指几个人，假伪装随便三个善良角色（不必是不在场的）
+  const fakeMinions = useMemo(
+    () => shuffle(s.seats.filter((x) => x.n !== actor.n && !x.traveller).map((x) => x.n), stepRng(s, 21)).slice(0, nMin).sort((a, b) => a - b),
+    [s, actor.n, nMin],
+  );
+  const fakeBluffs = useMemo(
+    () => shuffle(scriptOf(s).roles.filter((r) => (ROLES[r].team === 'townsfolk' || ROLES[r].team === 'outsider') && r !== 'lunatic'), stepRng(s, 22)).slice(0, 3),
+    [s],
+  );
+  // 他以为的恶魔第一晚就要行动（普卡）：让他选人
+  const acts = s.lunaticFake === 'pukka';
+  return (
+    <>
+      <p className="muted">疯子（{seatName(actor.n)}）以为自己是{fake}：像真恶魔一样叫醒他，给他看假的爪牙和伪装。他选的人什么事都不会有。</p>
+      <DoBox
+        items={[
+          wake(actor.n),
+          nMin > 0 ? (
+            <>
+              用手随便指 {nMin} 个人，告诉他"这些是你的爪牙"（网页随机挑了 <b>{seatsText(fakeMinions)}</b>）。
+            </>
+          ) : null,
+          '点「给疯子看伪装」：这三个角色不在场，你可以伪装成他们。',
+          acts ? `他以为自己是${fake}，第一晚就要选人：让他指一名玩家，你在下面点出来。` : null,
+          sleep,
+        ]}
+      />
+      <SayBox lines={slotLines('demonInfo', s.style)} title="小声说" s={s} onStyle={toggleStyle(g)} />
+      <button className="btn btn-ghost btn-block" onClick={() => ui.showCard({ title: '这三个角色不在场，你可以伪装成他们', big: fakeBluffs.map(roleName) })}>
+        <Icon name="eye" /> 给疯子看伪装（{fakeBluffs.map(roleName).join('、')}）
+      </button>
+      {acts && <SeatPicker s={s} selected={t} max={1} onChange={setT} label="疯子指了谁？" />}
+      <DoBox
+        title="然后告诉真恶魔"
+        items={[
+          d ? wake(d.n) : '叫醒真恶魔。',
+          <>
+            用手指向 <b>{seatName(actor.n)}</b>，点「给恶魔看」：这名玩家是疯子{acts && t.length ? <>；再指向 <b>{seatName(t[0])}</b>（疯子选的人）</> : null}。
+          </>,
+          sleep,
+        ]}
+      />
+      <Tips role="lunatic" />
+      <BottomBar wide>
+        <CardButton label="给恶魔看" onClick={() => ui.showCard({ title: '这名玩家是', big: ['疯子'] })} />
+        <button className="btn btn-primary grow" disabled={acts && !t.length} onClick={() => done(acts ? { kind: 'target', target: t[0] } : { kind: 'none' })}>
+          {acts && !t.length ? '先点出疯子指的人' : '完成，下一步'}
         </button>
       </BottomBar>
     </>
@@ -1175,7 +1243,8 @@ function ChambermaidStep({ g, s, actor }: StepProps) {
 
 function ChambermaidAnswer({ g, s, actor, picks }: StepProps & { picks: number[] }) {
   const done = useDone(g);
-  const choices = useMemo(() => chambermaidChoices(s, actor.n, picks), [s, actor.n, picks]);
+  const sick = !!goonTriggered(s, actor, picks, 'chambermaid');
+  const choices = useMemo(() => chambermaidChoices(s, actor.n, picks, sick), [s, actor.n, picks, sick]);
   const rec = useMemo(() => recommend(choices, balance(s).score, stepRng(s, picks[0] * 13 + picks[1])), [choices, s, picks]);
   const [sel, setSel] = useState(rec);
   const c = choices[sel];
@@ -1914,6 +1983,31 @@ function PlagueStep({ g, s }: { g: Game; s: GameState }) {
 
 /* ---------------- 暗月初升 ---------------- */
 
+/** 莽夫变了阵营：先叫醒他告知，确认后才能继续 */
+function GoonInformSheet({ g }: { g: Game }) {
+  const s = g.s;
+  const gi = s.ns!.goonInform!;
+  const ok = () => g.commit((st) => goonInformed(st));
+  return (
+    <Sheet title="莽夫变了阵营：现在叫醒他" onClose={ok}>
+      <div className="stack">
+        <DoBox
+          items={[
+            wake(gi.seat),
+            <>
+              大拇指<b>{gi.evil ? '向下' : '向上'}</b>：告诉他"你现在是{gi.evil ? '邪恶' : '善良'}阵营"。
+            </>,
+            sleep,
+          ]}
+        />
+        <button className="btn btn-primary btn-block" onClick={ok}>
+          已经告诉他了，继续
+        </button>
+      </div>
+    </Sheet>
+  );
+}
+
 /** 莽夫：今晚第一个用能力选他的人醉酒（这次能力无效），莽夫变成他的阵营 */
 function GoonNote({ s, actor, picks, slot }: { s: GameState; actor?: Seat; picks: number[]; slot: SlotId }) {
   const goon = goonTriggered(s, actor, picks, slot);
@@ -1975,7 +2069,7 @@ function SailorAnswer({ g, s, actor, target }: StepProps & { target: number }) {
       <Tips role="sailor" drunk={actor.role === 'drunk'} />
       <BottomBar wide>
         <button className="btn btn-primary btn-block" onClick={() => done({ kind: 'sailor', target, drunk: c.value })}>
-          完成：{seatName(c.value)} 醉酒，下一步
+          {bad ? '完成，下一步（水手这次无效）' : `完成：${seatName(c.value)} 醉酒，下一步`}
         </button>
       </BottomBar>
     </>
@@ -2182,7 +2276,7 @@ function PukkaStep({ g, s, actor }: StepProps) {
       <Tips role="pukka" />
       <BottomBar wide>
         <button className="btn btn-primary btn-block" disabled={!t.length} onClick={() => done({ kind: 'target', target: t[0] })}>
-          {t.length ? `确认：${seatName(t[0])} 中毒，下一步` : '先点出他指的人'}
+          {t.length ? (bad ? `确认：他指了 ${seatName(t[0])}（今晚无效），下一步` : `确认：${seatName(t[0])} 中毒，下一步`) : '先点出他指的人'}
         </button>
       </BottomBar>
     </>
@@ -2239,7 +2333,12 @@ function PoStep({ g, s, actor }: StepProps) {
         </div>
       )}
       <DoBox items={[wake(actor.n), s.poCharged ? '让他指三名玩家，你在下面点出来。' : '让他指一名玩家；他也可以不选（下一晚就能选三个）。', sleep]} />
-      <SayBox lines={slotLines('po', s.style)} title="小声说" s={s} onStyle={toggleStyle(g)} />
+      <SayBox
+        lines={s.poCharged ? (s.style === 'simple' ? ['请选择三名玩家，他们会死亡。'] : ['珀积蓄了一整晚的力量……选出三个人吧。']) : slotLines('po', s.style)}
+        title="小声说"
+        s={s}
+        onStyle={toggleStyle(g)}
+      />
       <SeatPicker s={s} selected={t} max={need} onChange={setT} label={s.poCharged ? '他要杀哪三个人？' : '他要杀谁？'} />
       <GoonNote s={s} actor={actor} picks={t} slot="po" />
       {t.length === need && (
@@ -2334,7 +2433,7 @@ function GossipStep({ g, s }: { g: Game; s: GameState }) {
       {pv && !pv.dies && <p className="dim">{pv.text}</p>}
       <BottomBar wide>
         <button className="btn btn-primary btn-block" disabled={!who} onClick={() => who && done({ kind: 'target', target: who })}>
-          {who ? `完成：${seatName(who)} 死亡` : '先选谁死'}
+          {who ? (pv && !pv.dies ? `完成：${seatName(who)} 死不了，今晚没人死` : `完成：${seatName(who)} 死亡`) : '先选谁死'}
         </button>
       </BottomBar>
     </>
@@ -2351,6 +2450,7 @@ function TinkerStep({ g, s }: { g: Game; s: GameState }) {
   return (
     <>
       <p className="muted">修补匠（{seatName(t.n)}）随时可能死：由你决定今晚要不要让他死。不用叫醒任何人。</p>
+      {!killPreview(s, t.n).dies && <p className="dim">{killPreview(s, t.n).text}</p>}
       <ChoicePanel s={s} choices={choices} sel={sel} rec={rec} onSel={(i) => i >= 0 && setSel(i)} moreLabel="换一个决定" />
       <BottomBar wide>
         <button className="btn btn-primary btn-block" onClick={() => done({ kind: 'yesno', yes: c.value, truth: true })}>

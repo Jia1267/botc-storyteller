@@ -95,9 +95,25 @@ export function TeamChip({ team }: { team: Team }) {
 }
 
 export function Sheet({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setReady(true), MIN_PAGE_MS);
+    return () => clearTimeout(t);
+  }, []);
   return (
-    <div className="scrim" onClick={onClose}>
-      <div className="sheet" role="dialog" aria-label={title} onClick={(e) => e.stopPropagation()}>
+    <div className="scrim" onClick={() => ready && onClose()}>
+      <div
+        className="sheet"
+        role="dialog"
+        aria-label={title}
+        onClick={(e) => e.stopPropagation()}
+        onClickCapture={(e) => {
+          // 弹出面板也至少停 1 秒：连点时第二下不会点到面板里的按钮（关闭按钮除外）
+          if (ready || (e.target as HTMLElement).closest('[aria-label="关闭"]')) return;
+          e.preventDefault();
+          e.stopPropagation();
+        }}
+      >
         <div className="shead">
           <h3>{title}</h3>
           <button className="icon-btn" aria-label="关闭" onClick={onClose}>
@@ -171,7 +187,7 @@ export function SeatPicker({
  * sel === -1 表示手动模式，manual 里放手动输入的界面。
  */
 export function ChoicePanel<T>({
-  s, choices, sel, rec, onSel, manual, manualLabel = '都不合适，手动指定', defaultOpen = false, moreLabel = '换一种给法',
+  s, choices, sel, rec, onSel, manual, manualLabel = '都不合适，手动指定', defaultOpen = false, moreLabel = '换一种给法', pickedLabel = '你改成了',
 }: {
   s: GameState;
   choices: Choice<T>[];
@@ -183,6 +199,8 @@ export function ChoicePanel<T>({
   /** 一打开就把所有选项展开 */
   defaultOpen?: boolean;
   moreLabel?: string;
+  /** 当前选项不是推荐时的标签 */
+  pickedLabel?: string;
 }) {
   const score = balance(s).score;
   const cur = sel >= 0 ? choices[sel] : null;
@@ -191,7 +209,7 @@ export function ChoicePanel<T>({
       {cur ? (
         <div className="recbox">
           <div className="row" style={{ justifyContent: 'space-between' }}>
-            <span className="dim">{sel === rec ? '网页推荐' : '你改成了'}</span>
+            <span className="dim">{sel === rec ? '网页推荐' : pickedLabel}</span>
             <LeanTag lean={cur.lean} />
           </div>
           <div className="answer">{cur.label}</div>

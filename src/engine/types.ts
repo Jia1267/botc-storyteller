@@ -57,8 +57,10 @@ export interface NightState {
   innkeeper?: number[];
   /** 莽夫今晚已经被人选过了 */
   goonHit?: boolean;
-  /** 今晚复活的人（天亮宣布） */
+  /** 今晚复活的人（天亮宣布；今晚刚死又被救活的不宣布） */
   revived?: number[];
+  /** 莽夫变了阵营，还没叫醒他告知 */
+  goonInform?: { seat: number; evil: boolean };
   /** 哈迪寂亚今晚选的三个人和他们最后的死活（天亮宣布用） */
   hadikhia?: { picks: number[]; alive: boolean[] };
 }
