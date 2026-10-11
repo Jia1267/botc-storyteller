@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { ROLES, type RoleId } from './roles';
 import { seeded } from './rng';
-import { balancedSetup, newGame, refreshSetup, setCount, setScript, startDeal } from './setup';
+import { balancedSetup, bluffChoices, bluffPool, newGame, refreshSetup, setCount, setScript, startDeal } from './setup';
 import {
   completeSlot, currentSlot, dealNext, execute, finishDay, goonInformed, moonchildChoose, moonchildNeedsChoice, setGossip, type SlotPayload,
 } from './flow';
@@ -279,5 +279,16 @@ describe('暗月初升：外来者与爪牙', () => {
     expect(seen).toContain('gossip');
     expect(s.seats[3].alive).toBe(false);
     expect(s.seats[1].alive).toBe(false);
+  });
+});
+
+describe('暗月初升：恶魔伪装', () => {
+  it('伪装里不会出现酒鬼、疯子、月之子', () => {
+    for (let seed = 1; seed <= 200; seed++) {
+      const s = game(['grandmother', 'sailor', 'chambermaid', 'exorcist', 'innkeeper', 'gambler', 'godfather', 'po']);
+      expect(bluffPool(s)).not.toContain('lunatic');
+      expect(bluffPool(s)).not.toContain('moonchild');
+      for (const c of bluffChoices(s, seeded(seed))) for (const r of c.value) expect(['drunk', 'lunatic', 'moonchild']).not.toContain(r);
+    }
   });
 });

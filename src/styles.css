@@ -220,9 +220,14 @@ details.more[open] summary svg { transform: rotate(180deg); }
 .token .marks .m-drunk { color: var(--warn); border-color: var(--warn); }
 .token .marks .m-evil { color: var(--evil); border-color: var(--evil); }
 
-.seg { display: inline-flex; border: 1px solid var(--line-2); border-radius: 10px; overflow: hidden; }
-.seg button { min-height: 40px; padding: 6px 14px; border: 0; background: transparent; color: var(--text-2); cursor: pointer; display: inline-flex; align-items: center; gap: 6px; font-size: 14px; }
-.seg button.on { background: var(--surface-2); color: var(--text); }
+.seg { display: inline-flex; flex-wrap: wrap; gap: 8px; }
+.seg button {
+  min-height: 44px; padding: 8px 16px; border: 1px solid var(--line-2); border-radius: 10px; background: var(--surface-2); color: var(--text);
+  cursor: pointer; display: inline-flex; align-items: center; gap: 6px; font-size: 15px; font-weight: 600; transition: transform 0.12s ease-out;
+}
+.seg button:active { transform: scale(0.97); }
+.seg button.on { border-color: var(--gold); background: rgba(209, 173, 102, 0.18); color: var(--gold-2); }
+.seg button.on::before { content: '✓'; }
 
 .glist { display: flex; flex-direction: column; }
 .glist .gi { display: flex; gap: 10px; align-items: center; padding: 10px 4px; border-bottom: 1px solid var(--line); min-height: 52px; cursor: pointer; background: none; border-left: 0; border-right: 0; border-top: 0; text-align: left; width: 100%; }

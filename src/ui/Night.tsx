@@ -19,7 +19,7 @@ import {
 import { SLOT_TITLE, dawnLines, librarianZeroLines, slotLines } from '../engine/scripts';
 import type { GameState, Seat, SlotId } from '../engine/types';
 import { stepRng, type Game } from '../store';
-import { BottomBar, ChoicePanel, DoBox, SayBox, SeatPicker, Sheet, drunkWhy, roleCard, useUi } from './common';
+import { BottomBar, ChoicePanel, ConfirmButton, DoBox, SayBox, SeatPicker, Sheet, drunkWhy, roleCard, useUi } from './common';
 import { shuffle } from '../engine/rng';
 import { GrimoirePanel } from './Grimoire';
 import { Icon } from './icons';
@@ -963,7 +963,7 @@ function LunaticFirstNight({ g, s, actor }: StepProps) {
     [s, actor.n, nMin],
   );
   const fakeBluffs = useMemo(
-    () => shuffle(scriptOf(s).roles.filter((r) => (ROLES[r].team === 'townsfolk' || ROLES[r].team === 'outsider') && r !== 'lunatic'), stepRng(s, 22)).slice(0, 3),
+    () => shuffle(scriptOf(s).roles.filter((r) => (ROLES[r].team === 'townsfolk' || ROLES[r].team === 'outsider') && r !== 'lunatic' && r !== 'moonchild' && r !== 'drunk'), stepRng(s, 22)).slice(0, 3),
     [s],
   );
   // 他以为的恶魔第一晚就要行动（普卡）：让他选人
@@ -1828,9 +1828,7 @@ function HadikhiaStep({ g, s, actor }: StepProps) {
       <Tips role="alhadikhia" />
       <BottomBar wide>
         {picks.length === 0 && (
-          <button className="btn btn-ghost" onClick={() => done({ kind: 'hadikhia', picks: [], live: [] })}>
-            他今晚不选
-          </button>
+          <ConfirmButton className="btn btn-ghost" label="他今晚不选" confirmLabel="再点一次确认" onConfirm={() => done({ kind: 'hadikhia', picks: [], live: [] })} />
         )}
         <button className="btn btn-primary grow" disabled={!ready} onClick={() => done({ kind: 'hadikhia', picks, live: live as boolean[] })}>
           {ready ? '完成，下一步' : picks.length < 3 ? '先按顺序点出三个人' : '记下每个人的选择'}
@@ -2349,9 +2347,7 @@ function PoStep({ g, s, actor }: StepProps) {
       <Tips role="po" />
       <BottomBar wide>
         {!s.poCharged && t.length === 0 && (
-          <button className="btn btn-ghost" onClick={() => done({ kind: 'po', picks: [] })}>
-            他今晚不选
-          </button>
+          <ConfirmButton className="btn btn-ghost" label="他今晚不选" confirmLabel="再点一次确认" onConfirm={() => done({ kind: 'po', picks: [] })} />
         )}
         <button className="btn btn-primary grow" disabled={t.length !== need} onClick={() => done({ kind: 'po', picks: t })}>
           {t.length === need ? '完成，下一步' : `先点出他指的${need === 3 ? '三个' : ''}人`}

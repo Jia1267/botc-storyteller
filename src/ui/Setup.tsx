@@ -1,11 +1,11 @@
 import { useMemo, useState } from 'react';
 import { FABLED, ROLES, TEAM_NAME, isEvilTeam, roleName, type FabledId, type RoleId, type Team } from '../engine/roles';
 import { recommend, setupLabel, balance } from '../engine/balance';
-import { actorFor, addLog, inPlay, lilMonsta, notInPlay, scriptOf, seatName } from '../engine/core';
+import { actorFor, addLog, inPlay, lilMonsta, scriptOf, seatName } from '../engine/core';
 import { SCRIPT_LIST, SCRIPTS, type ScriptId } from '../engine/editions';
 import { defaultRng } from '../engine/rng';
 import {
-  DISTRIBUTION, F4, MAX_F4, alchemistChoices, amnesiacChoices, bluffChoices, drunkFakeChoices, evilTownsfolkChoices, godfatherChoices, godfatherModFor,
+  DISTRIBUTION, F4, MAX_F4, alchemistChoices, amnesiacChoices, bluffChoices, bluffPool, drunkFakeChoices, evilTownsfolkChoices, godfatherChoices, godfatherModFor,
   marionetteFakeChoices, redHerringChoices, replaceDemon, replaceRole, rerollRoles, sentinelChoices, setAlchemistAbility, setCount, setEvilTownsfolk,
   setGodfatherDelta, setScript, setSentinelDelta, setupReasons, shuffleSeats, startDeal, swapSeats, toggleFabled,
 } from '../engine/setup';
@@ -632,7 +632,7 @@ function BluffEdit({ g, onClose }: { g: Game; onClose: () => void }) {
   const rec = useMemo(() => recommend(choices, balance(s).score, stepRng(s, 1)), [choices, s]);
   const key = (rs: RoleId[]) => [...rs].sort().join();
   const [sel, setSel] = useState(() => choices.findIndex((c) => key(c.value) === key(s.bluffs)));
-  const pool = notInPlay(s, ['townsfolk', 'outsider'], s.drunkFake ? [s.drunkFake, 'drunk'] : ['drunk']);
+  const pool = bluffPool(s);
   const [manual, setManual] = useState<RoleId[]>(s.bluffs);
   return (
     <Sheet title="恶魔的 3 个伪装" onClose={onClose}>

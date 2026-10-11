@@ -568,8 +568,13 @@ export function sentinelChoices(s: GameState): Choice<number>[] {
   ];
 }
 
+/** 恶魔能冒充的不在场善良角色。酒鬼、疯子、月之子没人会自称，不给。 */
+export function bluffPool(s: GameState): RoleId[] {
+  return notInPlay(s, ['townsfolk', 'outsider'], ['drunk', 'lunatic', 'moonchild', ...(s.drunkFake ? [s.drunkFake] : []), ...(s.marionetteFake ? [s.marionetteFake] : [])]);
+}
+
 export function bluffChoices(s: GameState, rng: Rng): Choice<RoleId[]>[] {
-  const pool = notInPlay(s, ['townsfolk', 'outsider'], ['drunk', ...(s.drunkFake ? [s.drunkFake] : []), ...(s.marionetteFake ? [s.marionetteFake] : [])]);
+  const pool = bluffPool(s);
   if (pool.length < 3) return pool.length ? [{ key: 'all', label: pool.map(roleName).join('、'), value: pool, lean: 0, truth: true, reason: '能用的不在场角色只有这些。' }] : [];
   const byStrength = shuffle(pool, rng).sort((a, b) => ROLES[b].bluff - ROLES[a].bluff);
   const strong = byStrength.slice(0, 3);
