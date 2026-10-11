@@ -3,11 +3,12 @@ import { ROLES, type RoleId } from './roles';
 import { seeded } from './rng';
 import { balancedSetup, bluffChoices, bluffPool, newGame, refreshSetup, setCount, setScript, startDeal } from './setup';
 import {
-  completeSlot, currentSlot, dealNext, execute, finishDay, goonInformed, moonchildChoose, moonchildNeedsChoice, setGossip, type SlotPayload,
+  completeSlot, currentSlot, dealNext, execute, finishDay, goonInformed, moonchildChoose, moonchildNeedsChoice, pacifistCanSave, setGossip, type SlotPayload,
 } from './flow';
 import { lilKillChoices } from './info';
 import { isEvil, isPoisoned, malfunction } from './core';
 import { SCRIPTS } from './editions';
+import { whyPrefix } from './balance';
 import type { GameState, SlotId } from './types';
 
 /** 暗月初升：按给定角色坐好并发完身份，停在第 1 夜开头 */
@@ -290,5 +291,29 @@ describe('暗月初升：恶魔伪装', () => {
       expect(bluffPool(s)).not.toContain('moonchild');
       for (const c of bluffChoices(s, seeded(seed))) for (const r of c.value) expect(['drunk', 'lunatic', 'moonchild']).not.toContain(r);
     }
+  });
+});
+
+describe('宫本茂第三轮验收后修正', () => {
+  it('和平主义者：本来就不会死的人（弄臣第一次、水手）不再给"死/不死"选择', () => {
+    const s = game(['pacifist', 'fool', 'sailor', 'chambermaid', 'gambler', 'innkeeper', 'assassin', 'po']);
+    night(s);
+    expect(pacifistCanSave(s, 2)).toBe(false);
+    expect(pacifistCanSave(s, 3)).toBe(false);
+    expect(pacifistCanSave(s, 4)).toBe(true);
+  });
+
+  it('恶魔伪装的几个选项不会是同一组角色', () => {
+    for (let seed = 1; seed <= 300; seed++) {
+      const s = game(['grandmother', 'sailor', 'chambermaid', 'exorcist', 'innkeeper', 'gambler', 'godfather', 'po']);
+      const keys = bluffChoices(s, seeded(seed)).map((c) => [...c.value].sort().join());
+      expect(new Set(keys).size).toBe(keys.length);
+    }
+  });
+
+  it('想帮一方却挑了标准做法时，理由不说"帮一下某方"', () => {
+    const w = whyPrefix(15, [-2, 0, 1], 0);
+    expect(w).toContain('按标准做法来');
+    expect(w).not.toContain('这次稍微帮一下');
   });
 });

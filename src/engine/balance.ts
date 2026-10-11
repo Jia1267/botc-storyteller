@@ -139,6 +139,8 @@ export function whyPrefix(score: number, leans: number[], pickedLean = 0): strin
   const dir =
     t !== 0 && noneFor(t)
       ? `本想帮一下${t > 0 ? '善良' : '邪恶'}方，但这里的选项都不帮${t > 0 ? '善良' : '邪恶'}，挑了影响最小的一个`
+      : t !== 0 && pickedLean === 0
+        ? `本想稍微帮一下${t > 0 ? '善良' : '邪恶'}方，但能帮的给法力度太大，这次按标准做法来`
       : t < 0
         ? '这次稍微帮一下邪恶方'
         : t > 0

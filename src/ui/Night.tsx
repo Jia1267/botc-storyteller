@@ -377,7 +377,7 @@ function DemonInfoStep({ g, s }: { g: Game; s: GameState }) {
               用手依次指向爪牙：<b>{ms}</b>。
             </>
           ) : null,
-          '点「给他看伪装」，把手机举给他看。',
+          '点「给他看伪装」，把屏幕举给他看。',
           sleep,
         ]}
       />
@@ -412,7 +412,7 @@ function DawnStep({ g, s }: { g: Game; s: GameState }) {
       />
       <DoBox
         items={[
-          '宣布死讯时只说谁死了，不要说是怎么死的。',
+          banshee ? '报丧女妖被恶魔杀死要公开说（上面的台词已经写了）；其他死讯只说谁死了，不说怎么死的。' : '宣布死讯时只说谁死了，不要说是怎么死的。',
           deaths.length ? '让死去的玩家知道：死人还能说话，但不能提名，整局只剩一次投票。' : null,
           s.fearAnnounce ? '恐惧之灵换了新目标：只宣布"有新目标"，不说是谁。' : null,
           fakeZ ? `${seatName(fakeZ.n)} 是僵怖，这是假死：照常宣布他死了，但他其实还活着（只有你知道）。` : null,
@@ -2194,7 +2194,11 @@ function GamblerStep({ g, s, actor }: StepProps) {
       <SayBox lines={slotLines('gambler', s.style)} title="小声说" s={s} onStyle={toggleStyle(g)} />
       <SeatPicker s={s} selected={t} max={1} onChange={setT} disabled={[actor.n]} label="他指了谁？" />
       <GoonNote s={s} actor={actor} picks={t} slot="gambler" />
-      {t.length > 0 && <RolePick s={s} value={role} onPick={setRole} />}
+      {t.length > 0 && (
+        <Reveal key={t[0]}>
+          <RolePick s={s} value={role} onPick={setRole} />
+        </Reveal>
+      )}
       {right !== null && (
         <Reveal key={`${t[0]}-${role}`}>
           <div className={`card${right ? '' : ' card-evil'}`}>
@@ -2234,7 +2238,7 @@ function GrandmotherStep({ g, s, actor }: StepProps) {
           wake(actor.n),
           c ? (
             <>
-              用手指向 <b>{seatName(c.value.seat)}</b>，点「给她看」：<b>【{roleName(c.value.role)}】</b>。这是她的孙子。
+              用手指向 <b>{seatName(c.value.seat)}</b>，点「给他看」：<b>【{roleName(c.value.role)}】</b>。这是她的孙子。
             </>
           ) : null,
           sleep,

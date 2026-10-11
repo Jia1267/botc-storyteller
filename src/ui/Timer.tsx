@@ -9,6 +9,8 @@ export interface TimerState {
   pause(): void;
   reset(): void;
   setMinutes(m: number): void;
+  /** 换了一天（或入夜、新开一局）就从头开始；同一天刷新页面不受影响 */
+  syncDay(day: number): void;
 }
 
 export const TimerCtx = createContext<TimerState>(null!);
@@ -16,7 +18,7 @@ export const useTimer = () => useContext(TimerCtx);
 
 const KEY = 'botc-storyteller-timer-v1';
 
-function loadTimer(): { total: number; endAt: number | null; left: number } {
+function loadTimer(): { total: number; endAt: number | null; left: number; day?: number } {
   try {
     const d = JSON.parse(localStorage.getItem(KEY) ?? 'null');
     if (d && typeof d.total === 'number' && typeof d.left === 'number') return d;
@@ -32,13 +34,14 @@ export function useTimerState(): TimerState {
   const [total, setTotal] = useState(init.total);
   const [endAt, setEndAt] = useState<number | null>(init.endAt);
   const [left, setLeft] = useState(init.left);
+  const [day, setDay] = useState(init.day ?? -1);
   useEffect(() => {
     try {
-      localStorage.setItem(KEY, JSON.stringify({ total, endAt, left }));
+      localStorage.setItem(KEY, JSON.stringify({ total, endAt, left, day }));
     } catch {
       /* 存不下就算了 */
     }
-  }, [total, endAt, left]);
+  }, [total, endAt, left, day]);
   return {
     total,
     endAt,
@@ -49,6 +52,12 @@ export function useTimerState(): TimerState {
       setEndAt(null);
     },
     reset: () => {
+      setEndAt(null);
+      setLeft(total);
+    },
+    syncDay: (d: number) => {
+      if (d === day) return;
+      setDay(d);
       setEndAt(null);
       setLeft(total);
     },

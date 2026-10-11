@@ -1,4 +1,5 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { ROLES, TEAM_NAME, isEvilTeam, roleName, type Team } from '../engine/roles';
 import { balance, leanTag, whyPrefix, type Choice } from '../engine/balance';
 import { believedRole, isEvil, isPoisoned, seatOf, seatName } from '../engine/core';
@@ -100,7 +101,8 @@ export function Sheet({ title, onClose, children }: { title: string; onClose: ()
     const t = setTimeout(() => setReady(true), MIN_PAGE_MS);
     return () => clearTimeout(t);
   }, []);
-  return (
+  // 挂到 body 上：魔典栏是 sticky 的，面板放在里面会被底部按钮压住，按钮还能被点到
+  return createPortal(
     <div className="scrim" onClick={() => ready && onClose()}>
       <div
         className="sheet"
@@ -122,20 +124,26 @@ export function Sheet({ title, onClose, children }: { title: string; onClose: ()
         </div>
         {children}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
 /** 两次点击才生效的危险按钮 */
 export function ConfirmButton({ label, confirmLabel, onConfirm, className = 'btn btn-danger btn-block' }: { label: string; confirmLabel: string; onConfirm: () => void; className?: string }) {
-  const [armed, setArmed] = useState(false);
+  const [armedAt, setArmedAt] = useState<number | null>(null);
   useEffect(() => {
-    if (!armed) return;
-    const t = setTimeout(() => setArmed(false), 3000);
+    if (armedAt === null) return;
+    const t = setTimeout(() => setArmedAt(null), 3000);
     return () => clearTimeout(t);
-  }, [armed]);
+  }, [armedAt]);
+  const armed = armedAt !== null;
   return (
-    <button className={className} onClick={() => (armed ? onConfirm() : setArmed(true))}>
+    <button
+      className={`${className}${armed ? ' armed' : ''}`}
+      // 第二下要隔开半秒才算：手指一抖连点两下不会直接生效
+      onClick={() => (!armed ? setArmedAt(Date.now()) : Date.now() - armedAt >= 500 && onConfirm())}
+    >
       {armed ? confirmLabel : label}
     </button>
   );
@@ -204,6 +212,12 @@ export function ChoicePanel<T>({
 }) {
   const score = balance(s).score;
   const cur = sel >= 0 ? choices[sel] : null;
+  const more = useRef<HTMLDetailsElement>(null);
+  // 选好之后把展开的选项收起来，免得把下面的内容挤出屏幕
+  const pick = (i: number) => {
+    onSel(i);
+    if (!defaultOpen && more.current) more.current.open = false;
+  };
   return (
     <div className="stack" style={{ gap: 10 }}>
       {cur ? (
@@ -226,14 +240,14 @@ export function ChoicePanel<T>({
         </div>
       )}
       {(choices.length > 1 || manual) && (
-        <details className="more" open={defaultOpen || undefined}>
+        <details className="more" ref={more} open={defaultOpen || undefined}>
           <summary>
             <Icon name="chevronDown" size={18} /> {moreLabel}（{choices.length}
             {manual ? ' + 手动' : ''}）
           </summary>
           <div className="choices" style={{ marginTop: 8 }}>
             {choices.map((c, i) => (
-              <button key={c.key + i} className={`choice${i === sel ? ' sel' : ''}`} onClick={() => onSel(i)}>
+              <button key={c.key + i} className={`choice${i === sel ? ' sel' : ''}`} onClick={() => pick(i)}>
                 <div className="top">
                   <span className="lab">{c.label}</span>
                   <span className="row" style={{ gap: 4, flexWrap: 'nowrap' }}>
@@ -248,7 +262,7 @@ export function ChoicePanel<T>({
               </button>
             ))}
             {manual && (
-              <button className={`choice${sel === -1 ? ' sel' : ''}`} onClick={() => onSel(-1)}>
+              <button className={`choice${sel === -1 ? ' sel' : ''}`} onClick={() => pick(-1)}>
                 <span className="lab">{manualLabel}</span>
               </button>
             )}

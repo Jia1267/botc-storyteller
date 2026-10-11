@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { currentSlot } from './engine/flow';
 import { SLOT_TITLE } from './engine/scripts';
 import { useGame } from './store';
+import type { GameState } from './engine/types';
 import { ConfirmButton, Sheet, ShowCard, UiCtx, type CardContent, type Ui } from './ui/common';
 import { DayScreen } from './ui/Day';
 import { DealScreen } from './ui/Deal';
@@ -22,12 +23,16 @@ export default function App() {
   const [card, setCard] = useState<{ c: CardContent; onDone?: () => void } | null>(null);
   const [spy, setSpy] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const lastUndo = useRef(0);
 
   useEffect(() => {
     if (!toast) return;
     const t = setTimeout(() => setToast(null), 2200);
     return () => clearTimeout(t);
   }, [toast]);
+
+  // 每个白天的讨论计时都从头开始（新开一局、入夜时也清零）
+  useEffect(() => timer.syncDay(s.phase === 'day' ? s.night : 0), [s.phase, s.night]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const ui = useMemo<Ui>(
     () => ({
@@ -72,8 +77,13 @@ export default function App() {
               title="撤销上一步"
               disabled={!g.canUndo}
               onClick={() => {
+                // 防连点：快速点两下只撤销一步
+                const now = Date.now();
+                if (now - lastUndo.current < 700) return;
+                lastUndo.current = now;
+                const back = g.prev;
                 g.undo();
-                setToast('已撤销一步');
+                setToast(back ? `已撤销，回到：${whereText(back)}` : '已撤销一步');
               }}
             >
               <Icon name="undo" />
@@ -155,4 +165,12 @@ export default function App() {
       </TimerCtx.Provider>
     </UiCtx.Provider>
   );
+}
+
+/** 撤销提示里说回到了哪一步 */
+function whereText(s: GameState): string {
+  if (s.phase === 'night') return `${phaseText(s)} · ${SLOT_TITLE[currentSlot(s)]}`;
+  if (s.phase === 'deal') return `发身份（${s.dealIndex + 1} / ${s.seats.length}）`;
+  if (s.phase === 'setup') return '开局设置';
+  return phaseText(s);
 }

@@ -1,6 +1,6 @@
 import { ROLES, isEvilTeam, roleName, type RoleId, type Team } from './roles';
 import {
-  addLog, aliveCount, demonSeat, diedOnDay, hasAbility, inPlay, isDemonSeat, isEvil, isPoisoned, kill, lilMonsta, malfunction, scriptOf,
+  addLog, aliveCount, deathShield, demonSeat, diedOnDay, hasAbility, inPlay, isDemonSeat, isEvil, isPoisoned, kill, lilMonsta, malfunction, scriptOf,
   seatLabel, seatOf, teamOf, vortoxActive, wakesAs, seatName,
 } from './core';
 import { balloonRemaining, pairLabel, scarletCanTakeOver, type PairInfo } from './info';
@@ -408,7 +408,7 @@ export function completeSlot(s: GameState, p: SlotPayload) {
       if (p.kind === 'target') {
         const ok = !malfunction(s, actor!.n);
         if (ok) s.voteMods[p.target] = (s.voteMods[p.target] ?? 1) * (eff === 'bureaucrat' ? 3 : -1);
-        addLog(s, 'night', `${roleName(eff)} ${who} 选了 ${seatName(p.target)}：明天他的票${eff === 'bureaucrat' ? '算 3 票' : '算负数'}${ok ? '' : '（中毒，无效）'}`);
+        addLog(s, 'night', `${roleName(eff)} ${who} 选了 ${seatName(p.target)}：明天他的票${eff === 'bureaucrat' ? '算 3 票' : '算负数'}${ok ? '' : failNote(s, actor!.n)}`);
       }
       break;
     case 'butler':
@@ -533,7 +533,7 @@ export function completeSlot(s: GameState, p: SlotPayload) {
       if (p.kind === 'target') {
         const ok = !malfunction(s, actor!.n);
         s.advocate = { seat: p.target, night: s.night, ok };
-        addLog(s, 'night', `魔鬼代言人 ${who} 保护了 ${seatName(p.target)}：明天被处决不会死${ok ? '' : '（中毒，无效）'}`);
+        addLog(s, 'night', `魔鬼代言人 ${who} 保护了 ${seatName(p.target)}：明天被处决不会死${ok ? '' : failNote(s, actor!.n)}`);
       }
       break;
     case 'exorcist':
@@ -689,7 +689,7 @@ export function completeSlot(s: GameState, p: SlotPayload) {
       if (p.kind === 'harpy') {
         const ok = eff === 'stHarpy' || !malfunction(s, actor!.n);
         s.harpy = ok ? { mad: p.mad, second: p.second, night: s.night, done: false } : null;
-        addLog(s, 'night', `${eff === 'stHarpy' ? '说书人（鹰身女妖能力）' : `鹰身女妖 ${who}`}：${seatName(p.mad)} 明天要疯狂地证明 ${seatName(p.second)} 是邪恶的${ok ? '' : '（中毒，无效）'}`);
+        addLog(s, 'night', `${eff === 'stHarpy' ? '说书人（鹰身女妖能力）' : `鹰身女妖 ${who}`}：${seatName(p.mad)} 明天要疯狂地证明 ${seatName(p.second)} 是邪恶的${ok ? '' : failNote(s, actor!.n)}`);
       }
       break;
     case 'stPoisoner':
@@ -947,11 +947,14 @@ export function setCannibalFake(s: GameState, r: RoleId) {
   addLog(s, 'day', `说书人把食人族（${seatName(c.n)}）的假能力换成【${roleName(r)}】`);
 }
 
-/** 和平主义者在场：被处决的善良玩家可以不死 */
+/** 和平主义者在场：被处决的善良玩家可以不死（本来就不会死的人不用再选） */
 export function pacifistCanSave(s: GameState, n: number): boolean {
   const pc = s.seats.find((x) => x.role === 'pacifist' && x.alive);
-  return !!pc && !malfunction(s, pc.n) && !isEvil(seatOf(s, n));
+  return !!pc && !malfunction(s, pc.n) && !isEvil(seatOf(s, n)) && !deathShield(s, n) && !advocateSaves(s, n);
 }
+
+/** 能力失效时，日志里写清是中毒还是醉酒 */
+const failNote = (s: GameState, n: number) => `（${isPoisoned(s, n) ? '中毒' : '醉酒'}，无效）`;
 
 /** 魔鬼代言人昨晚保护了他：今天被处决不会死 */
 export function advocateSaves(s: GameState, n: number): boolean {

@@ -5,7 +5,7 @@ import { actorFor, addLog, inPlay, lilMonsta, scriptOf, seatName } from '../engi
 import { SCRIPT_LIST, SCRIPTS, type ScriptId } from '../engine/editions';
 import { defaultRng } from '../engine/rng';
 import {
-  DISTRIBUTION, F4, MAX_F4, alchemistChoices, amnesiacChoices, bluffChoices, bluffPool, drunkFakeChoices, evilTownsfolkChoices, godfatherChoices, godfatherModFor,
+  DISTRIBUTION, F4, MAX_F4, alchemistChoices, amnesiacChoices, bluffChoicesWith, bluffPool, drunkFakeChoices, evilTownsfolkChoices, godfatherChoices, godfatherModFor,
   marionetteFakeChoices, redHerringChoices, replaceDemon, replaceRole, rerollRoles, sentinelChoices, setAlchemistAbility, setCount, setEvilTownsfolk,
   setGodfatherDelta, setScript, setSentinelDelta, setupReasons, shuffleSeats, startDeal, swapSeats, toggleFabled,
 } from '../engine/setup';
@@ -628,8 +628,10 @@ export function DrunkEdit({ g, onClose }: { g: Game; onClose: () => void }) {
 
 function BluffEdit({ g, onClose }: { g: Game; onClose: () => void }) {
   const s = g.s;
-  const choices = useMemo(() => bluffChoices(s, stepRng(s)), [s]);
-  const rec = useMemo(() => recommend(choices, balance(s).score, stepRng(s, 1)), [choices, s]);
+  // 选项按打开面板时的局面算一次，选来选去列表不会变
+  const [orig] = useState(s.bluffs);
+  const choices = useMemo(() => bluffChoicesWith(s, stepRng(s), orig), []); // eslint-disable-line react-hooks/exhaustive-deps
+  const rec = useMemo(() => recommend(choices, balance(s).score, stepRng(s, 1)), [choices]); // eslint-disable-line react-hooks/exhaustive-deps
   const key = (rs: RoleId[]) => [...rs].sort().join();
   const [sel, setSel] = useState(() => choices.findIndex((c) => key(c.value) === key(s.bluffs)));
   const pool = bluffPool(s);
@@ -666,6 +668,7 @@ function BluffEdit({ g, onClose }: { g: Game; onClose: () => void }) {
           </div>
         }
         manualLabel="自己挑 3 个"
+        pickedLabel="现在用的"
       />
       <p className="dim" style={{ marginTop: 8 }}>当前：{s.bluffs.map(roleName).join('、')}</p>
     </Sheet>

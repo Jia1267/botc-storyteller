@@ -74,13 +74,15 @@ p { margin: 0; }
   .main.split > .side { position: sticky; top: 72px; }
 }
 @media (max-width: 899px) { .main.split > .side { display: none; } }
-/* iPad 横屏：游戏页整体缩小一点，让魔典和一步的内容尽量一屏放下（举给玩家看的大字卡不在 .main 里，保持原大小）。
-   圆桌按屏幕高度分档限宽（不用 vh：Safari 在 zoom 里算 vh 和 Chrome 不一样）。 */
+/* iPad 横屏：游戏页和弹出面板整体缩小一点，让魔典和一步的内容尽量一屏放下。
+   顶栏按钮、座位号、举给玩家看的大字卡保持原大小。圆桌按屏幕高度分档限宽（不用 vh：Safari 在 zoom 里算 vh 和 Chrome 不一样）。 */
 @media (min-width: 900px) and (min-height: 600px) and (orientation: landscape) {
-  .topbar, .main.split { zoom: 0.85; }
+  .main.split, .scrim { zoom: 0.85; }
   .main.split { padding-top: 10px; }
-  .main.split > .side { top: 77px; }
+  .main.split > .side { top: 89px; }
   .main.split .stack { gap: 10px; }
+  .main.split .token .tn { font-size: 13px; }
+  .main.split .token .marks span { font-size: 12px; line-height: 18px; height: 18px; min-width: 18px; }
 }
 @media (min-width: 900px) and (min-height: 600px) and (max-height: 819px) and (orientation: landscape) { .main.split > .side .grim { max-width: 517px; } }
 @media (min-width: 900px) and (min-height: 600px) and (max-height: 779px) and (orientation: landscape) { .main.split > .side .grim { max-width: 470px; } }
@@ -121,6 +123,8 @@ p { margin: 0; }
 .btn-danger { background: var(--evil-bg); border-color: var(--evil); color: var(--evil); }
 .btn-sm { min-height: 44px; padding: 8px 14px; font-size: 15px; font-weight: 600; }
 .btn-block { width: 100%; }
+/* 二次确认按钮：等第二下时换成提醒色 */
+.btn.armed { border-color: var(--warn); color: var(--warn); }
 
 /* ---------- 卡片与文本块 ---------- */
 .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; }
@@ -278,7 +282,7 @@ details.more[open] summary svg { transform: rotate(180deg); }
 .showcard .big.many { font-size: clamp(40px, 12vw, 96px); }
 .showcard .team { font-size: clamp(18px, 5vw, 26px); font-weight: 700; padding: 4px 16px; border-radius: 999px; border: 2px solid; }
 .showcard .ab { font-size: clamp(17px, 4.6vw, 24px); max-width: 30em; color: #e6dccd; line-height: 1.6; }
-.showcard .done { position: absolute; left: 16px; right: 16px; bottom: calc(16px + var(--safe-b)); max-width: 520px; margin: 0 auto; }
+.showcard .done { position: absolute; left: 16px; right: 16px; width: auto; bottom: calc(16px + var(--safe-b)); max-width: 520px; margin: 0 auto; }
 
 /* 盖屏 */
 .cover { position: fixed; inset: 0; z-index: 70; background: #0b090a; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 24px; padding: 24px; }

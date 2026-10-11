@@ -126,6 +126,14 @@ export function DayScreen({ g }: { g: Game }) {
         <TravellerDay g={g} />
         <SayBox lines={nominationLines(s.style)} title="讨论结束后说" />
         <HarpyCard g={g} />
+        <VoteMods s={s} />
+        {butler && s.butlerMaster && (
+          <div className="card card-warn">
+            <p>
+              管家 {seatName(butler.n)} 只有在主人 <b>{seatName(s.butlerMaster)}</b> 举手时才能举手投票。
+            </p>
+          </div>
+        )}
         <div className="card">
           <h3>投票规则（你来数票）</h3>
           <p>
@@ -142,14 +150,6 @@ export function DayScreen({ g }: { g: Game }) {
           </ul>
         </div>
         <FlowergirlCard g={g} />
-        <VoteMods s={s} />
-        {butler && s.butlerMaster && (
-          <div className="card card-warn">
-            <p>
-              管家 {seatName(butler.n)} 只有在主人 <b>{seatName(s.butlerMaster)}</b> 举手时才能举手投票。
-            </p>
-          </div>
-        )}
       </div>
       {panel === 'virgin' && virgin && <VirginSheet g={g} virginN={virgin.n} onClose={close} />}
       {panel === 'slayer' && <SlayerSheet g={g} onClose={close} />}

@@ -592,7 +592,8 @@ export function bluffChoices(s: GameState, rng: Rng): Choice<RoleId[]>[] {
     normal = [a, b, pick(outs.length ? outs : pool.filter((r) => r !== a && r !== b), rng)];
   } else normal = outs.length && towns.length >= 2 ? [...sample(towns, 2, rng), pick(outs, rng)] : sample(pool, 3, rng);
   const fmt = (rs: RoleId[]) => rs.map(roleName).join('、');
-  return [
+  const k = (rs: RoleId[]) => [...rs].sort().join();
+  const all: Choice<RoleId[]>[] = [
     { key: 'strong', label: fmt(strong), value: strong, lean: -1, truth: true, reason: '这几个角色很难被当场拆穿，恶魔好伪装，帮邪恶。' },
     {
       key: 'normal', label: fmt(normal), value: normal, lean: 0, truth: true, standard: true,
@@ -600,6 +601,24 @@ export function bluffChoices(s: GameState, rng: Rng): Choice<RoleId[]>[] {
     },
     { key: 'weak', label: fmt(weak), value: weak, lean: 1, truth: true, reason: '这几个角色容易被验证或拆穿，恶魔不好装，帮善良。' },
   ];
+  // 三组可能撞成同一组角色：只留一个，优先留标准搭配
+  return all.filter((c) => c.key === 'normal' || (k(c.value) !== k(normal) && (c.key !== 'weak' || k(c.value) !== k(strong))));
+}
+
+/** 查看/更换伪装时：打开面板时用的那组如果不在这次算出来的选项里，也列进来并给出理由 */
+export function bluffChoicesWith(s: GameState, rng: Rng, cur: RoleId[]): Choice<RoleId[]>[] {
+  const cs = bluffChoices(s, rng);
+  const k = (rs: RoleId[]) => [...rs].sort().join();
+  const pool = bluffPool(s);
+  if (cur.length !== 3 || pool.length < 3 || cs.some((c) => k(c.value) === k(cur)) || !cur.every((r) => pool.includes(r))) return cs;
+  const avg = (rs: RoleId[]) => rs.reduce((a, r) => a + ROLES[r].bluff, 0) / rs.length;
+  const sorted = [...pool].sort((a, b) => ROLES[b].bluff - ROLES[a].bluff);
+  const hi = avg(sorted.slice(0, 3));
+  const lo = avg(sorted.slice(-3));
+  const v = avg(cur);
+  const lean = v >= (2 * hi + lo) / 3 ? -1 : v <= (hi + 2 * lo) / 3 ? 1 : 0;
+  const why = lean < 0 ? '这几个角色比较难被当场拆穿，恶魔好伪装，偏帮邪恶。' : lean > 0 ? '这几个角色比较容易被验证或拆穿，恶魔不好装，偏帮善良。' : '伪装难度适中。';
+  return [{ key: 'cur', label: cur.map(roleName).join('、'), value: cur, lean, truth: true, standard: lean === 0, reason: `现在用的这组：${why}` }, ...cs];
 }
 
 export function redHerringChoices(s: GameState, rng: Rng): Choice<number>[] {

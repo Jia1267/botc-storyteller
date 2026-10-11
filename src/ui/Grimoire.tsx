@@ -175,7 +175,7 @@ function SetupFacts({ s }: { s: GameState }) {
 export function SpyView({ s, onDone }: { s: GameState; onDone: () => void }) {
   return (
     <div className="overlay" style={{ zIndex: 85 }}>
-      <div className="obody stack" style={{ paddingBottom: 90 }}>
+      <div className="obody stack" style={{ paddingBottom: 'calc(120px + var(--safe-b))' }}>
         <h2 className="center" style={{ fontSize: 26, paddingTop: 8 }}>
           魔典
         </h2>

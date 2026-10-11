@@ -53,7 +53,7 @@ export function DealScreen({ g }: { g: Game }) {
             <li>
               把 <b>{seatName(seat.n)}</b> 单独叫到一边，别让其他人看到屏幕。
             </li>
-            <li>点下面的「给他看」，把手机举给他看。</li>
+            <li>点下面的「给他看」，把屏幕举给他看。</li>
             <li>他看完自己点「看完了」，然后叫下一位。</li>
           </ol>
         </div>
