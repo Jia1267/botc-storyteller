@@ -1,0 +1,91 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 2400">
+  <defs>
+    <!-- 月晕：光从上方来，下半边几乎不发光，给正文让出暗底 -->
+    <radialGradient id="halo" gradientUnits="userSpaceOnUse" cx="570" cy="262" r="430">
+      <stop offset="0" stop-color="#c2432f" stop-opacity=".55"/>
+      <stop offset=".3" stop-color="#b13a2d" stop-opacity=".34"/>
+      <stop offset=".46" stop-color="#8a2a27" stop-opacity=".15"/>
+      <stop offset=".64" stop-color="#5e1b1f" stop-opacity=".06"/>
+      <stop offset=".82" stop-color="#3a1016" stop-opacity=".02"/>
+      <stop offset="1" stop-color="#3a1016" stop-opacity="0"/>
+    </radialGradient>
+    <!-- 血月：上沿受光，往下被地影吞掉；明暗交界压在月亮中线以上 -->
+    <linearGradient id="disc" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#e2654a"/>
+      <stop offset=".16" stop-color="#cb4f37"/>
+      <stop offset=".29" stop-color="#a53a2e"/>
+      <stop offset=".37" stop-color="#762523"/>
+      <stop offset=".44" stop-color="#47151a"/>
+      <stop offset=".58" stop-color="#2f0d12"/>
+      <stop offset="1" stop-color="#220a0e"/>
+    </linearGradient>
+    <linearGradient id="rim" x1=".85" y1="0" x2=".35" y2=".7">
+      <stop offset="0" stop-color="#ffb08a" stop-opacity=".6"/>
+      <stop offset=".3" stop-color="#f08460" stop-opacity=".22"/>
+      <stop offset=".55" stop-color="#f08460" stop-opacity="0"/>
+    </linearGradient>
+    <radialGradient id="mare" cx=".5" cy=".5" r=".5">
+      <stop offset="0" stop-color="#3a0d10" stop-opacity=".4"/>
+      <stop offset="1" stop-color="#3a0d10" stop-opacity="0"/>
+    </radialGradient>
+    <!-- 塔身：左侧面迎着月光略亮，右侧面沉下去 -->
+    <linearGradient id="stone" gradientUnits="userSpaceOnUse" x1="530" y1="0" x2="670" y2="0">
+      <stop offset="0" stop-color="#1a0e11"/>
+      <stop offset=".5" stop-color="#0f090b"/>
+      <stop offset=".52" stop-color="#0a0608"/>
+      <stop offset="1" stop-color="#070405"/>
+    </linearGradient>
+    <linearGradient id="lit" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f0d08a"/>
+      <stop offset="1" stop-color="#c99a52"/>
+    </linearGradient>
+  </defs>
+
+  <!-- 月 -->
+  <circle cx="570" cy="262" r="430" fill="url(#halo)"/>
+  <circle cx="560" cy="330" r="190" fill="url(#disc)"/>
+  <ellipse cx="500" cy="226" rx="66" ry="40" fill="url(#mare)"/>
+  <ellipse cx="616" cy="192" rx="48" ry="30" fill="url(#mare)"/>
+  <ellipse cx="660" cy="270" rx="40" ry="32" fill="url(#mare)"/>
+  <circle cx="560" cy="330" r="188.5" fill="none" stroke="url(#rim)" stroke-width="3"/>
+
+  <!-- 钟楼 -->
+  <g fill="url(#stone)">
+    <!-- 尖顶 + 风向标 -->
+    <rect x="598.6" y="22" width="2.8" height="50"/>
+    <circle cx="600" cy="40" r="5"/>
+    <path d="M581 55h34l-6-5h4l7 6-7 6h-4l6-5h-34l-4 4h-4l5-5-5-5h4z"/>
+    <path d="M600 68c4 54 15 98 44 128h-88c29-30 40-74 44-128z"/>
+    <path d="M594 156h12l-6-12z" fill="#170c0f"/>
+    <path d="M542 196l6-40 6 40zM646 196l6-40 6 40z"/>
+    <!-- 钟层：表盘镂空，月光从里面透出来 -->
+    <rect x="536" y="196" width="128" height="11" rx="1"/>
+    <path fill-rule="evenodd" d="M548 207h104v91h-104zM600 218a34 34 0 1 0 0.01 0z"/>
+    <rect x="538" y="298" width="124" height="10" rx="1"/>
+    <!-- 钟楼层：两扇尖拱窗 -->
+    <path fill-rule="evenodd" d="M552 308h96v76h-96zM568 374v-36c0-9 5-15 11-18 6 3 11 9 11 18v36zM610 374v-36c0-9 5-15 11-18 6 3 11 9 11 18v36z"/>
+    <rect x="544" y="384" width="112" height="9" rx="1"/>
+    <!-- 塔身：越往下越宽，仰视的透视 -->
+    <path d="M556 393h88l26 2007h-140z"/>
+  </g>
+  <!-- 表盘：指针停在十一点五十，午夜前 -->
+  <g stroke="#0a0608" stroke-linecap="round" fill="none">
+    <circle cx="600" cy="252" r="31.5" stroke-width="5"/>
+    <circle cx="600" cy="252" r="21" stroke-width="1.6"/>
+    <path stroke-width="4" d="M600 223v6M629 252h-6M600 281v-6M571 252h6"/>
+    <path stroke-width="2.4" d="M614.5 226.9l-2.5 4.3M625.1 237.5l-4.3 2.5M625.1 266.5l-4.3-2.5M614.5 277.1l-2.5-4.3M585.5 277.1l2.5-4.3M574.9 266.5l4.3-2.5M574.9 237.5l4.3 2.5M585.5 226.9l2.5 4.3"/>
+    <path stroke-width="3.6" d="M600 252l-1.3-15"/>
+    <path stroke-width="2.4" d="M600 252l-19.5-11.3"/>
+  </g>
+  <circle cx="600" cy="252" r="3.2" fill="#0a0608"/>
+  <!-- 守在钟层檐口上的一只乌鸦 -->
+  <path fill="#0a0608" d="M641 298l7-5c1-6 6-10 11-11 2-4 6-5 9-3l6 2-6 1c0 4-2 8-5 11l-1 5h-2v-4h-5l-1 4h-2v-3l-11 3z"/>
+  <!-- 塔身上的灯窗和腰线 -->
+  <g fill="#170d10">
+    <rect x="551" y="660" width="98" height="5"/>
+    <rect x="547" y="960" width="106" height="6"/>
+    <rect x="543" y="1280" width="114" height="6"/>
+  </g>
+  <path fill="#060304" d="M592 520v-26c0-6 4-10 8-12 4 2 8 6 8 12v26zM590 790v-28c0-7 5-11 10-13 5 2 10 6 10 13v28z"/>
+  <path fill="url(#lit)" opacity=".85" d="M572 612v-18c0-4 3-7 6-8 3 1 6 4 6 8v18zM614 1140v-22c0-5 3-8 7-9 4 1 7 4 7 9v22z"/>
+</svg>

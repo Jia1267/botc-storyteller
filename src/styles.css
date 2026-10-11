@@ -302,3 +302,25 @@ details.more[open] summary svg { transform: rotate(180deg); }
 .ref-role { padding: 14px 0; border-bottom: 1px solid var(--line); }
 .ref-role h3 { font-size: 19px; display: flex; gap: 8px; align-items: center; }
 .ref-role ul { margin: 6px 0 0; padding-left: 18px; color: var(--text-2); font-size: 15px; }
+
+/* ---------- 首页夜景（只用在选剧本、选人数两屏） ----------
+   固定在视口后面不跟着滚：iOS 不支持 background-attachment: fixed，所以用 position: fixed 的伪元素。
+   三层从上到下：小镇（贴底）> 血月和钟楼（贴右上）> 天色。
+   月亮只有上沿受光，下半边压到很暗，正文压在上面也够对比度。 */
+.home-scene::before {
+  content: '';
+  position: fixed; inset: 0; z-index: -1; pointer-events: none;
+  background:
+    url('./assets/home-town.svg') center bottom / max(100%, 1000px) auto no-repeat,
+    url('./assets/home-tower.svg') right -150px top calc(14px + var(--safe-t)) / 470px auto no-repeat,
+    linear-gradient(to bottom, #170c10 0%, var(--bg) 46%);
+}
+/* 透明底的描边按钮会滑过插画，垫一层夜色 */
+.home-scene .btn-outline { background-color: rgba(17, 13, 16, 0.88); }
+/* 宽屏：月亮和钟楼挪到内容栏右侧的空白里，整个露出来 */
+@media (min-width: 1200px) {
+  .home-scene::before {
+    background-size: max(100%, 1000px) auto, clamp(560px, 55vw, 820px) auto, auto;
+    background-position: center bottom, right calc(25vw - 170px - 0.44 * clamp(560px, 55vw, 820px)) top 56px, 0 0;
+  }
+}
