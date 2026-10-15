@@ -93,8 +93,8 @@ export default function App() {
                 <Icon name="book" />
               </button>
             )}
-            <button className="icon-btn" aria-label="一键盖屏" title="一键盖屏" onClick={() => setPanel('cover')}>
-              <Icon name="eyeOff" />
+            <button className="icon-btn" aria-label="一键盖屏，只显示计时器" title="一键盖屏，只显示计时器" onClick={() => setPanel('cover')}>
+              <Icon name="timer" />
             </button>
             <button className="icon-btn" aria-label="菜单" title="菜单" onClick={() => setPanel('menu')}>
               <Icon name="menu" />
@@ -119,10 +119,10 @@ export default function App() {
                 <span>台词风格</span>
                 <div className="seg">
                   <button className={s.style === 'simple' ? 'on' : ''} onClick={() => g.tweak((st) => (st.style = 'simple'))}>
-                    <Icon name="sun" size={16} /> 简洁
+                    简洁
                   </button>
                   <button className={s.style === 'atmo' ? 'on' : ''} onClick={() => g.tweak((st) => (st.style = 'atmo'))}>
-                    <Icon name="moon" size={16} /> 氛围
+                    氛围
                   </button>
                 </div>
               </div>

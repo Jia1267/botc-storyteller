@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { ROLES, TEAM_NAME, isEvilTeam, roleName, type Team } from '../engine/roles';
 import { balance, leanTag, whyPrefix, type Choice } from '../engine/balance';
@@ -59,7 +59,7 @@ export function SayBox({ lines, title = '你要说', s, onStyle }: { lines: stri
       <div className="lbl">
         <span>{title}</span>
         {s && onStyle && (
-          <button className="btn-sm" style={{ background: 'none', border: 0, color: 'var(--text-3)', cursor: 'pointer', minHeight: 32 }} onClick={onStyle}>
+          <button className="btn-sm" style={{ background: 'none', border: 0, color: 'var(--text-3)', cursor: 'pointer', minHeight: 44 }} onClick={onStyle}>
             {s.style === 'simple' ? '换成氛围台词' : '换成简洁台词'}
           </button>
         )}
@@ -97,16 +97,21 @@ export function TeamChip({ team }: { team: Team }) {
 
 export function Sheet({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
   const [ready, setReady] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const t = setTimeout(() => setReady(true), MIN_PAGE_MS);
     return () => clearTimeout(t);
   }, []);
+  useEscape(onClose, box);
   // 挂到 body 上：魔典栏是 sticky 的，面板放在里面会被底部按钮压住，按钮还能被点到
   return createPortal(
     <div className="scrim" onClick={() => ready && onClose()}>
       <div
+        ref={box}
+        tabIndex={-1}
         className="sheet"
         role="dialog"
+        aria-modal="true"
         aria-label={title}
         onClick={(e) => e.stopPropagation()}
         onClickCapture={(e) => {
@@ -127,6 +132,18 @@ export function Sheet({ title, onClose, children }: { title: string; onClose: ()
     </div>,
     document.body,
   );
+}
+
+/** 弹出层：按 Esc 关闭，打开时把焦点移进来 */
+export function useEscape(onClose: () => void, box: RefObject<HTMLElement | null>) {
+  const close = useRef(onClose);
+  close.current = onClose;
+  useEffect(() => {
+    box.current?.focus({ preventScroll: true });
+    const h = (e: KeyboardEvent) => e.key === 'Escape' && close.current();
+    window.addEventListener('keydown', h);
+    return () => window.removeEventListener('keydown', h);
+  }, [box]);
 }
 
 /** 两次点击才生效的危险按钮 */
@@ -152,7 +169,7 @@ export function ConfirmButton({ label, confirmLabel, onConfirm, className = 'btn
 /* ---------------- 座位选择 ---------------- */
 
 export function SeatPicker({
-  s, selected, max, onChange, disabled = [], label,
+  s, selected, max, onChange, disabled = [], label, ordered = false, collapse,
 }: {
   s: GameState;
   selected: number[];
@@ -160,12 +177,32 @@ export function SeatPicker({
   onChange: (v: number[]) => void;
   disabled?: number[];
   label?: string;
+  /** 选中的格子角上标第几个（按顺序点的场合） */
+  ordered?: boolean;
+  /** 选满之后收成一行"他指了 3号、6号 [改]"，这里给前面那几个字 */
+  collapse?: string;
 }) {
-  const tap = (n: number) => {
-    if (selected.includes(n)) onChange(selected.filter((x) => x !== n));
-    else if (max === 1) onChange([n]);
-    else if (selected.length < max) onChange([...selected, n]);
+  const [editing, setEditing] = useState(false);
+  const pick = (v: number[]) => {
+    onChange(v);
+    if (v.length === max) setEditing(false);
   };
+  const tap = (n: number) => {
+    if (selected.includes(n)) pick(selected.filter((x) => x !== n));
+    else if (max === 1) pick([n]);
+    else if (selected.length < max) pick([...selected, n]);
+  };
+  if (collapse && max > 0 && selected.length === max && !editing)
+    return (
+      <div className="picked">
+        <span>
+          {collapse} <b>{selected.map(seatName).join('、')}</b>
+        </span>
+        <button className="btn btn-ghost btn-sm" onClick={() => setEditing(true)}>
+          改
+        </button>
+      </div>
+    );
   return (
     <div className="stack" style={{ gap: 8 }}>
       {label && <div className="dim">{label}</div>}
@@ -179,11 +216,26 @@ export function SeatPicker({
             aria-label={`${seatName(x.n)} ${roleName(x.role)}${x.alive ? '' : ' 已死亡'}`}
             onClick={() => tap(x.n)}
           >
+            {ordered && selected.includes(x.n) && <span className="ord">{selected.indexOf(x.n) + 1}</span>}
             <span className="num">{seatName(x.n).replace('号', '')}</span>
             <span className="nm">{ROLES[x.role].short}</span>
           </button>
         ))}
       </div>
+    </div>
+  );
+}
+
+/** 两个选项二选一（他要用 / 他不用 之类），两栏等宽 */
+export function TwoChoice({ value, onChange, yes, no, label }: { value: boolean | null; onChange: (v: boolean) => void; yes: string; no: string; label?: string }) {
+  return (
+    <div className="seg two" role="radiogroup" aria-label={label}>
+      <button role="radio" aria-checked={value === true} className={value === true ? 'on' : ''} onClick={() => onChange(true)}>
+        {yes}
+      </button>
+      <button role="radio" aria-checked={value === false} className={value === false ? 'on' : ''} onClick={() => onChange(false)}>
+        {no}
+      </button>
     </div>
   );
 }
@@ -275,8 +327,18 @@ export function ChoicePanel<T>({
 
 /* ---------------- 局势条 ---------------- */
 
-export function BalanceMeter({ s, detail = false }: { s: GameState; detail?: boolean }) {
+export function BalanceMeter({ s, detail = false, expandable = false }: { s: GameState; detail?: boolean; expandable?: boolean }) {
   const b = balance(s);
+  const parts = (
+    <ul>
+      {b.parts.map((p) => (
+        <li key={p.name}>
+          {p.name}（{p.value > 0 ? '+' : ''}
+          {Math.round(p.value)}）：{p.text}
+        </li>
+      ))}
+    </ul>
+  );
   const pos = 50 + b.score / 2;
   const cls = b.score >= 12 ? 'good' : b.score <= -12 ? 'evil' : '';
   return (
@@ -295,16 +357,16 @@ export function BalanceMeter({ s, detail = false }: { s: GameState; detail?: boo
         <span>邪恶优势</span>
         <span>善良优势</span>
       </div>
-      {detail && (
-        <ul>
-          {b.parts.map((p) => (
-            <li key={p.name}>
-              {p.name}（{p.value > 0 ? '+' : ''}
-              {Math.round(p.value)}）：{p.text}
-            </li>
-          ))}
-        </ul>
-      )}
+      {detail
+        ? parts
+        : expandable && (
+            <details className="more">
+              <summary>
+                <Icon name="chevronDown" size={16} /> 看局势分项
+              </summary>
+              {parts}
+            </details>
+          )}
     </div>
   );
 }

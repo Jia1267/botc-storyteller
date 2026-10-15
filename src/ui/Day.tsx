@@ -8,7 +8,7 @@ import {
 import {
   LEVIATHAN_DAYS, advocateSaves, alsaahirCorrect, alsaahirGuess, execute, pacifistCanSave, setGossip, tinkerDies, fearPreview, fearmongerAsk, fearmongerNominates, finishDay, goblinAsk,
   harpyPunish, nominateVirgin, previewSlayer, previewVirgin, setCannibalFake, setDemonVoted, savantVisit, scapegoatFor, setDuchessVisitors,
-  slayerShoot, markUsed,
+  slayerShoot, markUsed, nomResults, voteNeed, type NomResult, type NomRow,
 } from '../engine/flow';
 import { activeTravellers, beggarLearns, exile, gunslingerPreview, gunslingerShoot, leave } from '../engine/travellers';
 import { harpyPunishChoices, killPreview, pacifistChoices, scarletCanTakeOver } from '../engine/info';
@@ -16,10 +16,11 @@ import { AMNESIAC_ANSWERS, artistMode, fishermanChoices, savantChoices } from '.
 import type { GameState, Seat } from '../engine/types';
 import { dayStartLines, endLines, executionLines, nominationLines } from '../engine/scripts';
 import { stepRng, type Game } from '../store';
-import { BottomBar, ChoicePanel, DoBox, SayBox, SeatPicker, Sheet, drunkWhy, useUi } from './common';
+import { BottomBar, ChoicePanel, DoBox, SayBox, SeatPicker, Sheet, TwoChoice, drunkWhy, useUi } from './common';
 import { GrimoirePanel } from './Grimoire';
 import { KlutzPrompt, MoonchildPrompt, PixiePrompt, promptPending } from './Prompts';
 import { TimerDisplay } from './Timer';
+import { Icon } from './icons';
 import { AddTravellerSheet, ExileSheet } from './Travellers';
 
 const toggleStyle = (g: Game) => () => g.tweak((st) => (st.style = st.style === 'simple' ? 'atmo' : 'simple'));
@@ -66,7 +67,7 @@ function demonDeathWarning(s: GameState, n: number, verb: '被处决了' | '死�
   );
 }
 
-type Panel = 'virgin' | 'slayer' | 'exec' | 'artist' | 'fisherman' | 'savant' | 'amnesiac' | 'mutant' | 'duchess' | 'fear' | 'alsaahir' | 'gossip' | 'tinker' | null;
+type Panel = 'nom' | 'virgin' | 'slayer' | 'exec' | 'artist' | 'fisherman' | 'savant' | 'amnesiac' | 'mutant' | 'duchess' | 'fear' | 'alsaahir' | 'gossip' | 'tinker' | null;
 
 export function DayScreen({ g }: { g: Game }) {
   const s = g.s;
@@ -119,7 +120,7 @@ export function DayScreen({ g }: { g: Game }) {
           <h3>讨论计时</h3>
           <TimerDisplay />
           <p className="dim center" style={{ marginTop: 6 }}>
-            右上角的眼睛按钮可以一键盖屏，只显示计时器。
+            右上角的计时器按钮可以一键盖屏，只显示计时器。
           </p>
         </div>
         <DayAbilities s={s} open={setPanel} />
@@ -134,11 +135,21 @@ export function DayScreen({ g }: { g: Game }) {
             </p>
           </div>
         )}
-        <div className="card">
-          <h3>投票规则（你来数票）</h3>
+        <div className="card stack" style={{ gap: 10 }}>
+          <div className="row" style={{ justifyContent: 'space-between' }}>
+            <h3>投票（你来数票）</h3>
+            <button className="btn btn-ghost btn-sm" onClick={() => setPanel('nom')}>
+              <Icon name="plus" size={16} /> 记一次提名
+            </button>
+          </div>
           <p>
             现在存活 <b>{alive}</b> 人{tAlive > 0 && `（含旅行者 ${tAlive} 人）`} → 处决至少需要 <b className="answer" style={{ fontSize: 22 }}>{need}</b> 票
           </p>
+          <NomList g={g} />
+          <details className="more">
+            <summary>
+              <Icon name="chevronDown" size={18} /> 投票规则（{tAlive > 0 ? 7 : 6} 条）
+            </summary>
           <ul style={{ margin: '8px 0 0', paddingLeft: 18 }} className="muted">
             <li>从被提名者开始，顺时针一个一个数举手的人。</li>
             <li>票数 ≥ {need}，而且比今天之前的最高票还多，他就成为"待处决"的人。</li>
@@ -148,6 +159,7 @@ export function DayScreen({ g }: { g: Game }) {
             <li>所有提名结束后，"待处决"的人被处决。也可以一个都不处决。</li>
             {tAlive > 0 && <li>旅行者可以提名、投票，但不能被提名处决，只能放逐（见上面"旅行者"）。</li>}
           </ul>
+          </details>
         </div>
         <FlowergirlCard g={g} />
       </div>
@@ -164,6 +176,7 @@ export function DayScreen({ g }: { g: Game }) {
       {panel === 'alsaahir' && <AlsaahirSheet g={g} onClose={close} />}
       {panel === 'gossip' && <GossipSheet g={g} onClose={close} />}
       {panel === 'tinker' && <TinkerSheet g={g} onClose={close} />}
+      {panel === 'nom' && <NomSheet g={g} onClose={close} />}
       <BottomBar wide>
         <button className="btn btn-primary btn-block" onClick={() => setPanel('exec')}>
           所有提名结束，录入处决结果
@@ -230,7 +243,9 @@ function scapegoatChoices(s: GameState, n: number, sg: number): Choice<boolean>[
 
 function ExecSheet({ g, onClose }: { g: Game; onClose: () => void }) {
   const s = g.s;
-  const [t, setT] = useState<number[]>([]);
+  // 按提名记录预选待处决的人
+  const noms = useMemo(() => nomResults(s), [s]);
+  const [t, setT] = useState<number[]>(() => (noms.block ? [noms.block] : []));
   const [fear, setFear] = useState(false);
   const [goblin, setGoblin] = useState(false);
   const [sgSel, setSgSel] = useState<number | null>(null);
@@ -253,6 +268,15 @@ function ExecSheet({ g, onClose }: { g: Game; onClose: () => void }) {
   return (
     <Sheet title="今天的处决结果" onClose={onClose}>
       <div className="stack">
+        {noms.rows.length > 0 && (
+          <p className="dim">
+            {noms.block
+              ? `按提名记录，待处决的是 ${seatName(noms.block)}（${noms.top} 票），已帮你选好。`
+              : noms.top
+                ? `按提名记录：${noms.top} 票平票，今天没人待处决。`
+                : '按提名记录：没人够票，今天没人待处决。'}
+          </p>
+        )}
         <SeatPicker
           s={s}
           selected={t}
@@ -323,14 +347,7 @@ function Toggle({ on, set, label, hint }: { on: boolean; set: (v: boolean) => vo
     <div className="card card-warn stack" style={{ gap: 8 }}>
       <b>{label}</b>
       <p className="dim">{hint}</p>
-      <div className="seg" role="radiogroup">
-        <button className={on ? 'on' : ''} onClick={() => set(true)} aria-pressed={on}>
-          是
-        </button>
-        <button className={!on ? 'on' : ''} onClick={() => set(false)} aria-pressed={!on}>
-          不是
-        </button>
-      </div>
+      <TwoChoice value={on} onChange={set} yes="是" no="不是" label={label} />
     </div>
   );
 }
@@ -1053,14 +1070,7 @@ function AlsaahirSheet({ g, onClose }: { g: Game; onClose: () => void }) {
         {twist && d.length > 0 && (
           <div className="stack" style={{ gap: 6 }}>
             <p className="dim">场上有间谍/陌客：间谍可以不算爪牙，陌客可以被当成爪牙或恶魔。你可以改判：</p>
-            <div className="seg" role="radiogroup">
-              <button className={verdict ? 'on' : ''} onClick={() => setOverride(true)} aria-pressed={verdict}>
-                算他猜对
-              </button>
-              <button className={!verdict ? 'on' : ''} onClick={() => setOverride(false)} aria-pressed={!verdict}>
-                算他猜错
-              </button>
-            </div>
+            <TwoChoice value={verdict} onChange={setOverride} yes="算他猜对" no="算他猜错" />
           </div>
         )}
         {bad && <p className="dim">他中毒/醉酒：猜对也没用。</p>}
@@ -1074,6 +1084,111 @@ function AlsaahirSheet({ g, onClose }: { g: Game; onClose: () => void }) {
           }}
         >
           确认
+        </button>
+      </div>
+    </Sheet>
+  );
+}
+
+/* ---------------- 提名记录 ---------------- */
+
+const NOM_TEXT: Record<NomResult, (r: NomRow) => string> = {
+  short: (r) => `不够 ${r.need} 票`,
+  lower: () => '够票，但没超过之前的最高票',
+  block: () => '待处决',
+  beaten: () => '被后面的人超过',
+  tie: () => '平票，都不处决',
+};
+
+/** 今天的提名：每一条的结果，记错了可以删 */
+function NomList({ g }: { g: Game }) {
+  const s = g.s;
+  const { rows, block, top } = nomResults(s);
+  if (!rows.length) return <p className="dim">每次数完票点"记一次提名"填进来，网页帮你判断谁待处决、有没有平票。</p>;
+  return (
+    <div className="noms">
+      {rows.map((r) => (
+        <div key={r.i} className={`nom ${r.result}`}>
+          <span className="who">{seatName(r.seat)}</span>
+          <span className="v">{r.votes} 票</span>
+          <span className="res">{NOM_TEXT[r.result](r)}</span>
+          <button className="icon-btn" aria-label={`删掉这条：${seatName(r.seat)} ${r.votes} 票`} onClick={() => g.commit((x) => void x.noms.splice(r.i, 1))}>
+            <Icon name="x" size={16} />
+          </button>
+        </div>
+      ))}
+      <p className="nom-sum">
+        {block ? (
+          <>
+            现在待处决：<b>{seatName(block)}</b>（{top} 票）
+          </>
+        ) : top ? (
+          `${top} 票平票：现在没人待处决，之后要超过 ${top} 票才行`
+        ) : (
+          '现在没人待处决'
+        )}
+      </p>
+    </div>
+  );
+}
+
+/** 记一次提名：选被提名的人，填数好的票数 */
+function NomSheet({ g, onClose }: { g: Game; onClose: () => void }) {
+  const s = g.s;
+  const need = voteNeed(s);
+  const [t, setT] = useState<number[]>([]);
+  const [votes, setVotes] = useState<number | null>(null);
+  const { top, block } = nomResults(s);
+  const n = t[0];
+  const again = n !== undefined && s.noms.some((x) => x.day === s.night && x.seat === n);
+  const step = (d: number) => setVotes((v) => Math.max(0, (v ?? need) + d));
+  const verdict =
+    votes === null
+      ? null
+      : votes < need
+        ? `${votes} 票，不够 ${need} 票：不上处决台。`
+        : votes > top
+          ? `${votes} 票 → 成为待处决${block && block !== n ? `（换下 ${seatName(block)}）` : ''}。`
+          : votes === top
+            ? `和今天最高的 ${top} 票打平 → 都不处决。`
+            : `够票，但没超过今天最高的 ${top} 票：不上处决台。`;
+  return (
+    <Sheet title="记一次提名" onClose={onClose}>
+      <div className="stack">
+        <SeatPicker s={s} selected={t} max={1} onChange={setT} disabled={s.seats.filter(isTraveller).map((x) => x.n)} label="谁被提名了？" />
+        {again && <p className="dim">{seatName(n)} 今天已经被提名过（每人每天只能被提名一次）。</p>}
+        <div className="dim">举手的票数（数完填进来；算 3 票、负票的人按实际算）</div>
+        <div className="stepper">
+          <button className="btn btn-ghost" aria-label="少一票" onClick={() => step(-1)}>
+            <Icon name="minus" />
+          </button>
+          <input
+            type="number"
+            inputMode="numeric"
+            min={0}
+            value={votes ?? ''}
+            placeholder={String(need)}
+            aria-label="票数"
+            onChange={(e) => setVotes(e.target.value === '' ? null : Math.max(0, Math.floor(+e.target.value || 0)))}
+          />
+          <button className="btn btn-ghost" aria-label="多一票" onClick={() => step(1)}>
+            <Icon name="plus" />
+          </button>
+        </div>
+        {verdict && (
+          <div className={`card${votes !== null && votes >= need && votes > top ? ' card-warn' : ''}`}>
+            <p>{verdict}</p>
+          </div>
+        )}
+        <button
+          className="btn btn-primary btn-block"
+          disabled={n === undefined || votes === null}
+          onClick={() => {
+            g.commit((x) => void x.noms.push({ day: x.night, seat: n, votes: votes!, need }));
+            onClose();
+          }}
+        >
+          {n === undefined ? '先点出被提名的人' : votes === null ? '再填票数' : '记下'}
         </button>
       </div>
     </Sheet>

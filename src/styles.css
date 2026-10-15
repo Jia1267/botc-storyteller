@@ -1,3 +1,8 @@
+/* 思源宋体（Noto Serif SC，SIL OFL 1.1，见 assets/fonts/OFL.txt），只含网页里用到的字。
+   加了新文字要重跑 scripts/subset-fonts.py，否则 src/fonts.test.ts 会报缺字。 */
+@font-face { font-family: 'Noto Serif SC'; font-weight: 600; font-display: swap; src: url('./assets/fonts/noto-serif-sc-600.woff2') format('woff2'); }
+@font-face { font-family: 'Noto Serif SC'; font-weight: 900; font-display: swap; src: url('./assets/fonts/noto-serif-sc-900.woff2') format('woff2'); }
+
 :root {
   --bg: #110d10;
   --bg-2: #171215;
@@ -81,8 +86,15 @@ p { margin: 0; }
   .main.split { padding-top: 10px; }
   .main.split > .side { top: 89px; }
   .main.split .stack { gap: 10px; }
-  .main.split .token .tn { font-size: 13px; }
-  .main.split .token .marks span { font-size: 12px; line-height: 18px; height: 18px; min-width: 18px; }
+  /* 缩到 85% 后小字也不低于 12px */
+  .main.split .token .tn, .main.split .chip { font-size: 15px; }
+  .main.split .token .marks span { font-size: 14px; line-height: 20px; height: 20px; min-width: 20px; }
+  .main.split .seat-btn .nm, .main.split .tag, .main.split .meter .ends, .main.split .say .lbl, .main.split .do .lbl { font-size: 14px; }
+  /* 底部按钮只占右栏 */
+  .main.split .bottombar.wide .inner { padding-left: calc(50% + 12px); }
+  /* 弹出面板从右边滑出，不挡左边的圆桌 */
+  body > .scrim { align-items: stretch; justify-content: flex-end; }
+  .scrim > .sheet { max-width: min(640px, 50%); max-height: none; height: 100%; border-radius: 18px 0 0 18px; animation-name: from-right; }
 }
 @media (min-width: 900px) and (min-height: 600px) and (max-height: 819px) and (orientation: landscape) { .main.split > .side .grim { max-width: 517px; } }
 @media (min-width: 900px) and (min-height: 600px) and (max-height: 779px) and (orientation: landscape) { .main.split > .side .grim { max-width: 470px; } }
@@ -110,6 +122,7 @@ p { margin: 0; }
 
 /* ---------- 按钮 ---------- */
 .btn {
+  text-decoration: none;
   min-height: 52px; padding: 12px 18px; border-radius: 12px; border: 1px solid transparent;
   font-size: 17px; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 8px;
   transition: transform 0.12s ease-out, background 0.15s ease-out;
@@ -168,11 +181,13 @@ p { margin: 0; }
 @media (min-width: 560px) { .seat-grid { grid-template-columns: repeat(8, minmax(0, 1fr)); } }
 .seat-btn {
   min-height: 60px; border-radius: 12px; border: 1.5px solid var(--line); background: var(--surface-2);
-  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0; padding: 4px 2px; cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0; padding: 4px 2px; cursor: pointer; position: relative;
 }
 .seat-btn .num { font-size: 20px; font-weight: 800; line-height: 1.1; }
 .seat-btn .nm { font-size: 12px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
-.seat-btn.evil-r { border-color: rgba(229, 89, 78, 0.45); }
+/* 邪恶不只靠颜色：边框加深，再加一条底边 */
+.seat-btn.evil-r { border-color: #c04c42; box-shadow: inset 0 -3px 0 var(--evil); }
+.seat-btn .ord { position: absolute; top: 3px; left: 4px; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 9px; background: var(--gold); color: var(--gold-ink); font-size: 12px; font-weight: 800; line-height: 18px; }
 .seat-btn.dead { opacity: 0.45; }
 .seat-btn.dead .nm { text-decoration: line-through; }
 .seat-btn.sel { border-color: var(--gold); background: rgba(209, 173, 102, 0.18); box-shadow: 0 0 0 2px var(--gold) inset; }
@@ -230,7 +245,11 @@ details.more[open] summary svg { transform: rotate(180deg); }
 .token.evil-t { border-color: var(--evil); }
 .token .tn { font-size: 11px; color: var(--text-3); font-weight: 700; }
 .token .tr { font-family: var(--serif); font-weight: 900; font-size: clamp(11px, 3.1vw, 15px); white-space: nowrap; }
-.token.dead { filter: grayscale(0.9); opacity: 0.55; }
+/* 死人保留阵营色的环，里面压暗加斜纹（复盘时看得出死的是好人还是恶魔） */
+.token.dead { background: repeating-linear-gradient(135deg, #191315 0 5px, #221a1d 5px 10px); }
+.token.dead .tn, .token.dead .tr { opacity: 0.5; }
+/* 这一步要叫醒的人 */
+.token.awake { box-shadow: 0 0 0 3px var(--gold-2), 0 0 16px 4px rgba(232, 201, 131, 0.45); }
 .token.dead::after { content: '亡'; position: absolute; top: -6px; right: -6px; background: #000; color: var(--text-2); border: 1px solid var(--line-2); border-radius: 50%; width: 20px; height: 20px; font-size: 11px; display: grid; place-items: center; }
 .token.sel { box-shadow: 0 0 0 3px var(--gold-2); }
 .token .marks { position: absolute; bottom: -9px; left: 50%; transform: translateX(-50%); display: flex; gap: 2px; }
@@ -246,7 +265,11 @@ details.more[open] summary svg { transform: rotate(180deg); }
 }
 .seg button:active { transform: scale(0.97); }
 .seg button.on { border-color: var(--gold); background: rgba(209, 173, 102, 0.18); color: var(--gold-2); }
-.seg button.on::before { content: '✓'; }
+/* 二选一：两栏等宽，✓ 先占好位置，选中时文字不跳 */
+.seg.two { display: grid; grid-template-columns: 1fr 1fr; width: 100%; }
+.seg.two button { min-height: 52px; justify-content: center; }
+.seg.two button::before { content: '✓'; visibility: hidden; }
+.seg.two button.on::before { visibility: visible; }
 
 .glist { display: flex; flex-direction: column; }
 .glist .gi { display: flex; gap: 10px; align-items: center; padding: 10px 4px; border-bottom: 1px solid var(--line); min-height: 52px; cursor: pointer; background: none; border-left: 0; border-right: 0; border-top: 0; text-align: left; width: 100%; }
@@ -285,6 +308,7 @@ details.more[open] summary svg { transform: rotate(180deg); }
 .showcard .team { font-size: clamp(18px, 5vw, 26px); font-weight: 700; padding: 4px 16px; border-radius: 999px; border: 2px solid; }
 .showcard .ab { font-size: clamp(17px, 4.6vw, 24px); max-width: 30em; color: #e6dccd; line-height: 1.6; }
 .showcard .done { position: absolute; left: 16px; right: 16px; width: auto; bottom: calc(16px + var(--safe-b)); max-width: 520px; margin: 0 auto; }
+.showcard .done { background: #17121a; border-color: #7a6870; }
 
 /* 盖屏 */
 .cover { position: fixed; inset: 0; z-index: 70; background: #0b090a; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 24px; padding: 24px; }
@@ -348,3 +372,28 @@ details.more[open] summary svg { transform: rotate(180deg); }
     background-position: center bottom, right calc(25vw - 170px - 0.44 * clamp(560px, 55vw, 820px)) top 56px, 0 0;
   }
 }
+
+/* ---------- 选人收起、哈迪寂亚问答、紧凑角色表 ---------- */
+.picked { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 8px 8px 14px; border: 1px solid var(--line-2); border-radius: 12px; background: var(--surface); }
+.picked b { font-family: var(--serif); font-size: 18px; }
+.qa-row { display: grid; grid-template-columns: 4.2em minmax(0, 1fr); gap: 8px; align-items: center; }
+.qa-row .seg.two button { padding-left: 6px; padding-right: 6px; gap: 4px; white-space: nowrap; }
+.qa-row > span { font-weight: 700; }
+.role-grid.compact { display: grid; grid-template-columns: repeat(auto-fill, minmax(5.6em, 1fr)); gap: 6px; }
+.role-grid.compact .role-chip { min-height: 44px; padding: 6px 8px; font-size: 15px; justify-content: center; }
+@keyframes from-right { from { transform: translateX(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+.sheet:focus, .overlay:focus { outline: none; }
+
+/* ---------- 白天：圆桌中间的票数、提名记录 ---------- */
+.grim .hub .need { font-family: var(--serif); font-weight: 900; font-size: clamp(30px, 8vw, 46px); line-height: 1.05; }
+.grim .hub .need small { font-size: 0.45em; color: var(--text-2); }
+.noms { display: flex; flex-direction: column; }
+.nom { display: grid; grid-template-columns: 3.6em 3.8em minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 4px 0; border-bottom: 1px solid var(--line); }
+.nom .who { font-weight: 700; }
+.nom .v { font-family: var(--serif); font-weight: 900; font-size: 18px; }
+.nom .res { color: var(--text-3); font-size: 14px; }
+.nom.block .res { color: var(--gold-2); font-weight: 700; }
+.nom.tie .res { color: var(--warn); }
+.nom-sum { margin-top: 8px; }
+.stepper { display: flex; align-items: center; gap: 10px; }
+.stepper input { width: 6em; min-height: 52px; text-align: center; font-size: 28px; font-weight: 800; background: var(--bg-2); color: var(--text); border: 1px solid var(--line-2); border-radius: 12px; }

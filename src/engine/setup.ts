@@ -230,6 +230,7 @@ export function newGame(): GameState {
     duchessVisitors: [],
     goodExecutions: 0,
     voteMods: {},
+    noms: [],
     gunslingerDay: 0,
     alchemistAbility: null,
     alchemistPicked: false,

@@ -73,6 +73,14 @@ export interface LogEntry {
   truth?: 'true' | 'false';
 }
 
+/** 白天的一次提名：被提名的人、举手票数（说书人数完手动填）、当时需要的票数 */
+export interface Nomination {
+  day: number;
+  seat: number;
+  votes: number;
+  need: number;
+}
+
 export interface GameState {
   v: 1;
   script: ScriptId;
@@ -122,6 +130,8 @@ export interface GameState {
   goodExecutions: number;
   /** 明天投票的加成：官员 = 3，窃贼 = -1 */
   voteMods: Record<number, number>;
+  /** 今天的提名记录（按 day 区分，不用清空） */
+  noms: Nomination[];
   /** 枪手最近一次开枪是第几天 */
   gunslingerDay: number;
   /** 炼金术士拥有的爪牙能力 */

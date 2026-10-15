@@ -3,7 +3,7 @@ import { ROLES, type RoleId } from './roles';
 import { seeded } from './rng';
 import { balancedSetup, bluffChoices, bluffPool, newGame, refreshSetup, setCount, setScript, startDeal } from './setup';
 import {
-  completeSlot, currentSlot, dealNext, execute, finishDay, goonInformed, moonchildChoose, moonchildNeedsChoice, pacifistCanSave, setGossip, type SlotPayload,
+  completeSlot, currentSlot, dealNext, execute, finishDay, goonInformed, moonchildChoose, moonchildNeedsChoice, nomResults, pacifistCanSave, setGossip, voteNeed, type SlotPayload,
 } from './flow';
 import { lilKillChoices } from './info';
 import { isEvil, isPoisoned, malfunction } from './core';
@@ -315,5 +315,38 @@ describe('宫本茂第三轮验收后修正', () => {
     const w = whyPrefix(15, [-2, 0, 1], 0);
     expect(w).toContain('按标准做法来');
     expect(w).not.toContain('这次稍微帮一下');
+  });
+});
+
+describe('提名记录判定', () => {
+  it('够票且超过最高票才待处决；打平都不处决；后面更高的会换下', () => {
+    const s = game(BASE);
+    night(s);
+    const add = (seat: number, votes: number) => s.noms.push({ day: s.night, seat, votes, need: 4 });
+    add(1, 3);
+    expect(nomResults(s).rows[0].result).toBe('short');
+    expect(nomResults(s).block).toBe(null);
+    add(2, 5);
+    expect(nomResults(s).block).toBe(2);
+    add(3, 5);
+    let r = nomResults(s);
+    expect(r.block).toBe(null);
+    expect(r.top).toBe(5);
+    expect(r.rows.map((x) => x.result)).toEqual(['short', 'tie', 'tie']);
+    add(4, 6);
+    add(5, 4);
+    r = nomResults(s);
+    expect(r.block).toBe(4);
+    expect(r.rows.map((x) => x.result)).toEqual(['short', 'beaten', 'beaten', 'block', 'lower']);
+    // 换天以后不算前一天的
+    s.night += 1;
+    expect(nomResults(s).rows).toHaveLength(0);
+  });
+
+  it('需要的票数是存活玩家的一半向上取整', () => {
+    const s = game(BASE);
+    expect(voteNeed(s)).toBe(4);
+    s.seats[0].alive = false;
+    expect(voteNeed(s)).toBe(3);
   });
 });

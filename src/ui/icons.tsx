@@ -13,6 +13,13 @@ const P: Record<string, ReactNode> = {
       <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
     </>
   ),
+  timer: (
+    <>
+      <line x1="10" x2="14" y1="2" y2="2" />
+      <line x1="12" x2="15" y1="14" y2="11" />
+      <circle cx="12" cy="14" r="8" />
+    </>
+  ),
   eyeOff: (
     <>
       <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24" />

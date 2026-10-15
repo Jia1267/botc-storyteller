@@ -19,7 +19,7 @@ import {
 import { SLOT_TITLE, dawnLines, librarianZeroLines, slotLines } from '../engine/scripts';
 import type { GameState, Seat, SlotId } from '../engine/types';
 import { stepRng, type Game } from '../store';
-import { BottomBar, ChoicePanel, ConfirmButton, DoBox, SayBox, SeatPicker, Sheet, drunkWhy, roleCard, useUi } from './common';
+import { BottomBar, ChoicePanel, ConfirmButton, DoBox, SayBox, SeatPicker, Sheet, TwoChoice, drunkWhy, roleCard, useUi } from './common';
 import { shuffle } from '../engine/rng';
 import { GrimoirePanel } from './Grimoire';
 import { Icon } from './icons';
@@ -45,7 +45,7 @@ export function NightScreen({ g }: { g: Game }) {
   return (
     <main className="main split">
       <div className="side">
-        <GrimoirePanel s={s} />
+        <GrimoirePanel s={s} awake={actor ? [actor.n] : []} />
       </div>
       <div className="stack" key={`${s.night}-${cur}-${actor?.n ?? 0}`}>
         <div className="step-head">
@@ -1225,7 +1225,7 @@ function ChambermaidStep({ g, s, actor }: StepProps) {
       <DoBox items={[wake(actor.n), '让她指两名存活玩家（不能指自己），你在下面点出来。']} />
       <SayBox lines={slotLines('chambermaid', s.style)} title="小声说" s={s} onStyle={toggleStyle(g)} />
       <p className="dim">今晚因为自己的能力醒来过的人：{s.ns?.woke.length ? seatsText(s.ns.woke) : '还没有'}</p>
-      <SeatPicker s={s} selected={picks} max={2} onChange={setPicks} disabled={blocked} label="她指了哪两个人？" />
+      <SeatPicker s={s} selected={picks} max={2} onChange={setPicks} disabled={blocked} label="她指了哪两个人？" collapse="她指了" />
       <GoonNote s={s} actor={actor} picks={picks} slot="chambermaid" />
       {picks.length === 2 ? (
         <Reveal key={[...picks].sort().join()}>
@@ -1436,14 +1436,7 @@ function FlowergirlStep({ g, s, actor }: StepProps) {
       <div className="card stack" style={{ gap: 8 }}>
         <b>今天白天恶魔（{seatName(demonSeat(s)?.n)}）有没有举手投过票？</b>
         <p className="dim">白天记下的是"{voted ? '投过' : '没投'}"。记错了就在这里改。</p>
-        <div className="seg" role="radiogroup">
-          <button className={voted ? 'on' : ''} onClick={() => setVoted(true)} aria-pressed={voted}>
-            投过
-          </button>
-          <button className={!voted ? 'on' : ''} onClick={() => setVoted(false)} aria-pressed={!voted}>
-            没投
-          </button>
-        </div>
+        <TwoChoice value={voted} onChange={setVoted} yes="投过" no="没投" />
       </div>
       <ChoicePanel s={s} choices={choices} sel={sel} rec={rec} onSel={(i) => i >= 0 && setSel(i)} />
       <DoBox items={[wake(actor.n), c.value ? <><b>点头</b>：恶魔今天投过票。</> : <><b>摇头</b>：恶魔今天没投票。</>, sleep]} />
@@ -1606,7 +1599,7 @@ function DreamerStep({ g, s, actor }: StepProps) {
     <>
       <DoBox items={[wake(actor.n), '让他指一名玩家（不能指自己或旅行者），你在下面点出来。']} />
       <SayBox lines={slotLines('dreamer', s.style)} title="小声说" s={s} onStyle={toggleStyle(g)} />
-      <SeatPicker s={s} selected={t} max={1} onChange={setT} disabled={blocked} label="他指了谁？" />
+      <SeatPicker s={s} selected={t} max={1} onChange={setT} disabled={blocked} label="他指了谁？" collapse="他指了" />
       {t.length ? (
         <Reveal key={t[0]}>
           <DreamerAnswer g={g} s={s} actor={actor} target={t[0]} />
@@ -1661,15 +1654,8 @@ function SeamstressStep({ g, s, actor }: StepProps) {
     <>
       <DoBox items={[wake(actor.n), '问她今晚要不要用能力（整局只能用一次）。不用就让她闭眼。']} />
       <SayBox lines={slotLines('seamstress', s.style)} title="小声说" s={s} onStyle={toggleStyle(g)} />
-      <div className="seg" role="radiogroup">
-        <button className={use === true ? 'on' : ''} onClick={() => setUse(true)} aria-pressed={use === true}>
-          她要用
-        </button>
-        <button className={use === false ? 'on' : ''} onClick={() => setUse(false)} aria-pressed={use === false}>
-          她不用（摇头）
-        </button>
-      </div>
-      {use && <SeatPicker s={s} selected={picks} max={2} onChange={setPicks} disabled={[actor.n]} label="她指了哪两个人？" />}
+      <TwoChoice value={use} onChange={setUse} yes="她要用" no="她不用（摇头）" />
+      {use && <SeatPicker s={s} selected={picks} max={2} onChange={setPicks} disabled={[actor.n]} label="她指了哪两个人？" collapse="她指了" />}
       {use && picks.length === 2 ? (
         <Reveal key={[...picks].sort().join()}>
           <SeamstressAnswer g={g} s={s} actor={actor} picks={picks as [number, number]} />
@@ -1790,27 +1776,24 @@ function HadikhiaStep({ g, s, actor }: StepProps) {
           setLive([null, null, null]);
         }}
         label="他按顺序指了谁？"
+        ordered
+        collapse="他按顺序指了"
       />
       {picks.length === 3 && (
         <Reveal key={picks.join()}>
           <SayBox title="恶魔闭眼后，对所有人说（大家仍然闭眼）" lines={[`恶魔选择了 ${seatsText(picks)}。`]} />
-          {picks.map((n, i) => (
-            <div key={n} className="card stack" style={{ gap: 8 }}>
-              <b>
-                第 {i + 1} 个：轻拍 {seatName(n)}
-                {seatOf(s, n).alive ? '' : '（已死亡）'}，问他：你选择活还是死？点头 = 活，摇头 = 死。
-              </b>
-              <div className="seg" role="radiogroup">
-                <button className={live[i] === true ? 'on' : ''} onClick={() => setOne(i, true)} aria-pressed={live[i] === true}>
-                  点头：活
-                </button>
-                <button className={live[i] === false ? 'on' : ''} onClick={() => setOne(i, false)} aria-pressed={live[i] === false}>
-                  摇头：死
-                </button>
+          <div className="card stack" style={{ gap: 10 }}>
+            <b>依次轻拍，问"你选择活还是死？"点头 = 活，摇头 = 死；问完让他闭眼，再叫下一个。</b>
+            {picks.map((n, i) => (
+              <div key={n} className="qa-row">
+                <span>
+                  {i + 1}. {seatName(n)}
+                  {seatOf(s, n).alive ? '' : <small className="dim">（已死）</small>}
+                </span>
+                <TwoChoice value={live[i]} onChange={(v) => setOne(i, v)} yes="点头：活" no="摇头：死" label={`${seatName(n)} 的选择`} />
               </div>
-              <p className="dim">让他闭眼，再叫下一个。</p>
-            </div>
-          ))}
+            ))}
+          </div>
           {pv && (
             <div className={`card${pv.alive.some((a) => !a) ? ' card-evil' : ''}`}>
               <p>
@@ -2118,13 +2101,13 @@ function InnkeeperAnswer({ g, s, actor, picks }: StepProps & { picks: [number, n
 }
 
 /** 角色表：按类型分组点选一个角色 */
-function RolePick({ s, value, onPick }: { s: GameState; value: RoleId | null; onPick: (r: RoleId) => void }) {
+function RolePick({ s, value, onPick, compact = false }: { s: GameState; value: RoleId | null; onPick: (r: RoleId) => void; compact?: boolean }) {
   return (
     <div className="stack" style={{ gap: 8 }}>
       {(['townsfolk', 'outsider', 'minion', 'demon'] as const).map((t) => (
         <div key={t}>
           <div className="dim">{TEAM_NAME[t]}</div>
-          <div className="role-grid">
+          <div className={`role-grid${compact ? ' compact' : ''}`}>
             {scriptOf(s)
               .roles.filter((r) => ROLES[r].team === t)
               .map((r) => (
@@ -2148,15 +2131,8 @@ function CourtierStep({ g, s, actor }: StepProps) {
     <>
       <DoBox items={[wake(actor.n), '问他今晚要不要用能力（整局一次）。要用就让他在角色表上指一个角色。', sleep]} />
       <SayBox lines={slotLines('courtier', s.style)} title="小声说" s={s} onStyle={toggleStyle(g)} />
-      <div className="seg" role="radiogroup">
-        <button className={use === true ? 'on' : ''} onClick={() => setUse(true)} aria-pressed={use === true}>
-          他要用
-        </button>
-        <button className={use === false ? 'on' : ''} onClick={() => setUse(false)} aria-pressed={use === false}>
-          他不用（摇头）
-        </button>
-      </div>
-      {use && <RolePick s={s} value={role} onPick={setRole} />}
+      <TwoChoice value={use} onChange={setUse} yes="他要用" no="他不用（摇头）" />
+      {use && <RolePick s={s} value={role} onPick={setRole} compact />}
       {use && role && (
         <div className="card">
           <p>
@@ -2192,11 +2168,11 @@ function GamblerStep({ g, s, actor }: StepProps) {
     <>
       <DoBox items={[wake(actor.n), '让他指一名玩家，再在角色表上指一个角色。你在下面点出来。', sleep]} />
       <SayBox lines={slotLines('gambler', s.style)} title="小声说" s={s} onStyle={toggleStyle(g)} />
-      <SeatPicker s={s} selected={t} max={1} onChange={setT} disabled={[actor.n]} label="他指了谁？" />
+      <SeatPicker s={s} selected={t} max={1} onChange={setT} disabled={[actor.n]} label="他指了谁？" collapse="他指了" />
       <GoonNote s={s} actor={actor} picks={t} slot="gambler" />
       {t.length > 0 && (
         <Reveal key={t[0]}>
-          <RolePick s={s} value={role} onPick={setRole} />
+          <RolePick s={s} value={role} onPick={setRole} compact />
         </Reveal>
       )}
       {right !== null && (
@@ -2385,14 +2361,7 @@ function OnceTargetStep({ g, s, actor, slot }: StepProps & { slot: 'assassin' | 
     <>
       <DoBox items={[wake(actor.n), `问他今晚要不要用能力（整局一次）。要用就让他指${prof ? '一名死去的玩家' : '一名玩家'}。`, sleep]} />
       <SayBox lines={slotLines(slot, s.style)} title="小声说" s={s} onStyle={toggleStyle(g)} />
-      <div className="seg" role="radiogroup">
-        <button className={use === true ? 'on' : ''} onClick={() => setUse(true)} aria-pressed={use === true}>
-          他要用
-        </button>
-        <button className={use === false ? 'on' : ''} onClick={() => setUse(false)} aria-pressed={use === false}>
-          他不用（摇头）
-        </button>
-      </div>
+      <TwoChoice value={use} onChange={setUse} yes="他要用" no="他不用（摇头）" />
       {use && <SeatPicker s={s} selected={t} max={1} onChange={setT} disabled={blocked} label={prof ? '他指了哪个死人？' : '他指了谁？'} />}
       {use && <GoonNote s={s} actor={actor} picks={t} slot={slot} />}
       {use && result && (

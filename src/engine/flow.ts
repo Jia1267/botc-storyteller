@@ -1,6 +1,6 @@
 import { ROLES, isEvilTeam, roleName, type RoleId, type Team } from './roles';
 import {
-  addLog, aliveCount, deathShield, demonSeat, diedOnDay, hasAbility, inPlay, isDemonSeat, isEvil, isPoisoned, kill, lilMonsta, malfunction, scriptOf,
+  addLog, aliveCount, aliveVoters, deathShield, demonSeat, diedOnDay, hasAbility, inPlay, isDemonSeat, isEvil, isPoisoned, kill, lilMonsta, malfunction, scriptOf,
   seatLabel, seatOf, teamOf, vortoxActive, wakesAs, seatName,
 } from './core';
 import { balloonRemaining, pairLabel, scarletCanTakeOver, type PairInfo } from './info';
@@ -955,6 +955,45 @@ export function pacifistCanSave(s: GameState, n: number): boolean {
 
 /** 能力失效时，日志里写清是中毒还是醉酒 */
 const failNote = (s: GameState, n: number) => `（${isPoisoned(s, n) ? '中毒' : '醉酒'}，无效）`;
+
+/** 处决至少需要的票数：存活玩家（含旅行者）的一半，向上取整 */
+export const voteNeed = (s: GameState) => Math.ceil(aliveVoters(s) / 2);
+
+export type NomResult = 'short' | 'lower' | 'block' | 'beaten' | 'tie';
+export interface NomRow {
+  /** 在 s.noms 里的下标（删除用） */
+  i: number;
+  seat: number;
+  votes: number;
+  need: number;
+  result: NomResult;
+}
+
+/**
+ * 按顺序判定今天的提名：票数够、而且比之前的最高票多 → 成为待处决（之前的人被换下）；
+ * 和最高票打平 → 都不处决，之后要比这个票数多才能再上去。
+ */
+export function nomResults(s: GameState): { rows: NomRow[]; block: number | null; top: number } {
+  const rows: NomRow[] = [];
+  s.noms.forEach((x, i) => {
+    if (x.day === s.night) rows.push({ i, seat: x.seat, votes: x.votes, need: x.need, result: 'short' });
+  });
+  let top = 0;
+  let lead: NomRow[] = [];
+  for (const r of rows) {
+    if (r.votes < r.need) continue;
+    if (r.votes > top) {
+      for (const p of lead) p.result = 'beaten';
+      top = r.votes;
+      lead = [r];
+      r.result = 'block';
+    } else if (r.votes === top) {
+      lead.push(r);
+      for (const p of lead) p.result = 'tie';
+    } else r.result = 'lower';
+  }
+  return { rows, block: lead.length === 1 ? lead[0].seat : null, top };
+}
 
 /** 魔鬼代言人昨晚保护了他：今天被处决不会死 */
 export function advocateSaves(s: GameState, n: number): boolean {

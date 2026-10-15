@@ -1,12 +1,12 @@
 import { isEvil, seatName } from '../engine/core';
-import { useState, type ReactNode } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 import { ROLES, TEAM_NAME, TRAVELLER_ROLES, isEvilTeam, roleName, type Team } from '../engine/roles';
 import { SCRIPTS, SCRIPT_LIST, type ScriptId } from '../engine/editions';
 import { endLines } from '../engine/scripts';
 import { rulesFor } from '../engine/rulesSpeech';
 import type { GameState, LogEntry } from '../engine/types';
 import type { Game } from '../store';
-import { BottomBar, ConfirmButton, SayBox } from './common';
+import { BottomBar, ConfirmButton, SayBox, useEscape } from './common';
 import { GrimoireCircle } from './Grimoire';
 import { Icon } from './icons';
 
@@ -19,7 +19,7 @@ export function Timeline({ log }: { log: LogEntry[] }) {
     if (last && last.title === title) last.items.push(e);
     else groups.push({ title, items: [e] });
   }
-  if (!groups.length) return <p className="dim">还没有记录。</p>;
+  if (!groups.length) return <p className="dim">还没有记录。开局以后，每晚谁做了什么、白天谁被提名和处决，都会按顺序记在这里，复盘时可以对着看。</p>;
   return (
     <div className="timeline">
       {groups.map((g, i) => (
@@ -93,8 +93,10 @@ export function EndScreen({ g }: { g: Game }) {
 /* ---------------- 参考页 ---------------- */
 
 export function Overlay({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
+  const box = useRef<HTMLDivElement>(null);
+  useEscape(onClose, box);
   return (
-    <div className="overlay" role="dialog" aria-label={title}>
+    <div ref={box} tabIndex={-1} className="overlay" role="dialog" aria-modal="true" aria-label={title}>
       <div className="obody">
         <div className="ohead">
           <h2>{title}</h2>

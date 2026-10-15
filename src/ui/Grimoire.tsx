@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { FABLED, ROLES, roleName } from '../engine/roles';
 import { aliveCount, seatOf, seatName, circleOrder, isEvil } from '../engine/core';
+import { nomResults, voteNeed } from '../engine/flow';
 import type { GameState } from '../engine/types';
 import { BalanceMeter, Sheet, TeamChip, seatMarks } from './common';
 import { Icon } from './icons';
@@ -14,11 +15,13 @@ export function phaseText(s: GameState): string {
 }
 
 export function GrimoireCircle({
-  s, onSeat, selected = [], hub, readOnly = false,
+  s, onSeat, selected = [], awake = [], hub, readOnly = false,
 }: {
   s: GameState;
   onSeat?: (n: number) => void;
   selected?: number[];
+  /** 这一步要叫醒的人：圆桌上亮一圈 */
+  awake?: number[];
   hub?: ReactNode;
   readOnly?: boolean;
 }) {
@@ -36,7 +39,7 @@ export function GrimoireCircle({
         return (
           <button
             key={x.n}
-            className={`token${evil ? ' evil-t' : ''}${x.alive ? '' : ' dead'}${selected.includes(x.n) ? ' sel' : ''}`}
+            className={`token${evil ? ' evil-t' : ''}${x.alive ? '' : ' dead'}${selected.includes(x.n) ? ' sel' : ''}${awake.includes(x.n) ? ' awake' : ''}`}
             style={{ left: `${50 + R * Math.cos(a)}%`, top: `${50 + R * Math.sin(a)}%`, width: `${size}%`, height: `${size}%`, cursor: readOnly ? 'default' : 'pointer' }}
             onClick={() => !readOnly && onSeat?.(x.n)}
             tabIndex={readOnly ? -1 : 0}
@@ -119,6 +122,19 @@ export function SeatDetail({ s, n, onClose }: { s: GameState; n: number; onClose
 }
 
 export function GrimoireHub({ s }: { s: GameState }) {
+  if (s.phase === 'day') {
+    const { block, top } = nomResults(s);
+    return (
+      <>
+        <small>处决至少需要</small>
+        <span className="need">
+          {voteNeed(s)}
+          <small> 票</small>
+        </span>
+        <small>{block ? `待处决：${seatName(block)}（${top} 票）` : top ? `${top} 票平票，暂无人待处决` : '暂无人待处决'}</small>
+      </>
+    );
+  }
   return (
     <>
       <b>{phaseText(s)}</b>
@@ -130,7 +146,7 @@ export function GrimoireHub({ s }: { s: GameState }) {
 }
 
 /** 平板侧栏 & 魔典浮层共用 */
-export function GrimoirePanel({ s, detail = false }: { s: GameState; detail?: boolean }) {
+export function GrimoirePanel({ s, detail = false, awake = [] }: { s: GameState; detail?: boolean; awake?: number[] }) {
   const [view, setView] = useState<'circle' | 'list'>('circle');
   const [seat, setSeat] = useState<number | null>(null);
   return (
@@ -146,9 +162,9 @@ export function GrimoirePanel({ s, detail = false }: { s: GameState; detail?: bo
         </div>
         <span className="dim">点座位看详情</span>
       </div>
-      {view === 'circle' ? <GrimoireCircle s={s} onSeat={setSeat} hub={<GrimoireHub s={s} />} /> : <GrimoireList s={s} onSeat={setSeat} />}
+      {view === 'circle' ? <GrimoireCircle s={s} onSeat={setSeat} awake={awake} hub={<GrimoireHub s={s} />} /> : <GrimoireList s={s} onSeat={setSeat} />}
       <SetupFacts s={s} />
-      <BalanceMeter s={s} detail={detail} />
+      <BalanceMeter s={s} detail={detail} expandable />
       <MarkLegend s={s} />
       {seat !== null && <SeatDetail s={s} n={seat} onClose={() => setSeat(null)} />}
     </div>
