@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ROLES, TEAM_NAME, roleName, type RoleId } from '../engine/roles';
 import { balance, recommend } from '../engine/balance';
 import {
-  aliveNeighbors, believedRole, demonSeat, diedOnDay, seatOf, isDemonSeat, isEvil, isPoisoned, lilMonsta, malfunction, mustLie, scriptOf, seatLabel, seatName,
+  aliveNeighbors, believedRole, circleOrder, demonSeat, diedOnDay, seatOf, isDemonSeat, isEvil, isPoisoned, lilMonsta, malfunction, mustLie, scriptOf, seatLabel, seatName,
   teamOf,
 } from '../engine/core';
 import {
@@ -19,7 +19,7 @@ import {
 import { SLOT_TITLE, dawnLines, librarianZeroLines, slotLines } from '../engine/scripts';
 import type { GameState, Seat, SlotId } from '../engine/types';
 import { stepRng, type Game } from '../store';
-import { BottomBar, ChoicePanel, ConfirmButton, DoBox, SayBox, SeatPicker, Sheet, TwoChoice, drunkWhy, roleCard, useUi } from './common';
+import { BottomBar, ChoicePanel, ConfirmButton, DoBox, SayBox, SeatPicker, Sheet, TwoChoice, drunkWhy, roleCard, seatMarks, useUi } from './common';
 import { shuffle } from '../engine/rng';
 import { GrimoirePanel } from './Grimoire';
 import { Icon } from './icons';
@@ -35,15 +35,11 @@ export function NightScreen({ g }: { g: Game }) {
   const s = g.s;
   const slot = currentSlot(s);
   const actor = slotActor(s, slot);
-  const order = slotsFor(s);
-  const cur = s.ns!.slot;
-  const ran = s.ns!.ran ?? [];
-  const visible = order.map((sl, i) => ({ sl, i })).filter(({ sl, i }) => (i < cur ? ran.includes(i) : i === cur || shouldRun(s, sl)));
-  const pos = visible.findIndex((x) => x.i === cur) + 1;
+  const { cur, visible, pos } = nightProgress(s);
   const eff = effectiveSlot(s, slot);
 
   return (
-    <main className="main split">
+    <main className="main split night">
       <div className="side">
         <GrimoirePanel s={s} awake={actor ? [actor.n] : []} />
       </div>
@@ -67,6 +63,52 @@ export function NightScreen({ g }: { g: Game }) {
       </div>
       {s.ns!.goonInform && <GoonInformSheet g={g} />}
     </main>
+  );
+}
+
+/** 今晚第几步、一共大约几步（跳过不用醒的步骤） */
+export function nightProgress(s: GameState) {
+  const order = slotsFor(s);
+  const cur = s.ns!.slot;
+  const ran = s.ns!.ran ?? [];
+  const visible = order.map((sl, i) => ({ sl, i })).filter(({ sl, i }) => (i < cur ? ran.includes(i) : i === cur || shouldRun(s, sl)));
+  return { cur, visible, pos: visible.findIndex((x) => x.i === cur) + 1 };
+}
+
+/** 手机夜里顶栏下面的一排小座位：谁邪恶、谁死了、谁醉/毒，点一下打开完整魔典 */
+export function MiniGrimoire({ s, onOpen }: { s: GameState; onOpen: () => void }) {
+  const actor = slotActor(s, currentSlot(s));
+  const { cur, visible } = nightProgress(s);
+  const seats = circleOrder(s).map((n) => seatOf(s, n)).filter((x) => !x.left);
+  const N = seats.length;
+  return (
+    <button className="mini" onClick={onOpen} aria-label="迷你魔典，点一下打开完整魔典">
+      <span className={`cells${N > 16 ? ' xdense' : N > 12 ? ' dense' : ''}`} style={{ gridTemplateColumns: `repeat(${N}, minmax(0, 1fr))` }}>
+        {seats.map((x) => {
+          const keys = seatMarks(s, x.n).map((m) => m.key);
+          const [st, cls] = !x.alive
+            ? ['亡', 'de']
+            : keys.includes('poison')
+              ? ['毒', 'po']
+              : keys.some((k) => k === 'drunk' || k === 'tdrunk' || k === 'swd')
+                ? ['醉', 'dr']
+                : keys.includes('rh')
+                  ? ['扰', 'rh']
+                  : ['', ''];
+          return (
+            <span key={x.n} className={`c${isEvil(x) ? ' evil' : ''}${x.alive ? '' : ' dead'}${actor?.n === x.n ? ' actor' : ''}`}>
+              <i>{x.n}</i>
+              <em className={cls}>{st}</em>
+            </span>
+          );
+        })}
+      </span>
+      <span className="prog">
+        {visible.map((x) => (
+          <i key={x.i} className={x.i <= cur ? 'on' : ''} />
+        ))}
+      </span>
+    </button>
   );
 }
 
@@ -129,7 +171,7 @@ function Reveal({ children, enabled = true }: { children: ReactNode; enabled?: b
     ref.current?.scrollIntoView({ behavior: instant ? 'auto' : 'smooth', block: 'start' });
   }, [enabled]);
   return (
-    <div ref={ref} className="stack" style={{ scrollMarginTop: 72 }}>
+    <div ref={ref} className="stack reveal">
       {children}
     </div>
   );

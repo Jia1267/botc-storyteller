@@ -397,3 +397,67 @@ details.more[open] summary svg { transform: rotate(180deg); }
 .nom-sum { margin-top: 8px; }
 .stepper { display: flex; align-items: center; gap: 10px; }
 .stepper input { width: 6em; min-height: 52px; text-align: center; font-size: 28px; font-weight: 800; background: var(--bg-2); color: var(--text); border: 1px solid var(--line-2); border-radius: 12px; }
+
+/* ---------- 手机夜里：迷你魔典（顶栏第二行）、步数挪到顶栏 ---------- */
+.topbar { flex-wrap: wrap; }
+.mini { flex: 0 0 calc(100% + 24px); display: block; margin: 6px -8px -6px -16px; padding: 6px 12px 7px; background: none; border: 0; border-top: 1px solid var(--line); color: inherit; cursor: pointer; text-align: left; font: inherit; }
+.mini .cells { display: grid; }
+.mini .c { display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 0; }
+.mini .c i { width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--good); background: #1c1518; display: grid; place-items: center; font: 800 12px/1 var(--sans); font-style: normal; color: var(--text); font-variant-numeric: tabular-nums; }
+.mini .c.evil i { background: var(--evil); border-color: var(--evil); color: #1c0a08; }
+.mini .c.dead i { background: transparent; border-style: dashed; color: var(--text-3); opacity: 0.7; }
+.mini .c.dead.evil i { color: var(--evil); }
+.mini .c.actor i { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--gold); }
+.mini .c em { font: 700 12px/14px var(--sans); font-style: normal; height: 14px; }
+.mini .dense .c i { width: 22px; height: 22px; font-size: 11px; border-width: 1.5px; }
+.mini .xdense .c i { width: 18px; height: 18px; font-size: 10px; border-width: 1.5px; }
+.mini .po { color: var(--poison); }
+.mini .dr { color: var(--warn); }
+.mini .de { color: var(--text-3); }
+.mini .rh { color: var(--text-2); }
+.mini .prog { display: flex; gap: 3px; margin: 6px 4px 0; }
+.mini .prog i { flex: 1; height: 3px; border-radius: 2px; background: var(--line); }
+.mini .prog i.on { background: var(--gold); }
+.reveal { scroll-margin-top: 72px; }
+@media (min-width: 900px) { .mini, .phone-only { display: none !important; } }
+@media (max-width: 899px) {
+  .main.night .step-head .kicker, .main.night .step-head .progress { display: none; }
+  .main.night .step-head h2 { margin-top: 0 !important; }
+  .main.night .reveal { scroll-margin-top: 136px; }
+}
+
+/* ---------- 身份卡：阵营徽记 ---------- */
+.legal { font-size: 12px; line-height: 1.5; color: var(--text-3); text-align: center; letter-spacing: 0.02em; }
+.showcard.v3 { --team: var(--good); background: radial-gradient(circle at 50% 38%, rgba(114, 160, 227, 0.16) 0, transparent 46%), #000; padding-bottom: calc(120px + var(--safe-b)); gap: 14px; }
+.showcard.v3.win-evil { --team: var(--evil); background: radial-gradient(circle at 50% 38%, rgba(229, 89, 78, 0.17) 0, transparent 46%), #000; }
+.showcard.v3 .emblem { color: var(--team); animation: emb-in 0.3s ease-out both; }
+.showcard.v3 .ttl { letter-spacing: 0.12em; }
+.showcard.v3 .team { border: 0; padding: 0; border-radius: 0; display: flex; align-items: center; gap: 12px; color: var(--team); }
+.showcard.v3 .team::before, .showcard.v3 .team::after { content: ''; width: 28px; height: 1.5px; background: currentColor; opacity: 0.6; }
+.showcard.v3 .done { bottom: calc(40px + var(--safe-b)); }
+.showcard .legal { position: absolute; left: 0; right: 0; bottom: calc(12px + var(--safe-b)); }
+@keyframes emb-in { from { opacity: 0; transform: scale(0.86); } to { opacity: 1; transform: none; } }
+
+/* ---------- 结束页 ---------- */
+.endv3 { --team: var(--good); --glow: rgba(114, 160, 227, 0.16); }
+.endv3.win-evil { --team: var(--evil); --glow: rgba(229, 89, 78, 0.17); }
+.endv3-bg { position: fixed; inset: 0; z-index: -1; background: radial-gradient(ellipse 90% 46% at 50% 0%, var(--glow) 0, transparent 70%), var(--bg); }
+.endv3 .hero { padding: 20px 0 6px; gap: 6px; }
+.endv3 .hero .emblem { color: var(--team); animation: emb-in 0.3s ease-out both; }
+.endv3 .hero .kick { color: var(--text-3); font-size: 14px; letter-spacing: 0.1em; }
+.endv3 .winner { color: var(--team); line-height: 1.15; }
+.endv3 .why { font-size: 17px; color: var(--text); }
+.endv3 .facts { display: flex; justify-content: center; margin-top: 6px; }
+.endv3 .facts div { padding: 0 14px; text-align: center; }
+.endv3 .facts div + div { border-left: 1px solid var(--line); }
+.endv3 .facts b { display: block; font-family: var(--serif); font-size: 22px; font-variant-numeric: tabular-nums; }
+.endv3 .facts small { color: var(--text-3); font-size: 13px; }
+.moments { list-style: none; margin: 8px 0 0; padding: 0; }
+.moments li { display: grid; grid-template-columns: 4.2em 1fr; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--line); font-size: 15px; }
+.moments li span:first-child { color: var(--text-3); }
+.moments li:last-child { border-bottom: 0; }
+.rlegend { display: flex; justify-content: center; gap: 16px; margin-top: 10px; font-size: 13px; color: var(--text-2); }
+.rlegend i { display: inline-block; width: 12px; height: 12px; border-radius: 50%; border: 2px solid; vertical-align: -1px; margin-right: 5px; }
+.rlegend .lg-good { border-color: var(--good); }
+.rlegend .lg-evil { border-color: var(--evil); }
+.rlegend .lg-dead { border-color: var(--line-2); background: repeating-linear-gradient(135deg, #151012 0 3px, #2a2226 3px 6px); }

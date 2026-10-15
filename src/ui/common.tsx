@@ -5,6 +5,7 @@ import { balance, leanTag, whyPrefix, type Choice } from '../engine/balance';
 import { believedRole, isEvil, isPoisoned, seatOf, seatName } from '../engine/core';
 import type { GameState } from '../engine/types';
 import { Icon } from './icons';
+import { Emblem } from './Emblem';
 
 /* ---------------- 全局浮层控制 ---------------- */
 
@@ -440,22 +441,22 @@ export function ShowCard({ c, onDone }: { c: CardContent; onDone: () => void }) 
     const t = setTimeout(() => setReady(true), MIN_PAGE_MS);
     return () => clearTimeout(t);
   }, []);
+  // 带阵营的身份卡：上面一个阵营徽记，背景一点阵营色的光
+  const side = c.team ? ((c.alignment ? c.alignment === 'evil' : isEvilTeam(c.team)) ? 'evil' : 'good') : null;
   return (
-    <div className="showcard" role="dialog" aria-label="给玩家看">
+    <div className={`showcard${side ? ` v3${side === 'evil' ? ' win-evil' : ''}` : ''}`} role="dialog" aria-label="给玩家看">
       {c.title && <div className="ttl">{c.title}</div>}
+      {side && <Emblem team={side} />}
       <div className={`big${c.big.length > 1 ? ' many' : ''}`}>
         {c.big.map((b) => (
           <div key={b}>{b}</div>
         ))}
       </div>
-      {c.team && (() => {
-        const evil = c.alignment ? c.alignment === 'evil' : isEvilTeam(c.team);
-        return (
-          <div className="team" style={{ color: evil ? 'var(--evil)' : 'var(--good)', borderColor: 'currentColor' }}>
-            {TEAM_NAME[c.team]} · {evil ? '邪恶阵营' : '善良阵营'}
-          </div>
-        );
-      })()}
+      {c.team && side && (
+        <div className="team">
+          {TEAM_NAME[c.team]} · {side === 'evil' ? '邪恶阵营' : '善良阵营'}
+        </div>
+      )}
       {c.ability && <div className="ab">{c.ability}</div>}
       {c.note && (
         <div className="ab" style={{ color: 'var(--evil)', fontWeight: 700 }}>
@@ -465,6 +466,7 @@ export function ShowCard({ c, onDone }: { c: CardContent; onDone: () => void }) 
       <button className="btn btn-ghost btn-block done" style={ready ? undefined : { opacity: 0.6 }} onClick={() => ready && onDone()}>
         看完了
       </button>
+      {side && <p className="legal">钟楼说书人 · 非官方桌游辅助工具</p>}
     </div>
   );
 }

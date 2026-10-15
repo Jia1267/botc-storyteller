@@ -9,7 +9,7 @@ import { DealScreen } from './ui/Deal';
 import { EndScreen, LogView, Overlay, RolesRef, RulesSpeech, ScriptSheet } from './ui/End';
 import { GrimoirePanel, SpyView, phaseText } from './ui/Grimoire';
 import { Icon } from './ui/icons';
-import { NightScreen } from './ui/Night';
+import { MiniGrimoire, NightScreen, nightProgress } from './ui/Night';
 import { SetupScreen } from './ui/Setup';
 import { Cover, TimerCtx, useTimerState } from './ui/Timer';
 
@@ -53,6 +53,8 @@ export default function App() {
           : s.phase === 'setup'
             ? '开局设置'
             : '复盘';
+  // 手机上夜晚的步数写在顶栏（页面里那一行让给迷你魔典）
+  const prog = s.phase === 'night' && s.ns ? nightProgress(s) : null;
   const hasSeats = s.seats.length > 0 && !(s.phase === 'setup' && s.setupStep === 'count');
 
   let screen;
@@ -69,7 +71,10 @@ export default function App() {
           <header className="topbar">
             <div className="title">
               <b>{s.phase === 'setup' ? '钟楼说书人' : phaseText(s)}</b>
-              <small>{sub}</small>
+              <small>
+                {sub}
+                {prog && <span className="phone-only">{` · 第 ${prog.pos} 步 / 共约 ${prog.visible.length} 步`}</span>}
+              </small>
             </div>
             <button
               className="icon-btn"
@@ -99,6 +104,7 @@ export default function App() {
             <button className="icon-btn" aria-label="菜单" title="菜单" onClick={() => setPanel('menu')}>
               <Icon name="menu" />
             </button>
+            {prog && <MiniGrimoire s={s} onOpen={() => setPanel('grimoire')} />}
           </header>
           {screen}
         </div>

@@ -1,5 +1,5 @@
 import { isEvil, seatName } from '../engine/core';
-import { useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { ROLES, TEAM_NAME, TRAVELLER_ROLES, isEvilTeam, roleName, type Team } from '../engine/roles';
 import { SCRIPTS, SCRIPT_LIST, type ScriptId } from '../engine/editions';
 import { endLines } from '../engine/scripts';
@@ -9,6 +9,8 @@ import type { Game } from '../store';
 import { BottomBar, ConfirmButton, SayBox, useEscape } from './common';
 import { GrimoireCircle } from './Grimoire';
 import { Icon } from './icons';
+import { Emblem } from './Emblem';
+import { drawResult, endWhen, keyMoments } from './result';
 
 /** 按"开局 / 第N夜 / 第N天"分组的时间线 */
 export function Timeline({ log }: { log: LogEntry[] }) {
@@ -41,13 +43,31 @@ export function Timeline({ log }: { log: LogEntry[] }) {
 export function EndScreen({ g }: { g: Game }) {
   const s = g.s;
   const win = s.winner ?? 'good';
+  const [result, setResult] = useState(false);
+  const w = endWhen(s);
   return (
-    <main className="main">
+    <main className={`main endv3${win === 'evil' ? ' win-evil' : ''}`}>
+      <div className="endv3-bg" />
       <div className="stack">
         <div className="hero">
-          <span className="dim">游戏结束</span>
-          <div className={`winner ${win === 'good' ? 'good' : 'evil'}`}>{win === 'good' ? '善良阵营获胜' : '邪恶阵营获胜'}</div>
-          <p className="muted">{s.winReason}</p>
+          <Emblem team={win} size={96} />
+          <span className="kick">游戏结束</span>
+          <div className="winner">{win === 'good' ? '善良阵营获胜' : '邪恶阵营获胜'}</div>
+          <p className="why">{s.winReason}</p>
+          <div className="facts">
+            <div>
+              <b>{s.count}</b>
+              <small>人局</small>
+            </div>
+            <div>
+              <b>{w.n}</b>
+              <small>{w.unit}</small>
+            </div>
+            <div>
+              <b>{s.seats.filter((x) => x.alive && !x.traveller).length}</b>
+              <small>人存活</small>
+            </div>
+          </div>
         </div>
         <SayBox lines={endLines(win, s.style)} title="对所有人说" />
         <div className="card">
@@ -56,6 +76,11 @@ export function EndScreen({ g }: { g: Game }) {
             可以把手机给大家传着看。
           </p>
           <GrimoireCircle s={s} readOnly hub={<b>{s.count} 人局{s.seats.length > s.count && <small><br />+{s.seats.length - s.count} 旅行者</small>}</b>} />
+          <div className="rlegend">
+            <span><i className="lg-good" />善良</span>
+            <span><i className="lg-evil" />邪恶</span>
+            <span><i className="lg-dead" />已死亡</span>
+          </div>
           <div className="stack" style={{ gap: 4, marginTop: 12 }}>
             {s.seats.map((x) => (
               <div key={x.n} className="row" style={{ justifyContent: 'space-between', borderBottom: '1px solid var(--line)', padding: '6px 0' }}>
@@ -76,17 +101,69 @@ export function EndScreen({ g }: { g: Game }) {
           </div>
         </div>
         <div className="card">
+          <h3>这一局的关键时刻</h3>
+          <ul className="moments">
+            {keyMoments(s).map((m, i) => (
+              <li key={i}>
+                <span>{m.when}</span>
+                <span>{m.text}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+        <div className="card">
           <h3>复盘：每晚发生了什么</h3>
           <p className="dim" style={{ marginBottom: 8 }}>
             红色的是假信息。
           </p>
           <Timeline log={s.log} />
         </div>
+        <p className="legal">钟楼说书人 · 非官方桌游辅助工具，与任何桌游发行方无关</p>
       </div>
       <BottomBar>
-        <ConfirmButton className="btn btn-primary btn-block" label="新开一局" confirmLabel="再点一次：清空本局，重新开始" onConfirm={g.reset} />
+        <button className="btn btn-ghost" onClick={() => setResult(true)}>
+          <Icon name="share" size={18} /> 结果图
+        </button>
+        <ConfirmButton className="btn btn-primary grow" label="新开一局" confirmLabel="再点一次：清空本局，重新开始" onConfirm={g.reset} />
       </BottomBar>
+      {result && <ResultImage s={s} onClose={() => setResult(false)} />}
     </main>
+  );
+}
+
+/** 结果图：发到群里用（图上只有座位号、角色和胜负，写明非官方工具） */
+function ResultImage({ s, onClose }: { s: GameState; onClose: () => void }) {
+  const [img, setImg] = useState<{ url: string; blob: Blob } | null>(null);
+  const [msg, setMsg] = useState('');
+  useEffect(() => {
+    drawResult(s).then(setImg, () => setMsg('生成失败，请关掉再试一次。'));
+  }, [s]);
+  const name = `钟楼说书人-${SCRIPTS[s.script].name}-${s.winner === 'evil' ? '邪恶' : '善良'}获胜.png`;
+  const share = async () => {
+    if (!img) return;
+    setMsg('');
+    try {
+      const file = new File([img.blob], name, { type: 'image/png' });
+      if (navigator.canShare?.({ files: [file] })) await navigator.share({ files: [file], title: '这一局的结果' });
+      else setMsg('这个浏览器不能直接分享图片：长按上面的图片，选"发送给朋友"或"保存图片"。');
+    } catch (e) {
+      if ((e as Error)?.name !== 'AbortError') setMsg('分享失败：长按上面的图片，选"发送给朋友"或"保存图片"。');
+    }
+  };
+  return (
+    <Overlay title="结果图" onClose={onClose}>
+      {img ? <img src={img.url} alt="这一局的结果图" style={{ width: '100%', borderRadius: 8, display: 'block' }} /> : <p className="dim">正在生成……</p>}
+      <div className="row" style={{ marginTop: 12 }}>
+        <button className="btn btn-primary grow" disabled={!img} onClick={share}>
+          分享到群里
+        </button>
+        <a className="btn btn-outline grow" href={img?.url} download={name}>
+          保存图片
+        </a>
+      </div>
+      {msg && <p className="dim" style={{ marginTop: 8 }}>{msg}</p>}
+      <p className="dim" style={{ marginTop: 8 }}>在微信里打开时，长按图片就能直接发给朋友或保存。</p>
+    </Overlay>
   );
 }
 

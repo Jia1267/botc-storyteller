@@ -17,7 +17,7 @@ import type { GameState, Seat } from '../engine/types';
 import { dayStartLines, endLines, executionLines, nominationLines } from '../engine/scripts';
 import { stepRng, type Game } from '../store';
 import { BottomBar, ChoicePanel, DoBox, SayBox, SeatPicker, Sheet, TwoChoice, drunkWhy, useUi } from './common';
-import { GrimoirePanel } from './Grimoire';
+import { GrimoireCircle, GrimoirePanel } from './Grimoire';
 import { KlutzPrompt, MoonchildPrompt, PixiePrompt, promptPending } from './Prompts';
 import { TimerDisplay } from './Timer';
 import { Icon } from './icons';
@@ -1133,8 +1133,26 @@ function NomList({ g }: { g: Game }) {
 }
 
 /** 记一次提名：选被提名的人，填数好的票数 */
+const PICKER_KEY = 'botc-nom-picker';
+
 function NomSheet({ g, onClose }: { g: Game; onClose: () => void }) {
   const s = g.s;
+  const ui = useUi();
+  const [mode, setMode] = useState<'circle' | 'grid'>(() => {
+    try {
+      return localStorage.getItem(PICKER_KEY) === 'grid' ? 'grid' : 'circle';
+    } catch {
+      return 'circle';
+    }
+  });
+  const choose = (m: 'circle' | 'grid') => {
+    setMode(m);
+    try {
+      localStorage.setItem(PICKER_KEY, m);
+    } catch {
+      /* 记不住也没关系 */
+    }
+  };
   const need = voteNeed(s);
   const [t, setT] = useState<number[]>([]);
   const [votes, setVotes] = useState<number | null>(null);
@@ -1155,7 +1173,27 @@ function NomSheet({ g, onClose }: { g: Game; onClose: () => void }) {
   return (
     <Sheet title="记一次提名" onClose={onClose}>
       <div className="stack">
-        <SeatPicker s={s} selected={t} max={1} onChange={setT} disabled={s.seats.filter(isTraveller).map((x) => x.n)} label="谁被提名了？" />
+        <div className="row" style={{ justifyContent: 'space-between' }}>
+          <span className="dim">谁被提名了？</span>
+          <div className="seg" role="tablist" aria-label="怎么选人">
+            <button role="tab" aria-selected={mode === 'circle'} className={mode === 'circle' ? 'on' : ''} onClick={() => choose('circle')}>
+              点圆桌
+            </button>
+            <button role="tab" aria-selected={mode === 'grid'} className={mode === 'grid' ? 'on' : ''} onClick={() => choose('grid')}>
+              点号码
+            </button>
+          </div>
+        </div>
+        {mode === 'circle' ? (
+          <GrimoireCircle
+            s={s}
+            selected={t}
+            onSeat={(x) => (isTraveller(seatOf(s, x)) ? ui.toast('旅行者不能被提名处决，只能放逐') : setT([x]))}
+            hub={<small>{n !== undefined ? `${seatName(n)} 被提名` : '点被提名的人'}</small>}
+          />
+        ) : (
+          <SeatPicker s={s} selected={t} max={1} onChange={setT} disabled={s.seats.filter(isTraveller).map((x) => x.n)} />
+        )}
         {again && <p className="dim">{seatName(n)} 今天已经被提名过（每人每天只能被提名一次）。</p>}
         <div className="dim">举手的票数（数完填进来；算 3 票、负票的人按实际算）</div>
         <div className="stepper">

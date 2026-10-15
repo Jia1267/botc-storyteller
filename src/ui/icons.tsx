@@ -13,6 +13,12 @@ const P: Record<string, ReactNode> = {
       <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
     </>
   ),
+  share: (
+    <>
+      <path d="M12 3v12M7 8l5-5 5 5" />
+      <path d="M5 14v5a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-5" />
+    </>
+  ),
   timer: (
     <>
       <line x1="10" x2="14" y1="2" y2="2" />
