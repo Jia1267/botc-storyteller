@@ -42,7 +42,8 @@ export type SlotId =
   | 'steward' | 'knight' | 'noble' | 'shugenja' | 'highpriestess' | 'king' | 'choirboy' | 'nightwatchman' | 'farmer' | 'acrobat'
   | 'preacher' | 'poppygrower' | 'huntsman' | 'damsel' | 'snitch' | 'ogre' | 'hatter' | 'qutler'
   | 'boffin' | 'wizard' | 'organgrinder' | 'mezepheles' | 'ojo' | 'lleech' | 'yaggababble' | 'lordoftyphon' | 'kazali' | 'riot'
-  | 'legion' | 'summoner' | 'villageidiot' | 'engineer' | 'lycanthrope' | 'cultleader';
+  | 'legion' | 'summoner' | 'villageidiot' | 'engineer' | 'lycanthrope' | 'cultleader'
+  | 'apprentice' | 'barista' | 'harlot' | 'bonecollector' | 'cacklejack';
 
 export interface NightState {
   /** 当前所在的夜晚顺序位置 */
@@ -265,6 +266,16 @@ export interface GameState {
   summonDone: boolean;
   /** 隐士：外来者 0 / −1 */
   hermitDelta: number;
+  /** 咖啡师今晚选的人：清醒健康 / 生效两次（到明天黄昏） */
+  baristaPick: { seat: number; mode: 'sober' | 'twice'; night: number } | null;
+  /** 屠夫这一天已经多提名过 */
+  butcherDay: number;
+  /** 笑匠白天点的人（今晚不会被换角色） */
+  cackleSafe: { seat: number; day: number } | null;
+  /** 侏儒的伙伴 */
+  gnomeAmigo: number | null;
+  /** 集骨者让这个死人今晚到明天黄昏有能力 */
+  boneRegain: { seat: number; night: number } | null;
   /** 恶魔的 3 个伪装 */
   bluffs: RoleId[];
   /** 占卜师干扰项 */

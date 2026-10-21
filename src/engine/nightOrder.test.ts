@@ -15,11 +15,12 @@ describe('角色对象：按角色表自动排出整晚流程', () => {
   it('梦殒春宵按官方顺序：哲学家最早，数学家最后', () => {
     const sv = SCRIPT_LIST.find((x) => x.id === 'sv')!;
     expect(sv.firstNight).toEqual([
-      'dusk', 'bureaucrat', 'thief', 'philosopher', 'minionInfo', 'demonInfo', 'snakecharmer', 'eviltwin', 'witch', 'cerenovus',
+      'dusk', 'apprentice', 'barista', 'bureaucrat', 'thief', 'philosopher', 'minionInfo', 'demonInfo', 'snakecharmer', 'eviltwin', 'witch', 'cerenovus',
       'clockmaker', 'dreamer', 'seamstress', 'mathematician', 'dawn',
     ]);
     expect(sv.otherNights).toEqual([
-      'dusk', 'bureaucrat', 'thief', 'philosopher', 'snakecharmer', 'witch', 'cerenovus', 'pithag', 'fanggu', 'nodashii', 'vortox',
+      'dusk', 'cacklejack', 'barista', 'bureaucrat', 'thief', 'harlot', 'bonecollector', 'apprentice', 'philosopher', 'snakecharmer', 'witch',
+      'cerenovus', 'pithag', 'fanggu', 'nodashii', 'vortox',
       'vigormortis', 'barber', 'sweetheart', 'sage', 'dreamer', 'flowergirl', 'towncrier', 'oracle', 'seamstress', 'juggler',
       'mathematician', 'dawn',
     ]);

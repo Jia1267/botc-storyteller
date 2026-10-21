@@ -1,6 +1,6 @@
 import { ROLES, isEvilTeam, roleName, type RoleId, type Team } from './roles';
 import {
-  abilityAlive, addLog, aliveCount, aliveVoters, deathShield, demonCause, drunkOrPoisoned, preachedNow, demonSeat, diedOnDay, hasAbility, inPlay, isDemonSeat, isEvil, isPoisoned, kill, lilMonsta,
+  abilityAlive, addLog, aliveCount, aliveVoters, boneRegained, deathShield, demonCause, drunkOrPoisoned, preachedNow, demonSeat, diedOnDay, hasAbility, inPlay, isDemonSeat, isEvil, isPoisoned, kill, lilMonsta,
   malfunction, scriptOf, seatLabel, seatOf, teamOf, vortoxActive, wakesAs, seatName,
 } from './core';
 import { firstNightOnly } from './nightOrder';
@@ -26,6 +26,7 @@ const ROLE_SLOTS: SlotId[] = [
   'steward', 'knight', 'noble', 'shugenja', 'highpriestess', 'king', 'choirboy', 'nightwatchman', 'farmer', 'acrobat', 'preacher',
   'huntsman', 'ogre', 'qutler', 'boffin', 'wizard', 'organgrinder', 'mezepheles',
   'villageidiot', 'engineer', 'lycanthrope', 'cultleader', 'summoner',
+  'apprentice', 'barista', 'harlot', 'bonecollector',
 ];
 
 /** 恶魔自己醒来行动的步骤（驱魔人选中恶魔、麻脸巫婆造了恶魔说书人决定今晚不死人时都不醒） */
@@ -153,6 +154,8 @@ function candidates(s: GameState, slot: SlotId): Seat[] {
     if (slot === 'nightwatchman' || slot === 'huntsman' || slot === 'wizard' || slot === 'engineer') return x.alive && !x.used;
     if (slot === 'summoner') return x.alive && (s.night === 1 || (s.night === 3 && !s.summonDone));
     if (slot === 'boffin') return x.alive && !!s.boffinAbility;
+    if (slot === 'apprentice') return x.alive && (!s.gained[x.n] || !!s.ns?.philoNow);
+    if (slot === 'bonecollector') return x.alive && !x.used && s.seats.some((y) => !y.alive && !y.traveller);
     if (slot === 'philosopher') return x.alive && (!x.used || !!s.ns?.philoNow);
     if (slot === 'juggler') return x.alive && s.juggler?.seat === x.n && s.juggler.day === s.night - 1 && !!s.juggler.guesses;
     if (slot === 'sage') return !x.alive && x.death?.when === 'night' && x.death.night === s.night && demonCause(x.death.cause);
@@ -166,7 +169,8 @@ function candidates(s: GameState, slot: SlotId): Seat[] {
     if (slot === 'courtier') return x.alive && !x.used;
     if (slot === 'assassin') return x.alive && !x.used;
     if (slot === 'professor') return x.alive && !x.used && s.seats.some((y) => !y.alive && !y.left);
-    return x.alive;
+    // 集骨者让死人今晚有能力
+    return x.alive || boneRegained(s, x.n);
   });
 }
 
@@ -211,6 +215,9 @@ export function shouldRun(s: GameState, slot: SlotId): boolean {
       if (!d || d.role !== 'yaggababble') return false;
       return s.night === 1 || (s.yaggaSaid.day === s.night - 1 && s.yaggaSaid.count > 0);
     }
+    // 笑匠：今晚由说书人给一个人换角色
+    case 'cacklejack':
+      return s.night > 1 && s.seats.some((x) => x.alive && x.role === 'cacklejack');
     // 第三晚：爪牙变成暴乱
     case 'riot':
       return s.night === 3 && s.seats.some((x) => x.role === 'riot') && s.seats.some((x) => x.alive && teamOf(x.role) === 'minion');
@@ -404,7 +411,10 @@ export type SlotPayload =
   | { kind: 'yagga'; picks: number[] }
   | { kind: 'engineer'; demon?: RoleId; minions?: { seat: number; role: RoleId }[] }
   | { kind: 'cult'; evil: boolean }
-  | { kind: 'summon'; target: number; role: RoleId };
+  | { kind: 'summon'; target: number; role: RoleId }
+  | { kind: 'barista'; seat: number; mode: 'sober' | 'twice' }
+  | { kind: 'harlot'; target: number; agreed: boolean; kill: boolean }
+  | { kind: 'cackle'; target: number; role: RoleId };
 
 /** 这一步里玩家用能力"选择"了哪些人（莽夫用） */
 function chosenSeats(p: SlotPayload): number[] {
@@ -503,7 +513,11 @@ const expose = (s: GameState, n: number, k = 1) => (s.exposure[n] = (s.exposure[
 
 /** 失忆者那一步实际用的是哪个能力；哲学家后来的夜晚获得只在第一晚用的能力时，在他这一步马上用 */
 export const effectiveSlot = (s: GameState, slot: SlotId): SlotId =>
-  slot === 'amnesiac' && s.amnesiacAbility ? (s.amnesiacAbility as SlotId) : slot === 'philosopher' && s.ns?.philoNow ? (s.ns.philoNow as SlotId) : slot;
+  slot === 'amnesiac' && s.amnesiacAbility
+    ? (s.amnesiacAbility as SlotId)
+    : (slot === 'philosopher' || slot === 'apprentice') && s.ns?.philoNow
+      ? (s.ns.philoNow as SlotId)
+      : slot;
 
 /** 数学家：记下一个没正常生效的能力 */
 function abnormal(s: GameState, n: number, why: string) {
@@ -563,8 +577,9 @@ export function completeSlot(s: GameState, p: SlotPayload) {
   if (!ns.ran) ns.ran = [];
   if (!ns.ran.includes(ns.slot)) ns.ran.push(ns.slot);
   // 哲学家选了能力：只在第一晚用的能力（钟表匠等）当晚马上用，这一步先不结束
-  if (slot === 'philosopher' && p.kind === 'philo' && actor) {
-    philosopherChoose(s, actor, p.role);
+  if ((slot === 'philosopher' || slot === 'apprentice') && p.kind === 'philo' && actor) {
+    if (slot === 'philosopher') philosopherChoose(s, actor, p.role);
+    else apprenticeChoose(s, actor, p.role);
     if (p.role && s.night > 1 && firstNightOnly(p.role) && !malfunction(s, actor.n)) {
       ns.philoNow = p.role;
       return;
@@ -581,7 +596,7 @@ export function completeSlot(s: GameState, p: SlotPayload) {
     if (was !== isEvil(goon)) ns.goonInform = { seat: goon.n, evil: isEvil(goon) };
     addLog(s, 'night', `${seatName(actor.n)} 选了莽夫（${seatName(goon.n)}）：醉酒到明天黄昏，这次能力无效${was !== isEvil(goon) ? `；莽夫变成${isEvil(goon) ? '邪恶' : '善良'}阵营` : ''}`);
   }
-  if (eff !== 'philosopher' || p.kind !== 'philo') noteAbnormal(s, actor, eff, p);
+  if ((eff !== 'philosopher' && eff !== 'apprentice') || p.kind !== 'philo') noteAbnormal(s, actor, eff, p);
   if (actor) {
     ns.doneActors.push(actor.n);
     // 侍女：因为自己的能力醒来过（疯子第一晚不醒，只是告诉恶魔）
@@ -1029,7 +1044,8 @@ export function completeSlot(s: GameState, p: SlotPayload) {
       }
       break;
     case 'philosopher':
-      // 哲学家当晚马上用的能力在上面按那个能力结算；这里只是"不用"或已经选好
+    case 'apprentice':
+      // 当晚马上用的能力在上面按那个能力结算；这里只是"不用"或已经选好
       break;
     case 'eviltwin':
       addLog(s, 'night', `镜像双子 ${who} 和善良的双子 ${seatName(s.twin)} 互相认识了`);
@@ -1326,6 +1342,41 @@ export function completeSlot(s: GameState, p: SlotPayload) {
         }
       }
       break;
+    case 'barista':
+      if (p.kind === 'barista') {
+        s.baristaPick = { seat: p.seat, mode: p.mode, night: s.night };
+        addLog(s, 'night', `咖啡师：${seatLabel(s, p.seat)} ${p.mode === 'sober' ? '清醒健康、得到真信息' : '能力生效两次'}，到明天黄昏`);
+      }
+      break;
+    case 'harlot':
+      if (p.kind === 'harlot') {
+        addLog(s, 'night', `流莺 ${who} 选择了 ${seatName(p.target)}：${p.agreed ? `他同意了，流莺得知他是${roleName(seatOf(s, p.target).role)}` : '他不同意'}`);
+        if (p.agreed && p.kill && !malfunction(s, actor!.n)) {
+          kill(s, p.target, 'night', '和流莺一起死亡');
+          kill(s, actor!.n, 'night', '和被选的人一起死亡');
+        }
+      }
+      break;
+    case 'bonecollector':
+      if (p.kind === 'target') {
+        actor!.used = true;
+        if (!malfunction(s, actor!.n)) s.boneRegain = { seat: p.target, night: s.night };
+        addLog(s, 'night', `集骨者 ${who} 选择了死去的 ${seatLabel(s, p.target)}：他到明天黄昏重新有能力${malfunction(s, actor!.n) ? '（中毒/醉酒，无效）' : ''}`);
+      } else addLog(s, 'night', `集骨者 ${who} 今晚不用能力`);
+      break;
+    case 'cacklejack':
+      if (p.kind === 'cackle') {
+        const x = seatOf(s, p.target);
+        const from = x.role;
+        const evil = isEvil(x);
+        x.role = p.role;
+        x.used = false;
+        delete s.gained[x.n];
+        setAlignment(x, evil);
+        s.roleSince[x.n] = s.night;
+        addLog(s, 'night', `笑匠：${seatName(x.n)} 从${roleName(from)}变成${roleName(p.role)}，已告知他`);
+      }
+      break;
     case 'legion':
       if (p.kind === 'target') {
         addLog(s, 'night', `军团：说书人决定 ${seatLabel(s, p.target)} 死亡`);
@@ -1335,8 +1386,15 @@ export function completeSlot(s: GameState, p: SlotPayload) {
     case 'dusk':
       break;
   }
-  if (slot === 'philosopher') ns.philoNow = undefined;
+  if (slot === 'philosopher' || slot === 'apprentice') ns.philoNow = undefined;
   advance(s);
+}
+
+/** 学徒第一晚获得一个镇民（善良）或爪牙（邪恶）能力 */
+function apprenticeChoose(s: GameState, actor: Seat, role: RoleId | null) {
+  if (!role) return;
+  s.gained[actor.n] = role;
+  addLog(s, 'night', `学徒 ${seatName(actor.n)} 获得【${roleName(role)}】的能力`);
 }
 
 /* ---------------- 梦殒春宵 ---------------- */
@@ -1632,7 +1690,10 @@ export function pacifistCanSave(s: GameState, n: number): boolean {
 const failNote = (s: GameState, n: number) => `（${isPoisoned(s, n) ? '中毒' : '醉酒'}，无效）`;
 
 /** 处决至少需要的票数：存活玩家（含旅行者）的一半，向上取整 */
-export const voteNeed = (s: GameState) => Math.ceil(aliveVoters(s) / 2);
+/** 巫毒师活着且健康：不需要过半，票最多的就处决 */
+export const voudonActive = (s: GameState) => s.seats.some((x) => x.role === 'voudon' && x.alive && !malfunction(s, x.n));
+
+export const voteNeed = (s: GameState) => (voudonActive(s) ? 1 : Math.ceil(aliveVoters(s) / 2));
 
 export type NomResult = 'short' | 'lower' | 'block' | 'beaten' | 'tie';
 export interface NomRow {
@@ -1853,6 +1914,34 @@ export function twinActive(s: GameState): boolean {
 }
 
 /* ---------------- 梦殒春宵：白天 ---------------- */
+
+/** 屠夫：今天已经处决过人，再提名一次（回到白天） */
+export function butcherAgain(s: GameState) {
+  s.butcherDay = s.night;
+  s.executed = undefined;
+  addLog(s, 'day', '屠夫在处决后再提名一次');
+}
+
+/** 侏儒的伙伴被提名：侏儒杀死提名者 */
+export function gnomeKill(s: GameState, gnomeN: number, nominator: number) {
+  addLog(s, 'day', `侏儒（${seatName(gnomeN)}）对提名伙伴的 ${seatName(nominator)} 用了能力`);
+  if (malfunction(s, gnomeN)) addLog(s, 'day', '侏儒中毒/醉酒：什么都没有发生');
+  else dayDeath(s, nominator, '提名了侏儒的伙伴，被侏儒杀死');
+}
+
+/** 法官：强制这次处决通过或失败 */
+export function judgeRules(s: GameState, judgeN: number, nominee: number, pass: boolean) {
+  seatOf(s, judgeN).used = true;
+  addLog(s, 'day', `法官（${seatName(judgeN)}）判定对 ${seatName(nominee)} 的处决${pass ? '通过' : '失败'}`);
+  if (pass && !malfunction(s, judgeN)) execute(s, nominee, '被法官判定处决');
+}
+
+/** 黑帮杀死一名活着的邻座（另一边的邻座同意了） */
+export function gangsterKill(s: GameState, gN: number, victim: number) {
+  addLog(s, 'day', `黑帮（${seatName(gN)}）在邻座同意后杀死 ${seatName(victim)}`);
+  if (malfunction(s, gN)) addLog(s, 'day', '黑帮中毒/醉酒：什么都没有发生');
+  else dayDeath(s, victim, '被黑帮杀死');
+}
 
 /** 异教领袖发起入教：所有善良玩家都举手，他的阵营获胜 */
 export function cultVote(s: GameState, cultN: number, allJoined: boolean) {

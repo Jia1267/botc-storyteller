@@ -3,7 +3,7 @@ import { FABLED, ROLES, roleName, type RoleId } from '../engine/roles';
 import { balance, recommend, type Choice } from '../engine/balance';
 import {
   actorFor, aliveCount, aliveVoters, demonSeat, hasAbility, isDemonSeat, isEvil, isTraveller, lilMonsta, malfunction, scriptOf, seatOf, teamOf,
-  vortoxActive, seatName, seatLabel, townsfolkNeighbors, philoDrunk,
+  vortoxActive, seatName, seatLabel, townsfolkNeighbors, philoDrunk, aliveNeighbors,
 } from '../engine/core';
 import {
   LEVIATHAN_DAYS, advocateSaves, alsaahirCorrect, alsaahirGuess, execute, pacifistCanSave, setGossip, tinkerDies, fearPreview, fearmongerAsk, fearmongerNominates, finishDay, goblinAsk,
@@ -11,8 +11,9 @@ import {
   slayerShoot, markUsed, nomResults, voteNeed, type NomResult, type NomRow,
   cereVerdict, jugglerCanGuess, jugglerCount, jugglerGuess, setMinionNominated, twinsBlock, witchActive, witchStrikes,
   damselGuess, golemNominates, puzzleGuess, boomResolve, mezeSaid, psychoKill, vizierExecute, riotDay, riotNominate, yaggaSay, cultVote, executeStoryteller,
+  butcherAgain, gangsterKill, gnomeKill, judgeRules, voudonActive,
 } from '../engine/flow';
-import { activeTravellers, beggarLearns, exile, gunslingerPreview, gunslingerShoot, leave } from '../engine/travellers';
+import { activeTravellers, beggarLearns, exile, gunslingerPreview, gunslingerShoot, leave, swapPlayers } from '../engine/travellers';
 import { clone } from '../engine/core';
 import { harpyPunishChoices, killPreview, pacifistChoices, puzzleShowChoices, scarletCanTakeOver } from '../engine/info';
 import { AMNESIAC_ANSWERS, artistMode, fishermanChoices, savantChoices } from '../engine/daytime';
@@ -148,7 +149,7 @@ export function DayScreen({ g }: { g: Game }) {
             </p>
           </div>
         )}
-        <div className="card stack" style={{ gap: 10 }}>
+        {!riotDay(s) && <div className="card stack" style={{ gap: 10 }}>
           <h3>投票（你来数票）</h3>
           <p>
             现在存活 <b>{alive}</b> 人{tAlive > 0 && `（含旅行者 ${tAlive} 人）`} → 处决至少需要 <b className="answer" style={{ fontSize: 22 }}>{need}</b> 票
@@ -172,7 +173,7 @@ export function DayScreen({ g }: { g: Game }) {
           <button className="btn btn-outline btn-block" onClick={() => setPanel('exec')}>
             提名都结束了，录入今天的处决结果
           </button>
-        </div>
+        </div>}
         <FlowergirlCard g={g} />
         <TownCrierCard g={g} />
         <PrincessCard g={g} />
@@ -218,11 +219,13 @@ export function DayScreen({ g }: { g: Game }) {
           }}
         />
       )}
-      <BottomBar wide>
-        <button className="btn btn-primary btn-block" onClick={() => setPanel('nom')}>
-          <Icon name="plus" size={18} /> 记一次提名
-        </button>
-      </BottomBar>
+      {!riotDay(s) && (
+        <BottomBar wide>
+          <button className="btn btn-primary btn-block" onClick={() => setPanel('nom')}>
+            <Icon name="plus" size={18} /> 记一次提名
+          </button>
+        </BottomBar>
+      )}
     </main>
   );
 }
@@ -508,6 +511,15 @@ function DayResult({ g }: { g: Game }) {
           <p className="dim">{seatName(s.executed)} 是僵怖，这是假死：照常宣布他死了，但他其实还活着（只有你知道）。</p>
         )}
         {s.boomPending && !s.winner && <BoomCard g={g} />}
+        {!s.winner && typeof s.executed === 'number' && s.butcherDay !== s.night && s.seats.some((x) => x.role === 'butcher' && x.alive && !malfunction(s, x.n)) && (
+          <div className="card stack" style={{ gap: 8 }}>
+            <b>屠夫在场：他可以再提名一次</b>
+            <p className="dim">再提名的人照常投票，票数够一半就行（不用比刚才多）。他不提名就直接入夜。</p>
+            <button className="btn btn-outline btn-block" onClick={() => g.commit((st) => butcherAgain(st))}>
+              屠夫要再提名：回到投票
+            </button>
+          </div>
+        )}
         {!s.winner && <CannibalNotice g={g} />}
         <KlutzPrompt g={g} />
         <MoonchildPrompt g={g} />
@@ -872,7 +884,7 @@ function VoteMods({ s }: { s: GameState }) {
   );
 }
 
-type TPanel = 'join' | 'exile' | 'leave' | 'gun' | 'beggar' | null;
+type TPanel = 'join' | 'exile' | 'leave' | 'gun' | 'beggar' | 'matron' | 'judge' | 'gangster' | 'gnome' | 'cackle' | null;
 
 /** 白天的旅行者：中途加入、放逐、离场、枪手、乞丐 */
 function TravellerDay({ g }: { g: Game }) {
@@ -884,6 +896,8 @@ function TravellerDay({ g }: { g: Game }) {
   const alive = ts.filter((x) => x.alive);
   const gun = alive.find((x) => x.role === 'gunslinger');
   const beggar = alive.find((x) => x.role === 'beggar');
+  const has = (r: string) => alive.find((x) => x.role === r);
+  const judge = alive.find((x) => x.role === 'judge' && !x.used);
   const btn = (key: TPanel, label: string) => (
     <button key={key} className="btn btn-ghost btn-block" onClick={() => setP(key)}>
       {label}
@@ -902,6 +916,13 @@ function TravellerDay({ g }: { g: Game }) {
         {alive.length > 0 && btn('exile', '有人提议放逐旅行者')}
         {gun && s.gunslingerDay !== s.night && btn('gun', `枪手（${seatName(gun.n)}）在第一次投票后开枪`)}
         {beggar && btn('beggar', `有死人把投票标记给了乞丐（${seatName(beggar.n)}）`)}
+        {has('matron') && btn('matron', `女舍监（${seatName(has('matron')!.n)}）让人换座位`)}
+        {judge && btn('judge', `法官（${seatName(judge.n)}）要强制这次处决通过或失败`)}
+        {has('gangster') && btn('gangster', `黑帮（${seatName(has('gangster')!.n)}）要杀一个邻座`)}
+        {has('gnome') && s.gnomeAmigo && btn('gnome', `有人提名了侏儒的伙伴 ${seatName(s.gnomeAmigo)}，侏儒要用能力`)}
+        {has('cacklejack') && btn('cackle', s.cackleSafe?.day === s.night ? `笑匠今天点了 ${seatName(s.cackleSafe.seat)}（改）` : `笑匠（${seatName(has('cacklejack')!.n)}）点一个人`)}
+        {has('bishop') && <p className="dim">主教在场：只有你能提名；每天至少要提名一个和主教阵营相反的人。</p>}
+        {voudonActive(s) && <p className="dim">巫毒师在场：只有巫毒师和死人能投票（死人不用投票标记），不需要过半，票最多的就处决。</p>}
         {ts.length > 0 && btn('leave', '旅行者要提前离开')}
       </div>
       {p === 'join' && <AddTravellerSheet g={g} onClose={close} />}
@@ -919,6 +940,11 @@ function TravellerDay({ g }: { g: Game }) {
       {p === 'gun' && gun && <GunSheet g={g} gunN={gun.n} onClose={close} />}
       {p === 'beggar' && beggar && <BeggarSheet g={g} beggarN={beggar.n} onClose={close} />}
       {p === 'leave' && <LeaveSheet g={g} onClose={close} />}
+      {p === 'matron' && <MatronSheet g={g} onClose={close} />}
+      {p === 'judge' && judge && <JudgeSheet g={g} judgeN={judge.n} onClose={close} />}
+      {p === 'gangster' && <GangsterSheet g={g} gN={has('gangster')!.n} onClose={close} />}
+      {p === 'gnome' && <GnomeSheet g={g} gN={has('gnome')!.n} onClose={close} />}
+      {p === 'cackle' && <CackleSheet g={g} onClose={close} />}
     </div>
   );
 }
@@ -1812,6 +1838,96 @@ function CultSheet({ g, onClose }: { g: Game; onClose: () => void }) {
         )}
         <button className="btn btn-primary btn-block" disabled={all === null} onClick={() => { g.commit((st) => cultVote(st, c.n, !!all)); onClose(); }}>
           确认
+        </button>
+      </div>
+    </Sheet>
+  );
+}
+
+/** 女舍监：两人交换座位（一天最多三对） */
+function MatronSheet({ g, onClose }: { g: Game; onClose: () => void }) {
+  const s = g.s;
+  const [t, setT] = useState<number[]>([]);
+  return (
+    <Sheet title="女舍监让两人换座位" onClose={onClose}>
+      <div className="stack">
+        <p className="dim">每天最多三对。点两个人，网页把他们的角色、死活和所有标记一起对调（座位号跟着位置不动）。</p>
+        <SeatPicker s={s} selected={t} max={2} onChange={setT} disabled={s.seats.filter((x) => x.traveller).map((x) => x.n)} label="哪两个人换？" />
+        <button className="btn btn-primary btn-block" disabled={t.length !== 2} onClick={() => { g.commit((st) => swapPlayers(st, t[0], t[1])); setT([]); onClose(); }}>
+          {t.length === 2 ? `${seatName(t[0])} 和 ${seatName(t[1])} 换座位` : '先点两个人'}
+        </button>
+      </div>
+    </Sheet>
+  );
+}
+
+/** 法官：强制这次处决通过或失败 */
+function JudgeSheet({ g, judgeN, onClose }: { g: Game; judgeN: number; onClose: () => void }) {
+  const s = g.s;
+  const [t, setT] = useState<number[]>([]);
+  const [pass, setPass] = useState<boolean | null>(null);
+  return (
+    <Sheet title={`法官（${seatName(judgeN)}）`} onClose={onClose}>
+      <div className="stack">
+        <p className="dim">整局一次，别人发起提名后用。通过：被提名的人直接被处决；失败：这次不处决。</p>
+        <SeatPicker s={s} selected={t} max={1} onChange={setT} label="被提名的是谁？" />
+        <TwoChoice value={pass} onChange={setPass} yes="判定通过" no="判定失败" />
+        <button className="btn btn-primary btn-block" disabled={!t.length || pass === null} onClick={() => { g.commit((st) => judgeRules(st, judgeN, t[0], !!pass)); onClose(); }}>
+          确认
+        </button>
+      </div>
+    </Sheet>
+  );
+}
+
+/** 黑帮：另一边的活人邻座同意，就杀死一名活着的邻座 */
+function GangsterSheet({ g, gN, onClose }: { g: Game; gN: number; onClose: () => void }) {
+  const s = g.s;
+  const nb = aliveNeighbors(s, gN);
+  const [t, setT] = useState<number[]>([]);
+  const other = nb.find((n) => n !== t[0]);
+  return (
+    <Sheet title={`黑帮（${seatName(gN)}）杀邻座`} onClose={onClose}>
+      <div className="stack">
+        <p className="dim">每天一次：他要杀一边的活人邻座，必须另一边的活人邻座当场同意。</p>
+        <SeatPicker s={s} selected={t} max={1} onChange={setT} disabled={s.seats.filter((x) => !nb.includes(x.n)).map((x) => x.n)} label="他要杀谁？" />
+        {t.length > 0 && other && <p>需要 {seatName(other)} 当场同意。</p>}
+        <button className="btn btn-danger btn-block" disabled={!t.length} onClick={() => { g.commit((st) => gangsterKill(st, gN, t[0])); onClose(); }}>
+          {t.length ? `${seatName(t[0])} 死亡（邻座同意了）` : '先点出他要杀的人'}
+        </button>
+      </div>
+    </Sheet>
+  );
+}
+
+/** 侏儒：杀死提名伙伴的人 */
+function GnomeSheet({ g, gN, onClose }: { g: Game; gN: number; onClose: () => void }) {
+  const s = g.s;
+  const [t, setT] = useState<number[]>([]);
+  return (
+    <Sheet title={`侏儒（${seatName(gN)}）用能力`} onClose={onClose}>
+      <div className="stack">
+        <p className="dim">有人提名了侏儒的伙伴 {seatName(s.gnomeAmigo)}，投票开始前侏儒说要用能力：提名者当场死亡，投票照常进行。不要提醒侏儒用。</p>
+        <SeatPicker s={s} selected={t} max={1} onChange={setT} label="是谁提名的？" />
+        <button className="btn btn-danger btn-block" disabled={!t.length} onClick={() => { g.commit((st) => gnomeKill(st, gN, t[0])); onClose(); }}>
+          {t.length ? `${seatName(t[0])} 死亡` : '先点出提名的人'}
+        </button>
+      </div>
+    </Sheet>
+  );
+}
+
+/** 笑匠：白天点一个人，今晚他不会被换角色 */
+function CackleSheet({ g, onClose }: { g: Game; onClose: () => void }) {
+  const s = g.s;
+  const [t, setT] = useState<number[]>(s.cackleSafe?.day === s.night ? [s.cackleSafe.seat] : []);
+  return (
+    <Sheet title="笑匠点一个人" onClose={onClose}>
+      <div className="stack">
+        <p className="dim">今晚你要给另一个人换角色（网页夜里会带你）。</p>
+        <SeatPicker s={s} selected={t} max={1} onChange={setT} label="他点了谁？" />
+        <button className="btn btn-primary btn-block" disabled={!t.length} onClick={() => { g.commit((st) => { st.cackleSafe = { seat: t[0], day: st.night }; logDay(st, `笑匠点了 ${seatName(t[0])}：今晚他不会被换角色`); }); onClose(); }}>
+          记下来
         </button>
       </div>
     </Sheet>

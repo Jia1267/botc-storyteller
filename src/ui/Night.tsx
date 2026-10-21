@@ -65,7 +65,7 @@ export function NightScreen({ g }: { g: Game }) {
             {slot === 'amnesiac' && s.amnesiacAbility ? `（像${roleName(s.amnesiacAbility)}）` : ''}
             {slot === 'philosopher' && s.ns!.philoNow ? `：用${roleName(s.ns!.philoNow)}的能力` : ''}
           </h2>
-          {actor && !(slot === 'lunatic' && s.night === 1) && slot !== 'farmer' && !(slot === 'king' && s.night === 1) && <ActorLine s={s} actor={actor} slot={eff} />}
+          {actor && !(slot === 'lunatic' && s.night === 1) && slot !== 'farmer' && slot !== 'barista' && !(slot === 'king' && s.night === 1) && <ActorLine s={s} actor={actor} slot={eff} />}
         </div>
         <SlotBody g={g} s={s} slot={eff} actor={actor} />
       </div>
@@ -438,6 +438,16 @@ function SlotBody({ g, s, slot, actor }: { g: Game; s: GameState; slot: SlotId; 
       return <SummonerStep g={g} s={s} actor={actor!} />;
     case 'legion':
       return <LegionStep g={g} s={s} />;
+    case 'apprentice':
+      return <ApprenticeStep g={g} s={s} actor={actor!} />;
+    case 'barista':
+      return <BaristaStep g={g} s={s} />;
+    case 'harlot':
+      return <HarlotStep g={g} s={s} actor={actor!} />;
+    case 'bonecollector':
+      return <BoneStep g={g} s={s} actor={actor!} />;
+    case 'cacklejack':
+      return <CackleStep g={g} s={s} />;
     default:
       return <SkipStep g={g} />;
   }
@@ -4075,6 +4085,153 @@ function LegionStep({ g, s }: { g: Game; s: GameState }) {
       <Tips role="legion" />
       <BottomBar wide>
         <button className="btn btn-primary btn-block" onClick={() => done(c?.value ? { kind: 'target', target: c.value } : { kind: 'none' })}>
+          完成，下一步
+        </button>
+      </BottomBar>
+    </>
+  );
+}
+
+/* ---------------- 旅行者 ---------------- */
+
+function ApprenticeStep({ g, s, actor }: StepProps) {
+  const done = useDone(g);
+  const ui = useUi();
+  const evil = isEvil(actor);
+  const pool = scriptOf(s).roles.filter((r) => teamOf(r) === (evil ? 'minion' : 'townsfolk'));
+  const [role, setRole] = useState<RoleId | null>(null);
+  const now = !!role && s.night > 1 && firstNightOnly(role);
+  return (
+    <>
+      <p className="muted">学徒加入后的第一晚：他是{evil ? '邪恶的，获得一个爪牙' : '善良的，获得一个镇民'}的能力。一般给一个不在场的角色。</p>
+      <RoleGrid roles={pool} value={role} onPick={setRole} why={(r) => (s.seats.some((x) => x.role === r) ? '在场' : null)} />
+      {role && <DoBox items={[wake(actor.n), <>点「给他看」：你获得<b>【{roleName(role)}】</b>的能力（你还是学徒）。</>, now ? null : sleep]} />}
+      {now && <p className="dim">这是只在第一晚用的能力：确认后他当晚马上用（网页接着带你）。</p>}
+      <Tips role="apprentice" />
+      <BottomBar wide>
+        {role && <CardButton onClick={() => ui.showCard(roleCard(role, '你获得这个角色的能力', true))} />}
+        <button className="btn btn-primary grow" disabled={!role} onClick={() => role && done({ kind: 'philo', role })}>
+          {role ? (now ? '确认，接着让他用这个能力' : '完成，下一步') : '先选一个能力'}
+        </button>
+      </BottomBar>
+    </>
+  );
+}
+
+/** 咖啡师：说书人选一个人和一种效果，咖啡师本人不醒 */
+function BaristaStep({ g, s }: { g: Game; s: GameState }) {
+  const done = useDone(g);
+  const ui = useUi();
+  const [t, setT] = useState<number[]>([]);
+  const [twice, setTwice] = useState<boolean | null>(null);
+  return (
+    <>
+      <p className="muted">咖啡师在场：你选一个人，让他到明天黄昏"清醒健康、得到真信息"或"能力生效两次"。咖啡师本人不醒。</p>
+      <SeatPicker s={s} selected={t} max={1} onChange={setT} label="选谁？" collapse="选了" />
+      <TwoChoice value={twice} onChange={setTwice} yes="能力生效两次" no="清醒健康" />
+      {t.length > 0 && twice !== null && (
+        <Reveal key={`${t[0]}-${twice}`}>
+          <DoBox items={[wake(t[0]), <>点「给他看」：咖啡师选中了你；再比 <b>{twice ? '2' : '1'}</b> 根手指。</>, sleep]} />
+          {twice && <p className="dim">他今晚和明天白天能力生效两次：网页只记一次，第二次你照着同一步再做一遍（夜里先让他闭眼再叫醒）。</p>}
+        </Reveal>
+      )}
+      <Tips role="barista" />
+      <BottomBar wide>
+        {t.length > 0 && twice !== null && <CardButton onClick={() => ui.showCard({ title: '这个角色选中了你', big: ['咖啡师'], note: twice ? '比 2：你的能力今晚到明天黄昏生效两次。' : '比 1：你今晚到明天黄昏清醒健康，信息都是真的。' })} />}
+        <button className="btn btn-primary grow" disabled={!t.length || twice === null} onClick={() => done({ kind: 'barista', seat: t[0], mode: twice ? 'twice' : 'sober' })}>
+          完成，下一步
+        </button>
+      </BottomBar>
+    </>
+  );
+}
+
+function HarlotStep({ g, s, actor }: StepProps) {
+  const done = useDone(g);
+  const ui = useUi();
+  const [t, setT] = useState<number[]>([]);
+  const [agreed, setAgreed] = useState<boolean | null>(null);
+  const [killBoth, setKillBoth] = useState<boolean | null>(null);
+  const x = t.length ? seatOf(s, t[0]) : null;
+  return (
+    <>
+      <DoBox items={[wake(actor.n), '让他指一名活着的玩家，你在下面点出来。', sleep]} />
+      <SeatPicker s={s} selected={t} max={1} onChange={setT} disabled={[actor.n, ...s.seats.filter((y) => !y.alive).map((y) => y.n)]} label="他指了谁？" collapse="他指了" />
+      {x && (
+        <Reveal key={x.n}>
+          <DoBox items={[wake(x.n), '给他看"流莺选中了你"，问他愿不愿意让流莺知道他的角色（点头/摇头）。', sleep]} />
+          <TwoChoice value={agreed} onChange={setAgreed} yes="他点头同意" no="他摇头" />
+          {agreed && (
+            <>
+              <DoBox items={[wake(actor.n), <>点「给流莺看」：他的角色是<b>【{roleName(x.role)}】</b>。</>, sleep]} />
+              <p className="dim">你可以决定两个人今晚都死（恶魔同意时别因此结束游戏）。</p>
+              <TwoChoice value={killBoth} onChange={setKillBoth} yes="两人都死" no="都不死" />
+            </>
+          )}
+        </Reveal>
+      )}
+      <Tips role="harlot" />
+      <BottomBar wide>
+        {x && agreed && <CardButton label="给流莺看" onClick={() => ui.showCard(roleCard(x.role, '这名玩家的角色是'))} />}
+        <button
+          className="btn btn-primary grow"
+          disabled={!x || agreed === null || (agreed && killBoth === null)}
+          onClick={() => x && done({ kind: 'harlot', target: x.n, agreed: !!agreed, kill: !!killBoth })}
+        >
+          完成，下一步
+        </button>
+      </BottomBar>
+    </>
+  );
+}
+
+function BoneStep({ g, s, actor }: StepProps) {
+  const done = useDone(g);
+  const [use, setUse] = useState<boolean | null>(null);
+  const [t, setT] = useState<number[]>([]);
+  const dead = s.seats.filter((x) => !x.alive && !x.traveller).map((x) => x.n);
+  return (
+    <>
+      <DoBox items={[wake(actor.n), '问他今晚要不要用能力（整局一次）。要用就让他指一名死去的玩家。', sleep]} />
+      <TwoChoice value={use} onChange={setUse} yes="他要用" no="他不用（摇头）" />
+      {use && <SeatPicker s={s} selected={t} max={1} onChange={setT} disabled={s.seats.filter((x) => !dead.includes(x.n)).map((x) => x.n)} label="他指了哪个死人？" />}
+      {use && t.length > 0 && <p className="dim">{seatLabel(s, t[0])} 今晚到明天黄昏重新有能力：夜里轮到他的角色时网页会叫醒他。</p>}
+      <Tips role="bonecollector" />
+      <BottomBar wide>
+        <button className="btn btn-primary btn-block" disabled={use === null || (use && !t.length)} onClick={() => done(use ? { kind: 'target', target: t[0] } : { kind: 'none' })}>
+          {use === false ? '他不用，下一步' : '完成，下一步'}
+        </button>
+      </BottomBar>
+    </>
+  );
+}
+
+/** 笑匠：今晚由你给一个人换角色（不能是笑匠白天点的人） */
+function CackleStep({ g, s }: { g: Game; s: GameState }) {
+  const done = useDone(g);
+  const ui = useUi();
+  const safe = s.cackleSafe?.day === s.night - 1 ? s.cackleSafe.seat : null;
+  const [t, setT] = useState<number[]>([]);
+  const [role, setRole] = useState<RoleId | null>(null);
+  const x = t.length ? seatOf(s, t[0]) : null;
+  return (
+    <>
+      <p className="muted">笑匠在场：今晚你给一个人换成任意角色（可以是在场的）{safe ? `，但不能是笑匠白天点的 ${seatName(safe)}` : ''}。换了就叫醒他告诉他。</p>
+      <SeatPicker s={s} selected={t} max={1} onChange={setT} disabled={safe ? [safe] : []} label="你换谁？" collapse="换" />
+      {x && <RoleGrid roles={scriptOf(s).roles} value={role} onPick={setRole} />}
+      {x && role && (
+        <Reveal key={`${x.n}-${role}`}>
+          <DoBox items={[wake(x.n), <>点「给他看」：你现在是<b>【{roleName(role)}】</b>（阵营不变）。</>, sleep]} />
+          {firstNightOnly(role) && <p className="dim">这是第一晚就有的信息：网页不会自动补，你当场按这个角色给他信息。</p>}
+        </Reveal>
+      )}
+      <Tips role="cacklejack" />
+      <BottomBar wide>
+        {x && role && <CardButton onClick={() => ui.showCard(newRoleCard(role, isEvil(x)))} />}
+        <button className="btn btn-ghost" onClick={() => done({ kind: 'none' })}>
+          今晚不换
+        </button>
+        <button className="btn btn-primary grow" disabled={!x || !role} onClick={() => x && role && done({ kind: 'cackle', target: x.n, role })}>
           完成，下一步
         </button>
       </BottomBar>

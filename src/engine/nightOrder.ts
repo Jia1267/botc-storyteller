@@ -7,7 +7,7 @@ import type { SlotId } from './types';
  * 说书人自己的步骤：爪牙互认/恶魔得知爪牙、说书人的投毒者/鹰身女妖能力（紧跟在对应爪牙后面）。
  */
 export const FIRST_ORDER: SlotId[] = [
-  'dusk', 'kazali', 'bureaucrat', 'thief', 'boffin', 'philosopher', 'alchemist', 'yaggababble', 'minionInfo', 'snitch', 'lunatic', 'summoner', 'demonInfo', 'king',
+  'dusk', 'kazali', 'apprentice', 'barista', 'bureaucrat', 'thief', 'boffin', 'philosopher', 'alchemist', 'yaggababble', 'minionInfo', 'snitch', 'lunatic', 'summoner', 'demonInfo', 'king',
   'sailor', 'marionette', 'engineer',
   'preacher', 'lilmonsta', 'lleech', 'poisoner', 'widow', 'courtier', 'wizard', 'snakecharmer', 'godfather', 'organgrinder', 'devilsadvocate', 'eviltwin',
   'witch', 'cerenovus', 'fearmonger', 'harpy', 'mezepheles', 'pukka', 'pixie', 'huntsman', 'damsel', 'amnesiac', 'washerwoman', 'librarian', 'investigator', 'chef', 'empath', 'fortuneteller',
@@ -16,7 +16,7 @@ export const FIRST_ORDER: SlotId[] = [
 ];
 
 export const OTHER_ORDER: SlotId[] = [
-  'dusk', 'duchess', 'bureaucrat', 'thief', 'philosopher', 'poppygrower', 'sailor', 'engineer', 'preacher', 'poisoner', 'stPoisoner', 'courtier',
+  'dusk', 'duchess', 'cacklejack', 'barista', 'bureaucrat', 'thief', 'harlot', 'bonecollector', 'apprentice', 'philosopher', 'poppygrower', 'sailor', 'engineer', 'preacher', 'poisoner', 'stPoisoner', 'courtier',
   'innkeeper', 'wizard', 'gambler', 'acrobat', 'snakecharmer', 'monk', 'organgrinder', 'devilsadvocate', 'witch', 'cerenovus', 'pithag',
   'fearmonger', 'harpy', 'stHarpy', 'mezepheles', 'scarletwoman', 'summoner', 'lunatic', 'exorcist', 'lycanthrope', 'legion', 'imp', 'zombuul', 'pukka', 'shabaloth', 'po', 'fanggu', 'nodashii', 'vortox', 'lordoftyphon',
   'vigormortis', 'ojo', 'alhadikhia', 'lleech', 'lilmonsta', 'yaggababble', 'kazali', 'assassin', 'godfather', 'gossip', 'hatter', 'barber', 'sweetheart', 'plaguedoctor', 'sage', 'professor',
@@ -54,10 +54,27 @@ export const firstNightOnly = (r: RoleId) => !!ROLE_NIGHTS[r]?.first && !ROLE_NI
 /** 这个角色在不在夜里醒（哲学家、失忆者能选的能力要用） */
 export const wakesAtNight = (r: RoleId) => !!ROLE_NIGHTS[r];
 
+/** 旅行者随时可能加入：他们的步骤每个剧本都有（没人当这个旅行者就自动跳过） */
+export const TRAVELLER_FIRST: SlotId[] = ['apprentice', 'barista', 'bureaucrat', 'thief'];
+export const TRAVELLER_OTHER: SlotId[] = ['cacklejack', 'barista', 'bureaucrat', 'thief', 'harlot', 'bonecollector', 'apprentice'];
+
+/** 手写的夜晚顺序补上旅行者的步骤（按全局顺序插进去） */
+export function withTravellerSlots(order: SlotId[], first: boolean): SlotId[] {
+  const all = first ? FIRST_ORDER : OTHER_ORDER;
+  const add = (first ? TRAVELLER_FIRST : TRAVELLER_OTHER).filter((x) => !order.includes(x));
+  const out = [...order];
+  for (const x of add) {
+    // 插在全局顺序里它前面最近的那个已有步骤后面
+    const before = all.slice(0, all.indexOf(x)).reverse().find((y) => out.includes(y));
+    out.splice(before ? out.indexOf(before) + 1 : 1, 0, x);
+  }
+  return out;
+}
+
 /** 按角色表排出第一晚和其他夜晚的步骤（爪牙互认、恶魔得知爪牙总在，5–6 人局到时自动跳过） */
 export function nightsFor(roles: RoleId[], fabled: FabledId[] = []): { firstNight: SlotId[]; otherNights: SlotId[] } {
-  const first = new Set<SlotId>(['dusk', 'bureaucrat', 'thief', 'minionInfo', 'demonInfo', 'dawn']);
-  const other = new Set<SlotId>(['dusk', 'bureaucrat', 'thief', 'dawn']);
+  const first = new Set<SlotId>(['dusk', ...TRAVELLER_FIRST, 'minionInfo', 'demonInfo', 'dawn']);
+  const other = new Set<SlotId>(['dusk', ...TRAVELLER_OTHER, 'dawn']);
   for (const r of roles) {
     const n = ROLE_NIGHTS[r];
     if (n?.first) first.add(r as SlotId);

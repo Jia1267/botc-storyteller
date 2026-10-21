@@ -119,8 +119,11 @@ export function vigorActive(s: GameState, except?: number): boolean {
 export const keepsAbility = (s: GameState, n: number) =>
   s.vigor.some((v) => v.minion === n) && teamOf(seatOf(s, n).role) === 'minion' && vigorActive(s, n);
 
-/** 能力还在：活着，或被亡骨魔杀死的爪牙 */
-export const abilityAlive = (s: GameState, x: Seat) => x.alive || keepsAbility(s, x.n);
+/** 集骨者让这个死人今晚到明天黄昏有能力 */
+export const boneRegained = (s: GameState, n: number) => s.boneRegain?.seat === n && s.boneRegain.night === s.night && s.seats.some((x) => x.role === 'bonecollector' && x.alive);
+
+/** 能力还在：活着，或被亡骨魔杀死的爪牙，或集骨者让他暂时有能力 */
+export const abilityAlive = (s: GameState, x: Seat) => x.alive || keepsAbility(s, x.n) || boneRegained(s, x.n);
 
 /** 醉酒到黄昏（水手、旅店老板、侍臣、吟游诗人、莽夫） */
 export const tempDrunk = (s: GameState, n: number) => s.tempDrunk.some((d) => d.seat === n && d.from <= s.night && s.night <= d.to);
@@ -128,6 +131,8 @@ export const tempDrunk = (s: GameState, n: number) => s.tempDrunk.some((d) => d.
 /** 能力失灵：酒鬼、提线木偶（以为自己是好人）、被心上人弄醉的人，或正在中毒 */
 export function malfunction(s: GameState, n: number): boolean {
   const r = seatOf(s, n).role;
+  // 咖啡师：今晚到明天黄昏清醒健康
+  if (s.baristaPick?.mode === 'sober' && s.baristaPick.seat === n && s.baristaPick.night === s.night) return false;
   return (
     r === 'drunk' || r === 'marionette' || s.sweetheartDrunk === n || philoDrunk(s, n) || tempDrunk(s, n) || isPoisoned(s, n) || preachedNow(s, n) ||
     puzzleDrunkNow(s, n) || (s.viDrunk === n && r === 'villageidiot')

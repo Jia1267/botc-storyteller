@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { ROLES, type RoleId } from './roles';
 import { seeded } from './rng';
 import { newGame, randomSetup, refreshSetup, setCount, startDeal } from './setup';
-import { boomResolve, completeSlot, cultVote, currentSlot, damselGuess, dealNext, execute, executeStoryteller, finishDay, golemNominates, mezeSaid, psychoKill, riotNominate, shouldRun, slotActor, yaggaSay, type SlotPayload } from './flow';
+import { boomResolve, butcherAgain, completeSlot, cultVote, currentSlot, damselGuess, dealNext, execute, executeStoryteller, finishDay, golemNominates, judgeRules, mezeSaid, psychoKill, riotNominate, shouldRun, slotActor, voteNeed, yaggaSay, type SlotPayload } from './flow';
+import { addTraveller, swapPlayers } from './travellers';
 import { makeCustom } from './custom';
 import { shugenjaChoices, shugenjaSteps } from './info';
 import { isEvil, isPoisoned, malfunction, seatOf } from './core';
@@ -467,5 +468,79 @@ describe('实验性角色（二）：军团、召唤师、无神论者、村夫�
     night(s);
     execute(s, 1);
     expect(s.winner).toBe('evil');
+  });
+});
+
+describe('旅行者', () => {
+  it('咖啡师让中毒的人清醒健康', () => {
+    const s = game(['chef', 'empath', 'poisoner', 'monk', 'imp', 'soldier', 'undertaker']);
+    addTraveller(s, 'barista', 7, 'good');
+    night(s, { poisoner: { kind: 'target', target: 2 }, barista: { kind: 'barista', seat: 2, mode: 'sober' } });
+    expect(isPoisoned(s, 2)).toBe(true);
+    expect(malfunction(s, 2)).toBe(false);
+  });
+
+  it('流莺：对方同意、说书人决定两人都死', () => {
+    const s = game(['chef', 'empath', 'poisoner', 'monk', 'imp', 'soldier', 'undertaker']);
+    const h = addTraveller(s, 'harlot', 7, 'good');
+    night(s);
+    day(s);
+    night(s, { harlot: { kind: 'harlot', target: 2, agreed: true, kill: true }, imp: { kind: 'imp', target: 7 } });
+    expect(seatOf(s, 2).alive).toBe(false);
+    expect(seatOf(s, h).alive).toBe(false);
+  });
+
+  it('集骨者让死去的共情者当晚醒来', () => {
+    const s = game(['chef', 'empath', 'poisoner', 'monk', 'imp', 'soldier', 'undertaker']);
+    addTraveller(s, 'bonecollector', 7, 'good');
+    night(s);
+    day(s, 2);
+    const seen = night(s, { bonecollector: { kind: 'target', target: 2 }, imp: { kind: 'imp', target: 7 } });
+    expect(seen).toContain('empath');
+  });
+
+  it('学徒获得共情者能力，当晚在共情者的位置醒', () => {
+    const s = game(['chef', 'empath', 'poisoner', 'monk', 'imp', 'soldier', 'undertaker']);
+    const a = addTraveller(s, 'apprentice', 7, 'good');
+    const seen: number[] = [];
+    for (let guard = 0; guard < 40 && currentSlot(s) !== 'dawn'; guard++) {
+      const slot = currentSlot(s);
+      if (slot === 'empath') seen.push(slotActor(s, slot)!.n);
+      completeSlot(s, slot === 'apprentice' ? { kind: 'philo', role: 'empath' } : { kind: 'none' });
+    }
+    expect(s.gained[a]).toBe('empath');
+    expect(seen).toContain(a);
+  });
+
+  it('女舍监：两人换座位，角色和标记跟着人走', () => {
+    const s = game(['chef', 'empath', 'poisoner', 'monk', 'imp', 'soldier', 'undertaker']);
+    night(s, { poisoner: { kind: 'target', target: 2 } });
+    swapPlayers(s, 2, 6);
+    expect(seatOf(s, 6).role).toBe('empath');
+    expect(seatOf(s, 2).role).toBe('soldier');
+    expect(s.poison?.seat).toBe(6);
+  });
+
+  it('巫毒师在场：处决不需要过半；法官判定通过直接处决', () => {
+    const s = game(['chef', 'empath', 'poisoner', 'monk', 'imp', 'soldier', 'undertaker']);
+    const v = addTraveller(s, 'voudon', 7, 'good');
+    expect(voteNeed(s)).toBe(1);
+    seatOf(s, v).alive = false;
+    expect(voteNeed(s)).toBeGreaterThan(1);
+    const j = addTraveller(s, 'judge', 1, 'good');
+    night(s);
+    judgeRules(s, j, 5, true);
+    expect(s.winner).toBe('good');
+  });
+
+  it('屠夫：处决之后可以再来一次', () => {
+    const s = game(['chef', 'empath', 'poisoner', 'monk', 'imp', 'soldier', 'undertaker']);
+    addTraveller(s, 'butcher', 7, 'good');
+    night(s);
+    execute(s, 1);
+    butcherAgain(s);
+    expect(s.executed).toBeUndefined();
+    execute(s, 2);
+    expect(seatOf(s, 2).alive).toBe(false);
   });
 });

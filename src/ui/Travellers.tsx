@@ -3,6 +3,7 @@ import { ROLES, TRAVELLER_ROLES, roleName, type RoleId } from '../engine/roles';
 import { balance, recommend } from '../engine/balance';
 import { circleOrder, seatName, seatOf } from '../engine/core';
 import { addTraveller, alignmentChoices, evilTravellerInfo, exileThreshold } from '../engine/travellers';
+import { isEvil, malfunction } from '../engine/core';
 import { stepRng, type Game } from '../store';
 import { ChoicePanel, SayBox, SeatPicker, Sheet, useUi } from './common';
 
@@ -19,6 +20,7 @@ export function AddTravellerSheet({ g, onClose }: { g: Game; onClose: () => void
   const rec = useMemo(() => recommend(choices, balance(s).score, stepRng(s, 62)), [choices, s]);
   const [sel, setSel] = useState(rec);
   const alignment = choices[sel]?.value ?? 'good';
+  const [amigo, setAmigo] = useState<number[]>([]);
   const midGame = s.phase !== 'setup';
   const order = circleOrder(s);
   const nextOf = (n: number) => order[(order.indexOf(n) + 1) % order.length];
@@ -28,6 +30,7 @@ export function AddTravellerSheet({ g, onClose }: { g: Game; onClose: () => void
     if (!role || !after.length) return;
     g.commit((st) => {
       addTraveller(st, role, after[0], alignment);
+      if (role === 'gnome' && amigo.length) st.gnomeAmigo = amigo[0];
     });
     onClose();
     if (midGame)
@@ -47,14 +50,14 @@ export function AddTravellerSheet({ g, onClose }: { g: Game; onClose: () => void
           旅行者不占配板人数，不能被处决，只能被放逐。所有人都知道他是哪个旅行者，但不知道他的阵营。
         </p>
         <div className="dim">1. 他当哪个旅行者？（让他自己选）</div>
-        <div className="choices">
+        <div className="role-grid compact">
           {TRAVELLER_ROLES.map((r) => (
-            <button key={r} className={`choice${role === r ? ' sel' : ''}`} onClick={() => setRole(r)}>
-              <span className="lab">{roleName(r)}</span>
-              <span className="why">{ROLES[r].ability}</span>
+            <button key={r} className="role-chip" style={role === r ? { boxShadow: '0 0 0 2px var(--gold) inset' } : undefined} onClick={() => setRole(r)}>
+              {roleName(r)}
             </button>
           ))}
         </div>
+        {role && <p className="muted">{ROLES[role].ability}</p>}
         <SeatPicker s={s} selected={after} max={1} onChange={setAfter} label="2. 他坐在谁的顺时针下一位？（点他左手边那个人）" />
         {after.length > 0 && (
           <p className="dim">
@@ -63,6 +66,16 @@ export function AddTravellerSheet({ g, onClose }: { g: Game; onClose: () => void
         )}
         <div className="dim">3. 他的阵营（网页按局势推荐，可以改）</div>
         <ChoicePanel s={s} choices={choices} sel={sel} rec={rec} onSel={(i) => i >= 0 && setSel(i)} moreLabel="换阵营" />
+        {role === 'gnome' && (
+          <SeatPicker
+            s={s}
+            selected={amigo}
+            max={1}
+            onChange={setAmigo}
+            disabled={s.seats.filter((x) => x.traveller || isEvil(x) !== (alignment === 'evil')).map((x) => x.n)}
+            label="4. 侏儒的伙伴：选一个和他同阵营的人，开局公开宣布"
+          />
+        )}
         {midGame && role && (
           <SayBox
             title="公开宣布"
@@ -72,7 +85,8 @@ export function AddTravellerSheet({ g, onClose }: { g: Game; onClose: () => void
             ]}
           />
         )}
-        <button className="btn btn-primary btn-block" disabled={!role || !after.length} onClick={add}>
+        {role === 'gnome' && amigo.length > 0 && <SayBox title="公开宣布" lines={[`侏儒和 ${seatName(amigo[0])} 是同一阵营。`]} />}
+        <button className="btn btn-primary btn-block" disabled={!role || !after.length || (role === 'gnome' && !amigo.length)} onClick={add}>
           {midGame ? '加入，并给他看身份' : '加入（发身份时一起给他看）'}
         </button>
       </div>
@@ -86,6 +100,8 @@ export function ExileSheet({ g, onClose, onExile }: { g: Game; onClose: () => vo
   const [t, setT] = useState<number[]>([]);
   const notTravellers = s.seats.filter((x) => !x.traveller || !x.alive).map((x) => x.n);
   const need = exileThreshold(s);
+  const [funny, setFunny] = useState<boolean | null>(null);
+  const deviant = t.length > 0 && seatOf(s, t[0]).role === 'deviant' && !malfunction(s, t[0]);
   return (
     <Sheet title="放逐旅行者" onClose={onClose}>
       <div className="stack">
@@ -100,14 +116,31 @@ export function ExileSheet({ g, onClose, onExile }: { g: Game; onClose: () => vo
             <li>任何能力都不能影响放逐（例如替罪羊、贞洁者都不触发）。</li>
           </ul>
         </div>
-        {t.length > 0 && <SayBox title="够票的话公开宣布" lines={[`${seatName(t[0])}（${roleName(seatOf(s, t[0]).role)}）被放逐了。`]} />}
-        <button className="btn btn-danger btn-block" disabled={!t.length} onClick={() => onExile(t[0])}>
-          够票了，放逐
+        {deviant && <TwoChoiceInline value={funny} onChange={setFunny} />}
+        {t.length > 0 && (
+          <SayBox title="够票的话公开宣布" lines={deviant && funny ? [`${seatName(t[0])} 是怪咖，他今天很搞笑：放逐失败。`] : [`${seatName(t[0])}（${roleName(seatOf(s, t[0]).role)}）被放逐了。`]} />
+        )}
+        <button className="btn btn-danger btn-block" disabled={!t.length || (deviant && funny === null)} onClick={() => (deviant && funny ? onClose() : onExile(t[0]))}>
+          {deviant && funny ? '怪咖今天很搞笑：不放逐' : '够票了，放逐'}
         </button>
         <button className="btn btn-outline btn-block" onClick={onClose}>
           票不够，算了
         </button>
       </div>
     </Sheet>
+  );
+}
+
+/** 怪咖：今天搞笑了吗 */
+function TwoChoiceInline({ value, onChange }: { value: boolean | null; onChange: (v: boolean) => void }) {
+  return (
+    <div className="card card-warn stack" style={{ gap: 8 }}>
+      <b>他是怪咖：他今天很搞笑吗？</b>
+      <p className="dim">搞笑的话他不会被放逐。</p>
+      <div className="row">
+        <button className={`btn grow ${value === true ? 'btn-primary' : 'btn-outline'}`} onClick={() => onChange(true)}>很搞笑</button>
+        <button className={`btn grow ${value === false ? 'btn-primary' : 'btn-outline'}`} onClick={() => onChange(false)}>不搞笑</button>
+      </div>
+    </div>
   );
 }

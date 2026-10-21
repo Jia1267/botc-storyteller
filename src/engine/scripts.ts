@@ -115,6 +115,11 @@ export const SLOT_TITLE: Record<SlotId, string> = {
   engineer: '工程师',
   lycanthrope: '半兽人',
   cultleader: '异教领袖的阵营',
+  apprentice: '学徒（旅行者）',
+  barista: '咖啡师（旅行者）',
+  harlot: '流莺（旅行者）',
+  bonecollector: '集骨者（旅行者）',
+  cacklejack: '笑匠（旅行者）：一人换角色',
 };
 
 const SLOT_LINES: Partial<Record<SlotId, Lines>> = {

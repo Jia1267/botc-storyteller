@@ -1,6 +1,6 @@
 import type { FabledId, RoleId } from './roles';
 import type { SlotId } from './types';
-import { nightsFor } from './nightOrder';
+import { nightsFor, withTravellerSlots } from './nightOrder';
 
 export type ScriptId = 'tb' | 'bmr' | 'alvsal' | 'spooky' | 'whispers' | 'sunset' | 'sv';
 
@@ -146,5 +146,11 @@ export const SCRIPTS: Record<ScriptId, ScriptDef> = {
     ...nightsFor(SV_ROLES),
   },
 };
+
+// 手写顺序的剧本补上新加的旅行者步骤（没人当这个旅行者就自动跳过）
+for (const sc of Object.values(SCRIPTS)) {
+  sc.firstNight = withTravellerSlots(sc.firstNight, true);
+  sc.otherNights = withTravellerSlots(sc.otherNights, false);
+}
 
 export const SCRIPT_LIST: ScriptDef[] = [SCRIPTS.tb, SCRIPTS.bmr, SCRIPTS.sv, SCRIPTS.alvsal, SCRIPTS.spooky, SCRIPTS.whispers, SCRIPTS.sunset];

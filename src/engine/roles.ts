@@ -29,8 +29,10 @@ export type RoleId =
   | 'psychopath' | 'vizier' | 'wraith' | 'mezepheles' | 'organgrinder' | 'boffin' | 'xaan' | 'wizard' | 'boomdandy'
   | 'ojo' | 'lleech' | 'yaggababble' | 'lordoftyphon' | 'kazali' | 'riot'
   | 'legion' | 'summoner' | 'atheist' | 'villageidiot' | 'engineer' | 'lycanthrope' | 'cultleader' | 'hermit'
-  // 旅行者（暗流涌动）
-  | 'scapegoat' | 'gunslinger' | 'beggar' | 'bureaucrat' | 'thief';
+  // 旅行者
+  | 'scapegoat' | 'gunslinger' | 'beggar' | 'bureaucrat' | 'thief'
+  | 'apprentice' | 'matron' | 'judge' | 'bishop' | 'voudon' | 'barista' | 'harlot' | 'butcher' | 'bonecollector' | 'deviant'
+  | 'cacklejack' | 'gangster' | 'gnome';
 
 /** 传奇角色：说书人的角色，不发给玩家 */
 export type FabledId = 'sentinel' | 'duchess';
@@ -1009,10 +1011,81 @@ const R: RoleDef[] = [
     ability: '每晚，你选择一名其他玩家：明天他的投票算作负数。',
     tips: ['每晚入夜后叫醒他。', '第二天数票时，那个人举手算 −1 票（网页会在白天提醒你）。'],
   },
+  {
+    id: 'apprentice', name: '学徒', short: '学徒', team: 'traveller', weight: 0, bluff: 0,
+    ability: '你的第一晚，你获得一个镇民的能力（如果你是善良的）或一个爪牙的能力（如果你是邪恶的）。',
+    tips: ['他加入后的第一晚叫醒他，给他看一个剧本上的镇民（善良）或爪牙（邪恶），最好是不在场的。之后他有这个能力（他还是学徒）。'],
+  },
+  {
+    id: 'matron', name: '女舍监', short: '舍监', team: 'traveller', weight: 0, bluff: 0,
+    ability: '每个白天，你可以选择最多三对玩家交换座位。玩家不能离开座位去私聊。',
+    tips: ['他宣布哪两人换座位，就在网页里点"女舍监让人换座位"，网页会把这两人的一切（角色、状态）跟着人一起换过去。', '有女舍监时大家不能离座私聊（可以小声说）。'],
+  },
+  {
+    id: 'judge', name: '法官', short: '法官', team: 'traveller', weight: 0, bluff: 0,
+    ability: '整局一次，如果别人发起了提名，你可以强制这次处决通过或失败。',
+    tips: ['别人提名后他宣布用能力：你记下"通过"就直接处决被提名的人，"失败"就这次不处决。'],
+  },
+  {
+    id: 'bishop', name: '主教', short: '主教', team: 'traveller', weight: 0, bluff: 0,
+    ability: '只有说书人能提名。每天至少要提名一名对立阵营的玩家。',
+    tips: ['主教在场时玩家不能提名，由你提名（你可以听大家建议）。每天至少提名一个和主教阵营相反的人。'],
+  },
+  {
+    id: 'voudon', name: '巫毒师', short: '巫毒', team: 'traveller', weight: 0, bluff: 0,
+    ability: '只有你和死人能投票。他们投票不用投票标记，也不需要过半票数。',
+    tips: ['巫毒师活着时，只有他和死人能举手，死人不消耗投票标记。', '不需要过半：票最多的人就被处决（网页的票数门槛会变成 1）。'],
+  },
+  {
+    id: 'barista', name: '咖啡师', short: '咖啡', team: 'traveller', weight: 0, bluff: 0,
+    ability: '每晚，有一名玩家到黄昏前：①清醒健康并得到真信息，或者②能力生效两次。他会得知是哪一种。',
+    tips: [
+      '每晚由你选一个人和一种效果，叫醒他给他看咖啡师，再比 1 根手指（清醒健康）或 2 根（生效两次）。咖啡师本人不用醒。',
+      '"清醒健康"网页会自动算；"生效两次"网页只记一次，第二次你按同样的方式再走一遍。',
+    ],
+  },
+  {
+    id: 'harlot', name: '流莺', short: '流莺', team: 'traveller', weight: 0, bluff: 0,
+    ability: '每晚（第一晚除外），你选择一名活着的玩家：如果他同意，你得知他的角色，但你们俩都可能死亡。',
+    tips: ['叫醒被选的人问他同不同意（点头/摇头）。同意的话给流莺看他的角色，你可以决定两人都死。恶魔同意时别因此结束游戏。'],
+  },
+  {
+    id: 'butcher', name: '屠夫', short: '屠夫', team: 'traveller', weight: 0, bluff: 0,
+    ability: '每个白天，在第一次处决之后，你可以再提名一次。',
+    tips: ['有人被处决后（死不死都算），屠夫可以再提名一个人，照常投票，票数只要够一半就行。'],
+  },
+  {
+    id: 'bonecollector', name: '集骨者', short: '集骨', team: 'traveller', weight: 0, bluff: 0,
+    ability: '整局一次，在夜里（第一晚除外），你可以选择一名死去的玩家：他重新获得能力，直到黄昏。',
+    tips: ['被选的死人今晚和明天白天有能力（包括用过的一次性能力），夜里照常叫醒他（网页会叫）。'],
+  },
+  {
+    id: 'deviant', name: '怪咖', short: '怪咖', team: 'traveller', weight: 0, bluff: 0,
+    ability: '如果你今天很搞笑，你不会被放逐。',
+    tips: ['放逐他时你判断他今天有没有逗乐大家：有的话他不会被放逐。'],
+  },
+  {
+    id: 'cacklejack', name: '笑匠', short: '笑匠', team: 'traveller', weight: 0, bluff: 0,
+    ability: '每个白天，你选择一名玩家：今晚另一名玩家的角色会改变。',
+    tips: ['白天他点一个人（这个人今晚安全）。当晚你选另一个人换成任意角色（可以是在场的），叫醒他告诉他新角色。'],
+  },
+  {
+    id: 'gangster', name: '黑帮', short: '黑帮', team: 'traveller', weight: 0, bluff: 0,
+    ability: '每天一次，如果你另一边的存活邻座同意，你可以杀死一名存活的邻座。',
+    tips: ['他要杀左边（或右边）的活人邻座，必须另一边的活人邻座当场同意。'],
+  },
+  {
+    id: 'gnome', name: '侏儒', short: '侏儒', team: 'traveller', weight: 0, bluff: 0,
+    ability: '所有玩家开局得知一名和你同阵营的玩家。谁提名他，你都可以选择杀死谁。',
+    tips: ['他加入时你选一个和他同阵营的人当"伙伴"，公开宣布"侏儒和 X号 是同一阵营"。', '有人提名这个伙伴、投票开始前，侏儒说要用能力，提名者当场死亡（投票照常）。'],
+  },
 ];
 
-/** 暗流涌动的 5 个旅行者 */
-export const TRAVELLER_ROLES: RoleId[] = ['scapegoat', 'gunslinger', 'beggar', 'bureaucrat', 'thief'];
+/** 全部旅行者：暗流涌动、暗月初升、梦殒春宵、实验性 */
+export const TRAVELLER_ROLES: RoleId[] = [
+  'scapegoat', 'gunslinger', 'beggar', 'bureaucrat', 'thief', 'apprentice', 'matron', 'judge', 'bishop', 'voudon',
+  'barista', 'harlot', 'butcher', 'bonecollector', 'deviant', 'cacklejack', 'gangster', 'gnome',
+];
 
 export interface FabledDef {
   id: FabledId;
