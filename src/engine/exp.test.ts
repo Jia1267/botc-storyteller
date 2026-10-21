@@ -578,3 +578,12 @@ describe('传奇角色与 Loric', () => {
     expect(secs.some((x) => x.title.includes('相克') && x.lines.some((l) => l.includes('数学家')))).toBe(true);
   });
 });
+
+describe('角色大全', () => {
+  it('官方全部角色都能用', async () => {
+    const { CATALOG } = await import('./catalog');
+    const { FABLED } = await import('./roles');
+    const missing = CATALOG.filter((x) => !(x.id in ROLES) && !(x.id in FABLED) && x.id !== 'godofug-ug-mode').map((x) => x.id);
+    expect(missing).toEqual([]);
+  });
+});
