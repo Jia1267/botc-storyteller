@@ -99,9 +99,29 @@ export const SLOT_TITLE: Record<SlotId, string> = {
   ogre: '食人魔',
   hatter: '帽匠死了：邪恶换角色',
   qutler: 'Q宝',
+  boffin: '科学怪人：恶魔得知善良能力',
+  wizard: '巫师',
+  organgrinder: '街头风琴手',
+  mezepheles: '灵言师',
 };
 
 const SLOT_LINES: Partial<Record<SlotId, Lines>> = {
+  boffin: {
+    simple: ['科学怪人选中了你们：恶魔拥有这个角色的能力。'],
+    atmo: ['实验室里电光一闪……', '恶魔获得了这个能力。'],
+  },
+  wizard: {
+    simple: ['你要许愿吗？'],
+    atmo: ['水晶球亮了起来……', '说出你的愿望。'],
+  },
+  organgrinder: {
+    simple: ['你要让自己醉酒到明天黄昏吗？点头或摇头。'],
+    atmo: ['风琴的曲子越来越慢……', '今晚你要不要醉？'],
+  },
+  mezepheles: {
+    simple: ['这是你的秘密词。'],
+    atmo: ['一个词，一个契约……', '记住它。'],
+  },
   huntsman: {
     simple: ['你要用能力吗？要用就指一名活着的玩家。'],
     atmo: ['猎人背起弓，走进山林……', '你要去找谁？不用就摇头。'],

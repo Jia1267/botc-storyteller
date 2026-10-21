@@ -311,6 +311,13 @@ export function newGame(): GameState {
     puzzleGuessed: false,
     qutlerMaster: null,
     hatterResolved: false,
+    psychoDay: 0,
+    mezeWord: '',
+    mezeTarget: null,
+    mezeUsed: false,
+    boffinAbility: null,
+    xaanNight: 0,
+    boomPending: false,
     bluffs: [],
     redHerring: null,
     setupZ: 0,
@@ -578,6 +585,30 @@ export function refreshSetup(s: GameState, rng: Rng) {
   refreshTwin(s, rng);
   const pz = puzzleDrunkChoices(s, rng);
   s.puzzleDrunk = pz.length ? pz[recommend(pz, balance(s).score, rng)].value : null;
+  const bf = boffinChoices(s, rng);
+  s.boffinAbility = bf.length ? bf[recommend(bf, balance(s).score, rng)].value : null;
+  // 限：开局有几个外来者就在第几夜下毒
+  s.xaanNight = s.seats.some((x) => x.role === 'xaan') ? s.seats.filter((x) => !x.traveller && ROLES[x.role].team === 'outsider').length : 0;
+  if (s.seats.some((x) => x.role === 'mezepheles') && !s.mezeWord) s.mezeWord = pick(MEZE_WORDS, rng);
+}
+
+/** 灵言师的秘密词：平时不会随口说出来的词 */
+export const MEZE_WORDS = ['蒲公英', '棉花糖', '灯塔', '企鹅', '风铃', '火烈鸟', '万花筒', '橡皮鸭', '仙人掌', '热气球', '章鱼', '跷跷板', '霓虹灯', '鹦鹉螺', '彩虹糖'];
+
+/** 科学怪人：恶魔拿到哪个不在场的善良能力（剧本上的，夜里才有它的位置） */
+export function boffinChoices(s: GameState, rng: Rng): Choice<RoleId>[] {
+  if (!s.seats.some((x) => x.role === 'boffin')) return [];
+  const pool = notInPlay(s, ['townsfolk', 'outsider'], ['drunk', 'lunatic', 'boffin']);
+  if (!pool.length) return [];
+  const mk = (key: string, r: RoleId, lean: number, reason: string, standard = false): Choice<RoleId> => ({ key, label: roleName(r), value: r, lean, reason, truth: true, standard });
+  const out: Choice<RoleId>[] = [];
+  const info = pick(pool.filter((r) => ROLES[r].info).length ? pool.filter((r) => ROLES[r].info) : pool, rng);
+  out.push(mk('info', info, 0, `${roleName(info)}：恶魔也能拿信息，标准做法。`, true));
+  const out2 = pool.find((r) => ROLES[r].team === 'outsider' && r !== info);
+  if (out2) out.push(mk('outsider', out2, 1, `外来者的能力对恶魔用处不大（甚至是拖累），帮善良。`));
+  const strong = [...pool].sort((a, b) => ROLES[b].weight - ROLES[a].weight)[0];
+  if (strong && strong !== info) out.push(mk('strong', strong, -1, `${roleName(strong)}能力很强，恶魔拿到大有用处，帮邪恶。`));
+  return out;
 }
 
 /** 解谜大师：哪个玩家整局醉酒（一般是镇民） */
@@ -770,6 +801,9 @@ export function startDeal(s: GameState) {
   if (s.redHerring) lines.push(`占卜干扰项：${seatName(s.redHerring)}`);
   if (s.twin) lines.push(`镜像双子的善良双子：${seatName(s.twin)}${roleName(s.seats[s.twin - 1].role)}`);
   if (s.puzzleDrunk) lines.push(`解谜大师：${seatName(s.puzzleDrunk)}${roleName(s.seats[s.puzzleDrunk - 1].role)}整局醉酒`);
+  if (s.boffinAbility) lines.push(`科学怪人：恶魔拥有【${roleName(s.boffinAbility)}】的能力`);
+  if (s.xaanNight) lines.push(`限：第 ${s.xaanNight} 夜所有镇民中毒到黄昏`);
+  if (s.mezeWord && inPlay(s, 'mezepheles')) lines.push(`灵言师的秘密词：「${s.mezeWord}」`);
   if (s.fabled.includes('sentinel')) lines.push(`传奇角色哨兵：外来者 ${s.sentinelDelta > 0 ? '+1' : s.sentinelDelta < 0 ? '−1' : '不变'}`);
   if (s.fabled.includes('duchess')) lines.push('传奇角色：公爵夫人');
   for (const text of lines) s.log.push({ night: 0, phase: 'setup', text });

@@ -26,6 +26,7 @@ export type RoleId =
   | 'steward' | 'knight' | 'noble' | 'shugenja' | 'highpriestess' | 'king' | 'choirboy' | 'nightwatchman' | 'princess' | 'farmer'
   | 'acrobat' | 'preacher' | 'magician' | 'poppygrower' | 'huntsman'
   | 'golem' | 'zealot' | 'damsel' | 'snitch' | 'puzzlemaster' | 'ogre' | 'hatter' | 'politician' | 'heretic' | 'qutler'
+  | 'psychopath' | 'vizier' | 'wraith' | 'mezepheles' | 'organgrinder' | 'boffin' | 'xaan' | 'wizard' | 'boomdandy'
   // 旅行者（暗流涌动）
   | 'scapegoat' | 'gunslinger' | 'beggar' | 'bureaucrat' | 'thief';
 
@@ -847,6 +848,53 @@ const R: RoleDef[] = [
     id: 'qutler', name: 'Q宝', short: 'Q宝', team: 'outsider', weight: -0.5, bluff: 1,
     ability: '每晚，你选择一名其他玩家：明天只有他投票时，你才能投票。',
     tips: ['和管家一样：每晚让他指一个"主人"。明天白天提醒自己。', '是他自己要遵守，不用你盯着；他违规举手也照算。'],
+  },
+
+  /* ---------- 实验性角色：爪牙 ---------- */
+  {
+    id: 'psychopath', name: '精神病患者', short: '精神病', team: 'minion', weight: -2, bluff: 0,
+    ability: '每个白天提名开始前，你可以公开选择一名玩家：他死亡。你被处决时，只有猜拳输了才会死。',
+    tips: ['他公开选人时在"白天有人来找你"里点，每天一次，要在提名开始前。', '他被处决：和提名他的人猜拳（石头剪刀布），提名者赢了他才死；平局或他赢都不死，今天也不能再处决别人。'],
+  },
+  {
+    id: 'vizier', name: '维齐尔', short: '维齐尔', team: 'minion', weight: -1.5, bluff: 0,
+    ability: '所有人都知道你是维齐尔。你白天不会死。如果有善良玩家投了票，你可以选择让被提名的人立即被处决。',
+    tips: ['第一个白天开始时公开宣布谁是维齐尔（网页会写在台词里）。', '一次投票数完票后，只要有善良玩家举了手，他可以宣布立即处决，票数够不够都行；这算今天的处决。', '他白天怎么都死不了（被处决也不死）。'],
+  },
+  {
+    id: 'wraith', name: '亡魂', short: '亡魂', team: 'minion', weight: -1.5, bluff: 0,
+    ability: '你可以在夜里睁眼。其他邪恶玩家醒来时，你也醒来。',
+    tips: ['每次叫醒邪恶玩家时，先叫醒亡魂，让邪恶玩家闭眼时他也闭眼。', '好人抓到他睁眼也没有规则后果。他死了或中毒醉酒时私下告诉他今晚不能睁眼。'],
+  },
+  {
+    id: 'mezepheles', name: '灵言师', short: '灵言', team: 'minion', weight: -1.5, bluff: 0,
+    ability: '你开局得知一个秘密词。第一个说出这个词的善良玩家，当晚变成邪恶。',
+    tips: ['第一晚把秘密词给他看（网页会出一个不常用的词，可以换）。', '你亲耳听到哪个善良玩家说出这个词，就在"白天有人来找你"里记下；当晚叫醒他告诉他变成邪恶了。', '那晚灵言师中毒/醉酒，那人就不变，能力也用掉了。'],
+  },
+  {
+    id: 'organgrinder', name: '街头风琴手', short: '风琴', team: 'minion', weight: -1.5, bluff: 0,
+    ability: '投票时所有人闭眼，票数保密。每晚，你可以选择自己醉酒到黄昏。',
+    tips: ['他清醒时：每次投票让大家闭眼，你默数票数，不公布、也不说谁"待处决"；提名结束后再宣布处决谁。', '每晚问他要不要醉酒，点头就醉到明天黄昏（明天投票正常睁眼）。'],
+  },
+  {
+    id: 'boffin', name: '科学怪人', short: '怪人', team: 'minion', weight: -1.5, bluff: 0,
+    ability: '恶魔（即使醉酒中毒）拥有一个不在场的善良角色的能力，你们俩都知道是哪个。',
+    tips: ['开局由你挑一个不在场的善良角色（配角色时在下面选）。第一晚叫醒科学怪人和恶魔，给他们看这个角色。', '恶魔会在这个角色的位置醒来用能力。科学怪人中毒醉酒或死了，恶魔就没有这个能力。'],
+  },
+  {
+    id: 'xaan', name: '限', short: '限', team: 'minion', weight: -1.5, bluff: 0,
+    ability: '在第 X 夜，所有镇民中毒到黄昏。[X 是开局时外来者的人数]',
+    tips: ['开局有几个外来者，就在第几夜把所有镇民毒到第二天黄昏（网页会自动标出）。没有外来者就永远不毒。', '限要活着才有效。'],
+  },
+  {
+    id: 'wizard', name: '巫师', short: '巫师', team: 'minion', weight: -1.5, bluff: 0,
+    ability: '整局一次，你可以许一个愿望。说书人可以实现它，但可能有代价，还会留下线索。',
+    tips: ['每晚问他要不要许愿（可以写在手机上给你看）。你可以答应、拒绝或让他换一个。', '答应了也要让好人还有机会赢：可以加代价，或公开给好人一个线索。网页会把愿望记进本局记录。'],
+  },
+  {
+    id: 'boomdandy', name: '炸弹人', short: '炸弹', team: 'minion', weight: -1, bluff: 0,
+    ability: '如果你被处决，除三名玩家外所有人死亡。倒数十秒后，被最多人指着的玩家死亡。',
+    tips: ['他被处决（死不死都算）：宣布他爆炸了，你选三个人活下来（恶魔必须在里面），其余活人都死。', '然后慢慢倒数十秒，所有人（死人也可以）指一个人，被指最多的死；平票就没人死。'],
   },
 
   /* ---------- 旅行者：迟到/早退的人，阵营由说书人定 ---------- */

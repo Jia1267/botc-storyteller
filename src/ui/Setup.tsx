@@ -8,7 +8,7 @@ import {
   DISTRIBUTION, F4, MAX_F4, alchemistChoices, amnesiacChoices, bluffChoicesWith, bluffPool, drunkFakeChoices, evilTownsfolkChoices, godfatherChoices, godfatherModFor,
   marionetteFakeChoices, redHerringChoices, replaceDemon, replaceRole, rerollRoles, sentinelChoices, setAlchemistAbility, setCount, setEvilTownsfolk,
   setGodfatherDelta, setScript, setSentinelDelta, setupReasons, shuffleSeats, startDeal, swapSeats, toggleFabled, setTwin, twinChoices,
-  puzzleDrunkChoices,
+  puzzleDrunkChoices, boffinChoices, MEZE_WORDS,
 } from '../engine/setup';
 import { stepRng, type Game } from '../store';
 import { BottomBar, ChoicePanel, Sheet, SeatPicker } from './common';
@@ -308,7 +308,7 @@ function RolePicker({
   );
 }
 
-type Edit = 'drunk' | 'bluffs' | 'rh' | 'lunatic' | 'amnesiac' | 'traveller' | 'marionette' | 'etf' | 'alchemist' | 'twin' | 'puzzle' | null;
+type Edit = 'drunk' | 'bluffs' | 'rh' | 'lunatic' | 'amnesiac' | 'traveller' | 'marionette' | 'etf' | 'alchemist' | 'twin' | 'puzzle' | 'boffin' | null;
 
 function SeatsStep({ g, onRules }: { g: Game; onRules: () => void }) {
   const s = g.s;
@@ -402,6 +402,39 @@ function SeatsStep({ g, onRules }: { g: Game; onRules: () => void }) {
             </button>
           </div>
         )}
+        {s.boffinAbility && s.seats.some((x) => x.role === 'boffin') && (
+          <div className="card">
+            <h3>科学怪人</h3>
+            <p>
+              恶魔拥有 <b className="good">【{roleName(s.boffinAbility)}】</b> 的能力。第一晚告诉科学怪人和恶魔。
+            </p>
+            <p className="dim">{ROLES[s.boffinAbility].ability}</p>
+            <button className="btn btn-outline btn-sm" style={{ marginTop: 10 }} onClick={() => setEdit('boffin')}>
+              看理由 / 更换
+            </button>
+          </div>
+        )}
+        {s.mezeWord && s.seats.some((x) => x.role === 'mezepheles') && (
+          <div className="card">
+            <h3>灵言师的秘密词</h3>
+            <p>
+              <b className="evil">「{s.mezeWord}」</b>：第一晚告诉灵言师。善良玩家说出它，当晚就变成邪恶。
+            </p>
+            <button
+              className="btn btn-outline btn-sm"
+              style={{ marginTop: 10 }}
+              onClick={() => g.commit((st) => (st.mezeWord = MEZE_WORDS[(MEZE_WORDS.indexOf(st.mezeWord) + 1) % MEZE_WORDS.length]))}
+            >
+              换一个词
+            </button>
+          </div>
+        )}
+        {s.seats.some((x) => x.role === 'xaan') && (
+          <div className="card">
+            <h3>限</h3>
+            <p>{s.xaanNight ? `开局有 ${s.xaanNight} 个外来者：第 ${s.xaanNight} 夜到第 ${s.xaanNight} 天黄昏，所有镇民中毒（网页会自动标出）。` : '开局没有外来者：限永远不会下毒。'}</p>
+          </div>
+        )}
         {s.puzzleDrunk && s.seats.some((x) => x.role === 'puzzlemaster') && (
           <div className="card">
             <h3>解谜大师</h3>
@@ -491,6 +524,7 @@ function SeatsStep({ g, onRules }: { g: Game; onRules: () => void }) {
       {edit === 'alchemist' && <AlchemistEdit g={g} onClose={() => setEdit(null)} />}
       {edit === 'twin' && <TwinEdit g={g} onClose={() => setEdit(null)} />}
       {edit === 'puzzle' && <PuzzleEdit g={g} onClose={() => setEdit(null)} />}
+      {edit === 'boffin' && <BoffinEdit g={g} onClose={() => setEdit(null)} />}
       <BottomBar>
         <button className="btn btn-primary btn-block" onClick={() => g.commit((st) => startDeal(st))}>
           开始发身份
@@ -554,6 +588,19 @@ function AlchemistEdit({ g, onClose }: { g: Game; onClose: () => void }) {
         <p className="dim">换成教父会让外来者 ±1，网页会自动调整人数。</p>
         <ChoicePanel s={s} choices={choices} sel={sel} rec={rec} defaultOpen moreLabel="可选的爪牙能力" onSel={(i) => i >= 0 && g.commit((st) => setAlchemistAbility(st, choices[i].value, defaultRng))} />
       </div>
+    </Sheet>
+  );
+}
+
+/** 科学怪人：恶魔拿到哪个善良能力 */
+function BoffinEdit({ g, onClose }: { g: Game; onClose: () => void }) {
+  const s = g.s;
+  const choices = useMemo(() => boffinChoices(s, stepRng(s, 13)), [s]);
+  const rec = useMemo(() => recommend(choices, balance(s).score, stepRng(s, 14)), [choices, s]);
+  const sel = choices.findIndex((c) => c.value === s.boffinAbility);
+  return (
+    <Sheet title="科学怪人：恶魔拥有哪个善良能力" onClose={onClose}>
+      <ChoicePanel s={s} choices={choices} sel={sel} rec={rec} defaultOpen moreLabel="其他推荐" onSel={(i) => i >= 0 && g.commit((st) => (st.boffinAbility = choices[i].value))} />
     </Sheet>
   );
 }

@@ -24,7 +24,7 @@ const ROLE_SLOTS: SlotId[] = [
   'clockmaker', 'snakecharmer', 'mathematician', 'towncrier', 'oracle', 'philosopher', 'juggler', 'sage',
   'eviltwin', 'witch', 'cerenovus', 'pithag',
   'steward', 'knight', 'noble', 'shugenja', 'highpriestess', 'king', 'choirboy', 'nightwatchman', 'farmer', 'acrobat', 'preacher',
-  'huntsman', 'ogre', 'qutler',
+  'huntsman', 'ogre', 'qutler', 'boffin', 'wizard', 'organgrinder', 'mezepheles',
 ];
 
 /** 恶魔自己醒来行动的步骤（驱魔人选中恶魔、麻脸巫婆造了恶魔说书人决定今晚不死人时都不醒） */
@@ -124,6 +124,9 @@ function candidates(s: GameState, slot: SlotId): Seat[] {
   // 被亡骨魔杀死的爪牙照常醒；被传教士选中的爪牙不醒
   if (slot === 'witch') return s.seats.filter((x) => wakesAs(s, x, 'witch') && abilityAlive(s, x) && aliveCount(s) > 3 && !preachedNow(s, x.n));
   if (slot === 'cerenovus' || slot === 'pithag') return s.seats.filter((x) => wakesAs(s, x, slot) && abilityAlive(s, x) && !preachedNow(s, x.n));
+  // 灵言师：第一晚看秘密词；之后有人说出秘密词的那晚才醒
+  if (slot === 'mezepheles')
+    return s.seats.filter((x) => x.role === 'mezepheles' && abilityAlive(s, x) && !preachedNow(s, x.n) && (s.night === 1 || (s.mezeTarget !== null && !s.mezeUsed)));
   // 国王：第一晚叫醒恶魔告诉他谁是国王
   if (slot === 'king' && s.night === 1) {
     const d = demonSeat(s);
@@ -139,7 +142,8 @@ function candidates(s: GameState, slot: SlotId): Seat[] {
     if (teamOf(x.role) === 'minion' && preachedNow(s, x.n)) return false;
     if (slot === 'king') return x.alive && s.seats.filter((y) => !y.alive).length >= s.seats.filter((y) => y.alive).length;
     if (slot === 'choirboy') return x.alive && kingKilledTonight(s);
-    if (slot === 'nightwatchman' || slot === 'huntsman') return x.alive && !x.used;
+    if (slot === 'nightwatchman' || slot === 'huntsman' || slot === 'wizard') return x.alive && !x.used;
+    if (slot === 'boffin') return x.alive && !!s.boffinAbility;
     if (slot === 'philosopher') return x.alive && (!x.used || !!s.ns?.philoNow);
     if (slot === 'juggler') return x.alive && s.juggler?.seat === x.n && s.juggler.day === s.night - 1 && !!s.juggler.guesses;
     if (slot === 'sage') return !x.alive && x.death?.when === 'night' && x.death.night === s.night && demonCause(x.death.cause);
@@ -365,7 +369,8 @@ export type SlotPayload =
   | { kind: 'nightwatch'; target: number | null }
   | { kind: 'farmer'; to: number }
   | { kind: 'huntsman'; target: number | null; become?: RoleId }
-  | { kind: 'hatter'; changes: { seat: number; role: RoleId }[] };
+  | { kind: 'hatter'; changes: { seat: number; role: RoleId }[] }
+  | { kind: 'wish'; text: string | null };
 
 /** 这一步里玩家用能力"选择"了哪些人（莽夫用） */
 function chosenSeats(p: SlotPayload): number[] {
@@ -484,6 +489,8 @@ function usedAbility(p: SlotPayload): boolean {
       return !!p.target;
     case 'hatter':
       return p.changes.length > 0;
+    case 'wish':
+      return !!p.text;
     case 'seamstress':
       return !!p.picks;
     case 'po':
@@ -1135,6 +1142,35 @@ export function completeSlot(s: GameState, p: SlotPayload) {
         addLog(s, 'night', `帽匠死了：${p.changes.map((c) => `${seatName(c.seat)} 换成${roleName(c.role)}`).join('，')}`);
       } else addLog(s, 'night', '帽匠死了：邪恶都没有换角色');
       break;
+    case 'boffin':
+      addLog(s, 'night', `科学怪人 ${who} 和恶魔得知：恶魔拥有【${roleName(s.boffinAbility!)}】的能力`);
+      break;
+    case 'wizard':
+      if (p.kind === 'wish') {
+        if (!p.text) addLog(s, 'night', `巫师 ${who} 今晚不许愿`);
+        else {
+          actor!.used = true;
+          addLog(s, 'night', `巫师 ${who} 许愿：「${p.text}」${malfunction(s, actor!.n) ? '（中毒/醉酒：愿望不会实现）' : ''}`);
+        }
+      }
+      break;
+    case 'organgrinder':
+      if (p.kind === 'yesno') {
+        if (p.yes) s.tempDrunk.push({ seat: actor!.n, from: s.night, to: s.night, why: '街头风琴手自己' });
+        addLog(s, 'night', `街头风琴手 ${who}：${p.yes ? '选择醉酒到明天黄昏（明天投票正常睁眼）' : '保持清醒（明天投票要闭眼、票数保密）'}`);
+      }
+      break;
+    case 'mezepheles':
+      if (s.night === 1) addLog(s, 'night', `灵言师 ${who} 得知秘密词「${s.mezeWord}」`);
+      else if (s.mezeTarget !== null) {
+        const t = seatOf(s, s.mezeTarget);
+        const ok = !malfunction(s, actor!.n) && !isEvil(t);
+        if (ok) setAlignment(t, true);
+        addLog(s, 'night', `说出秘密词的 ${seatName(t.n)} ${ok ? '变成邪恶，已告知他' : '没有变（灵言师中毒/醉酒）'}；灵言师的能力用掉了`);
+        s.mezeUsed = true;
+        s.mezeTarget = null;
+      }
+      break;
     case 'dusk':
       break;
   }
@@ -1392,6 +1428,8 @@ export interface ExecuteOpts {
   scapegoat?: boolean;
   /** 和平主义者：这名善良玩家被处决但不死 */
   pacifist?: boolean;
+  /** 精神病患者被处决：猜拳他没输，不死 */
+  psychoSurvives?: boolean;
 }
 
 /** 食人族：有人被处决死亡，换成他的能力；吃到邪恶就中毒并给一个假的善良能力 */
@@ -1487,6 +1525,8 @@ export function execute(s: GameState, n: number | null, cause = '被处决', opt
     }
   }
   s.executed = n;
+  // 炸弹人被处决（死不死都算）：爆炸，在白天结果页结算
+  if (n !== null && seatOf(s, n).role === 'boomdandy' && !malfunction(s, n)) s.boomPending = true;
   // 镜像双子：善良的双子被处决，邪恶获胜
   if (n !== null && n === s.twin && twinActive(s) && !isEvil(seatOf(s, n))) {
     const x = seatOf(s, n);
@@ -1526,6 +1566,10 @@ export function execute(s: GameState, n: number | null, cause = '被处决', opt
   }
   if (advocateSaves(s, n)) {
     addLog(s, 'day', `${seatLabel(s, n)} 被处决，但受魔鬼代言人保护，没有死`);
+    return;
+  }
+  if (st.role === 'psychopath' && !malfunction(s, n) && opts.psychoSurvives) {
+    addLog(s, 'day', `${seatLabel(s, n)} 被处决，但猜拳没输，没有死`);
     return;
   }
   if (opts.pacifist && pacifistCanSave(s, n)) {
@@ -1648,6 +1692,36 @@ export function twinActive(s: GameState): boolean {
 }
 
 /* ---------------- 梦殒春宵：白天 ---------------- */
+
+/** 精神病患者白天公开杀人（提名开始前，每天一次） */
+export function psychoKill(s: GameState, pN: number, target: number) {
+  s.psychoDay = s.night;
+  addLog(s, 'day', `精神病患者（${seatName(pN)}）公开选择了 ${seatName(target)}`);
+  if (malfunction(s, pN)) addLog(s, 'day', '精神病患者中毒/醉酒：什么都没有发生');
+  else dayDeath(s, target, '被精神病患者当众杀死');
+}
+
+/** 维齐尔下令立即处决刚才被提名的人（有善良玩家投了票） */
+export function vizierExecute(s: GameState, vN: number, n: number) {
+  addLog(s, 'day', `维齐尔（${seatName(vN)}）下令立即处决 ${seatName(n)}`);
+  execute(s, n, '被维齐尔下令立即处决');
+}
+
+/** 善良玩家说出了灵言师的秘密词 */
+export function mezeSaid(s: GameState, n: number) {
+  s.mezeTarget = n;
+  addLog(s, 'day', `${seatName(n)} 说出了灵言师的秘密词「${s.mezeWord}」：今晚他会变成邪恶`);
+}
+
+/** 炸弹人爆炸：除三名幸存者外的活人都死；然后被指得最多的人死（平票没人死） */
+export function boomResolve(s: GameState, survivors: number[], pointed: number | null) {
+  s.boomPending = false;
+  addLog(s, 'day', `炸弹人爆炸：只留下 ${survivors.map((n) => seatName(n)).join('、')}`);
+  for (const x of s.seats) if (x.alive && !survivors.includes(x.n)) kill(s, x.n, 'day', '炸弹人爆炸', true);
+  if (pointed !== null) dayDeath(s, pointed, '炸弹人爆炸后被最多人指着');
+  else addLog(s, 'day', '倒数结束：平票，没有人死');
+  checkWin(s, 'day');
+}
 
 /** 魔像提名了一个人：不是恶魔就死（整局一次） */
 export function golemNominates(s: GameState, golemN: number, nominee: number, recluseAsDemon = false) {

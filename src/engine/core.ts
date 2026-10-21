@@ -73,6 +73,11 @@ export function isPoisoned(s: GameState, n: number): boolean {
   if (s.pukkaPoison === n && s.seats.some((x) => x.role === 'pukka' && reallyAlive(s, x))) return true;
   // 被舞蛇人换掉的前恶魔：一直中毒
   if (s.snakePoisoned.includes(n)) return true;
+  // 限：第 X 夜到第 X 天黄昏，所有镇民中毒
+  if (s.xaanNight && s.night === s.xaanNight && teamOf(seatOf(s, n).role) === 'townsfolk') {
+    const xa = s.seats.find((x) => x.role === 'xaan' && x.alive);
+    if (xa && xa.n !== n && !malfunction(s, xa.n)) return true;
+  }
   // 诺-达鲺左右最近的镇民
   const nd = s.seats.find((x) => x.role === 'nodashii' && x.alive);
   if (nd && nd.n !== n && teamOf(seatOf(s, n).role) === 'townsfolk' && townsfolkNeighbors(s, nd.n).includes(n) && !malfunction(s, nd.n)) return true;
@@ -167,7 +172,15 @@ export function wakesAs(s: GameState, st: Seat, r: RoleId): boolean {
   if (st.role === 'marionette' && s.marionetteFake === r) return true;
   // 炼金术士（或以为自己是炼金术士的酒鬼）在那个爪牙的位置醒
   if (s.alchemistAbility === r && believedRole(s, st) === 'alchemist') return true;
+  // 科学怪人：恶魔在那个善良角色的位置醒（科学怪人活着且健康）
+  if (s.boffinAbility === r && teamOf(st.role) === 'demon' && boffinActive(s)) return true;
   return s.gained[st.n] === r;
+}
+
+/** 科学怪人活着且健康：恶魔有那个善良能力 */
+export function boffinActive(s: GameState): boolean {
+  const b = s.seats.find((x) => x.role === 'boffin' && x.alive);
+  return !!b && !malfunction(s, b.n);
 }
 
 /** 白天能力也算上失忆者被定下的能力 */
@@ -244,6 +257,11 @@ export function kill(s: GameState, n: number, when: 'night' | 'day', cause: stri
   const st = seatOf(s, n);
   const fake = st.role === 'zombuul' && s.zombuulFake;
   if (!st.alive && !fake) return false;
+  // 维齐尔白天不会死
+  if (when === 'day' && !force && st.role === 'vizier' && !malfunction(s, n)) {
+    addLog(s, when, `${seatName(n)} 是维齐尔，白天不会死`);
+    return false;
+  }
   // 公主：今晚恶魔杀不死人
   if (when === 'night' && s.ns?.demonNoKill && demonCause(cause)) {
     addLog(s, when, `${seatName(n)} 被恶魔选中，但${s.ns.demonNoKill}`);

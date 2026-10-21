@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { ROLES, type RoleId } from './roles';
 import { seeded } from './rng';
 import { newGame, randomSetup, refreshSetup, startDeal } from './setup';
-import { completeSlot, currentSlot, damselGuess, dealNext, execute, finishDay, golemNominates, shouldRun, slotActor, type SlotPayload } from './flow';
+import { boomResolve, completeSlot, currentSlot, damselGuess, dealNext, execute, finishDay, golemNominates, mezeSaid, psychoKill, shouldRun, slotActor, type SlotPayload } from './flow';
 import { makeCustom } from './custom';
 import { shugenjaChoices, shugenjaSteps } from './info';
 import { isEvil, isPoisoned, malfunction, seatOf } from './core';
@@ -228,6 +228,65 @@ describe('实验性外来者', () => {
     const s = game(['heretic', 'chef', 'empath', 'poisoner', 'imp', 'monk', 'soldier']);
     night(s);
     execute(s, 5);
+    expect(s.winner).toBe('evil');
+  });
+});
+
+describe('实验性爪牙', () => {
+  it('精神病患者白天杀人；被处决猜拳没输就不死', () => {
+    const s = game(['chef', 'empath', 'psychopath', 'monk', 'imp', 'soldier', 'undertaker']);
+    night(s);
+    psychoKill(s, 3, 1);
+    expect(seatOf(s, 1).alive).toBe(false);
+    execute(s, 3, '被处决', { psychoSurvives: true });
+    expect(seatOf(s, 3).alive).toBe(true);
+  });
+
+  it('维齐尔白天不会死', () => {
+    const s = game(['chef', 'empath', 'vizier', 'monk', 'imp', 'soldier', 'undertaker']);
+    night(s);
+    execute(s, 3);
+    expect(seatOf(s, 3).alive).toBe(true);
+  });
+
+  it('灵言师：说出秘密词的好人当晚变邪恶；能力只用一次', () => {
+    const s = game(['chef', 'empath', 'mezepheles', 'monk', 'imp', 'soldier', 'undertaker']);
+    expect(s.mezeWord).not.toBe('');
+    night(s);
+    mezeSaid(s, 2);
+    day(s);
+    const seen = night(s, { imp: { kind: 'imp', target: 1 } });
+    expect(seen).toContain('mezepheles');
+    expect(isEvil(seatOf(s, 2))).toBe(true);
+    expect(s.mezeUsed).toBe(true);
+  });
+
+  it('科学怪人：恶魔在那个善良角色的位置醒', () => {
+    const board: RoleId[] = ['chef', 'empath', 'monk', 'soldier', 'undertaker', 'fortuneteller', 'boffin', 'imp'];
+    const s = game(['chef', 'empath', 'boffin', 'monk', 'imp', 'soldier', 'undertaker'], board);
+    expect(s.boffinAbility).toBe('fortuneteller');
+    const n1 = night(s);
+    expect(n1).toContain('boffin');
+    expect(n1).toContain('fortuneteller');
+  });
+
+  it('限：开局 1 个外来者，第 1 夜所有镇民中毒', () => {
+    const s = game(['chef', 'empath', 'xaan', 'monk', 'imp', 'butler', 'undertaker', 'soldier']);
+    expect(s.xaanNight).toBe(1);
+    night(s);
+    expect(isPoisoned(s, 1)).toBe(true);
+    day(s);
+    night(s, { imp: { kind: 'imp', target: 2 } });
+    expect(isPoisoned(s, 1)).toBe(false);
+  });
+
+  it('炸弹人被处决：只剩三人，再死被指最多的人', () => {
+    const s = game(['chef', 'empath', 'boomdandy', 'monk', 'imp', 'soldier', 'undertaker']);
+    night(s);
+    execute(s, 3);
+    expect(s.boomPending).toBe(true);
+    boomResolve(s, [1, 2, 5], 2);
+    expect(s.seats.filter((x) => x.alive).map((x) => x.n)).toEqual([1, 5]);
     expect(s.winner).toBe('evil');
   });
 });

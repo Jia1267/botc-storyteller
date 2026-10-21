@@ -83,6 +83,7 @@ export function awakeSeats(s: GameState): number[] {
   }
   const a = slotActor(s, slot);
   if (slot === 'eviltwin' && a && s.twin) return [a.n, s.twin];
+  if (slot === 'boffin' && a) return [a.n, ...(demonSeat(s) ? [demonSeat(s)!.n] : [])];
   return a ? [a.n] : [];
 }
 
@@ -404,6 +405,14 @@ function SlotBody({ g, s, slot, actor }: { g: Game; s: GameState; slot: SlotId; 
       return <TargetStep g={g} s={s} actor={actor!} slot={slot} />;
     case 'hatter':
       return <HatterStep g={g} s={s} />;
+    case 'boffin':
+      return <BoffinStep g={g} s={s} actor={actor!} />;
+    case 'wizard':
+      return <WizardStep g={g} s={s} actor={actor!} />;
+    case 'organgrinder':
+      return <OrganStep g={g} s={s} actor={actor!} />;
+    case 'mezepheles':
+      return <MezeStep g={g} s={s} actor={actor!} />;
     default:
       return <SkipStep g={g} />;
   }
@@ -3486,6 +3495,119 @@ function HatterStep({ g, s }: { g: Game; s: GameState }) {
         <CardButton label="给他们看" onClick={() => ui.showCard({ title: '这个角色选中了你们', big: ['帽匠'] })} />
         <button className="btn btn-primary grow" onClick={() => done({ kind: 'hatter', changes })}>
           {changes.length ? `完成：${changes.length} 人换角色` : '都不换，下一步'}
+        </button>
+      </BottomBar>
+    </>
+  );
+}
+
+/* ---------------- 实验性角色：爪牙 ---------------- */
+
+function BoffinStep({ g, s, actor }: StepProps) {
+  const done = useDone(g);
+  const ui = useUi();
+  const d = demonSeat(s);
+  const r = s.boffinAbility!;
+  return (
+    <>
+      <DoBox items={[<>轻拍 <b>{seatName(actor.n)}</b> 和恶魔 <b>{seatName(d?.n)}</b>，让两人睁眼（也可以分开叫）。</>, <>点「给他们看」：科学怪人选中了你们，恶魔拥有<b>【{roleName(r)}】</b>的能力。</>, '让他们闭眼。']} />
+      <SayBox lines={slotLines('boffin', s.style)} title="小声说" />
+      <p className="dim">恶魔之后会在{roleName(r)}的位置醒来用这个能力（网页会叫你）。</p>
+      <Tips role="boffin" />
+      <BottomBar wide>
+        <CardButton label="给他们看" onClick={() => ui.showCard({ ...roleCard(r, '恶魔拥有这个角色的能力', true) })} />
+        <button className="btn btn-primary grow" onClick={() => done({ kind: 'none' })}>
+          完成，下一步
+        </button>
+      </BottomBar>
+    </>
+  );
+}
+
+function WizardStep({ g, s, actor }: StepProps) {
+  const done = useDone(g);
+  const [use, setUse] = useState<boolean | null>(null);
+  const [text, setText] = useState('');
+  return (
+    <>
+      <DoBox items={[wake(actor.n), '问他今晚要不要许愿（整局一次）。他可以写在手机上给你看。', sleep]} />
+      <SayBox lines={slotLines('wizard', s.style)} title="小声说" />
+      <TwoChoice value={use} onChange={setUse} yes="他许愿了" no="他不许（摇头）" />
+      {use && (
+        <div className="stack" style={{ gap: 8 }}>
+          <label className="stack" style={{ gap: 6 }}>
+            <span className="dim">他的愿望（记下来，进本局记录）</span>
+            <input className="input" value={text} maxLength={60} placeholder="例如：我想看一眼魔典" onChange={(e) => setText(e.target.value)} />
+          </label>
+          <div className="card stack" style={{ gap: 6 }}>
+            <b>你来决定：答应、拒绝，或让他换一个</b>
+            <p className="dim">答应了也要让好人还有机会赢：可以加一个代价（改变规则或打折扣），或者之后公开说"巫师许了个愿"并给好人一个线索。太离谱、没法平衡就拒绝。</p>
+            {malfunction(s, actor.n) && <p className="dim">他中毒/醉酒：照常听他说，但愿望不会实现。</p>}
+          </div>
+        </div>
+      )}
+      <Tips role="wizard" />
+      <BottomBar wide>
+        <button className="btn btn-primary btn-block" disabled={use === null || (use && !text.trim())} onClick={() => done({ kind: 'wish', text: use ? text.trim() : null })}>
+          {use === false ? '他不许，下一步' : use ? (text.trim() ? '记下愿望，下一步' : '先记下他的愿望') : '先问他许不许'}
+        </button>
+      </BottomBar>
+    </>
+  );
+}
+
+function OrganStep({ g, s, actor }: StepProps) {
+  const done = useDone(g);
+  const [yes, setYes] = useState<boolean | null>(null);
+  return (
+    <>
+      <DoBox items={[wake(actor.n), '问他今晚要不要醉酒（点头/摇头）。', sleep]} />
+      <SayBox lines={slotLines('organgrinder', s.style)} title="小声说" />
+      <TwoChoice value={yes} onChange={setYes} yes="点头：醉酒" no="摇头：清醒" />
+      <p className="dim">醉酒的话明天投票照常睁眼；清醒的话明天每次投票都要闭眼、票数保密。</p>
+      <Tips role="organgrinder" />
+      <BottomBar wide>
+        <button className="btn btn-primary btn-block" disabled={yes === null} onClick={() => done({ kind: 'yesno', yes: !!yes, truth: true })}>
+          完成，下一步
+        </button>
+      </BottomBar>
+    </>
+  );
+}
+
+function MezeStep({ g, s, actor }: StepProps) {
+  const done = useDone(g);
+  const ui = useUi();
+  if (s.night === 1)
+    return (
+      <>
+        <DoBox items={[wake(actor.n), <>点「给他看」：秘密词<b>「{s.mezeWord}」</b>。</>, sleep]} />
+        <SayBox lines={slotLines('mezepheles', s.style)} title="小声说" />
+        <Tips role="mezepheles" />
+        <BottomBar wide>
+          <CardButton onClick={() => ui.showCard({ title: '你的秘密词', big: [s.mezeWord] })} />
+          <button className="btn btn-primary grow" onClick={() => done({ kind: 'none' })}>
+            完成，下一步
+          </button>
+        </BottomBar>
+      </>
+    );
+  const t = s.mezeTarget!;
+  const bad = malfunction(s, actor.n);
+  return (
+    <>
+      <p className="muted">
+        {seatName(t)} 今天说出了秘密词「{s.mezeWord}」。灵言师本人不用醒。
+      </p>
+      {bad ? (
+        <div className="card"><p>灵言师中毒/醉酒：{seatName(t)} 不会变邪恶，灵言师的能力用掉了。不用叫醒任何人。</p></div>
+      ) : (
+        <DoBox items={[wake(t), '点「给他看」：你现在是邪恶阵营（拇指向下）。', sleep]} />
+      )}
+      <BottomBar wide>
+        {!bad && <CardButton onClick={() => ui.showCard({ title: '你现在是', big: ['邪恶阵营'], note: '你的角色不变，但你现在和邪恶一伙。' })} />}
+        <button className="btn btn-primary grow" onClick={() => done({ kind: 'none' })}>
+          完成，下一步
         </button>
       </BottomBar>
     </>

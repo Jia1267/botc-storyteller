@@ -40,7 +40,8 @@ export type SlotId =
   | 'eviltwin' | 'witch' | 'cerenovus' | 'pithag' | 'fanggu' | 'nodashii' | 'vigormortis'
   // 实验性角色
   | 'steward' | 'knight' | 'noble' | 'shugenja' | 'highpriestess' | 'king' | 'choirboy' | 'nightwatchman' | 'farmer' | 'acrobat'
-  | 'preacher' | 'poppygrower' | 'huntsman' | 'damsel' | 'snitch' | 'ogre' | 'hatter' | 'qutler';
+  | 'preacher' | 'poppygrower' | 'huntsman' | 'damsel' | 'snitch' | 'ogre' | 'hatter' | 'qutler'
+  | 'boffin' | 'wizard' | 'organgrinder' | 'mezepheles';
 
 export interface NightState {
   /** 当前所在的夜晚顺序位置 */
@@ -238,6 +239,18 @@ export interface GameState {
   qutlerMaster: number | null;
   /** 帽匠死后邪恶已经换过角色 */
   hatterResolved: boolean;
+  /** 精神病患者最近一次白天杀人是第几天 */
+  psychoDay: number;
+  /** 灵言师的秘密词；说出秘密词的善良玩家；能力用掉了 */
+  mezeWord: string;
+  mezeTarget: number | null;
+  mezeUsed: boolean;
+  /** 科学怪人给恶魔的善良能力 */
+  boffinAbility: RoleId | null;
+  /** 限：第几夜所有镇民中毒（开局外来者人数） */
+  xaanNight: number;
+  /** 炸弹人被处决了，还没结算爆炸 */
+  boomPending: boolean;
   /** 恶魔的 3 个伪装 */
   bluffs: RoleId[];
   /** 占卜师干扰项 */

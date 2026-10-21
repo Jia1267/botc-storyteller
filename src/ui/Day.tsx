@@ -10,7 +10,7 @@ import {
   harpyPunish, nominateVirgin, previewSlayer, previewVirgin, setCannibalFake, setDemonVoted, savantVisit, scapegoatFor, setDuchessVisitors,
   slayerShoot, markUsed, nomResults, voteNeed, type NomResult, type NomRow,
   cereVerdict, jugglerCanGuess, jugglerCount, jugglerGuess, setMinionNominated, twinsBlock, witchActive, witchStrikes,
-  damselGuess, golemNominates, puzzleGuess,
+  damselGuess, golemNominates, puzzleGuess, boomResolve, mezeSaid, psychoKill, vizierExecute,
 } from '../engine/flow';
 import { activeTravellers, beggarLearns, exile, gunslingerPreview, gunslingerShoot, leave } from '../engine/travellers';
 import { clone } from '../engine/core';
@@ -69,7 +69,8 @@ function demonDeathWarning(s: GameState, n: number, verb: '被处决了' | '死�
   );
 }
 
-type Panel = 'nom' | 'virgin' | 'slayer' | 'exec' | 'artist' | 'fisherman' | 'savant' | 'amnesiac' | 'mutant' | 'duchess' | 'fear' | 'alsaahir' | 'gossip' | 'tinker' | 'juggler' | 'golem' | 'damsel' | 'puzzle' | null;
+type Panel = 'nom' | 'virgin' | 'slayer' | 'exec' | 'artist' | 'fisherman' | 'savant' | 'amnesiac' | 'mutant' | 'duchess' | 'fear' | 'alsaahir' | 'gossip' | 'tinker' | 'juggler' | 'golem' | 'damsel' | 'puzzle'
+  | 'psycho' | 'vizier' | 'meze' | null;
 
 export function DayScreen({ g }: { g: Game }) {
   const s = g.s;
@@ -119,7 +120,13 @@ export function DayScreen({ g }: { g: Game }) {
           </div>
         )}
         {fm && s.fearTarget && <p className="dim">恐惧之灵（{seatName(fm.n)}）现在的目标：{seatName(s.fearTarget)}。只有你知道。</p>}
-        <SayBox lines={dayStartLines(s.night, s.style)} title="对所有人说" />
+        <SayBox
+          lines={[
+            ...dayStartLines(s.night, s.style),
+            ...(s.night === 1 && s.seats.some((x) => x.role === 'vizier') ? [`另外：${seatName(s.seats.find((x) => x.role === 'vizier')!.n)} 是维齐尔。`] : []),
+          ]}
+          title="对所有人说"
+        />
         <div className="card">
           <h3>讨论计时</h3>
           <TimerDisplay />
@@ -128,6 +135,7 @@ export function DayScreen({ g }: { g: Game }) {
         <TravellerDay g={g} />
         <SayBox lines={nominationLines(s.style)} title="讨论结束后说" />
         <HarpyCard g={g} />
+        <OrganCard s={s} />
         <WitchCard g={g} />
         <CereCard g={g} />
         <VoteMods s={s} />
@@ -194,6 +202,9 @@ export function DayScreen({ g }: { g: Game }) {
       {panel === 'golem' && <GolemSheet g={g} onClose={close} />}
       {panel === 'damsel' && <DamselSheet g={g} onClose={close} />}
       {panel === 'puzzle' && <PuzzleSheet g={g} onClose={close} />}
+      {panel === 'psycho' && <PsychoSheet g={g} onClose={close} />}
+      {panel === 'vizier' && <VizierSheet g={g} onClose={close} />}
+      {panel === 'meze' && <MezeSheet g={g} onClose={close} />}
       {panel === 'nom' && (
         <NomSheet
           g={g}
@@ -238,6 +249,12 @@ function DayAbilities({ s, open }: { s: GameState; open: (p: Panel) => void }) {
   const jug = holder('juggler');
   if (jug && (jugglerCanGuess(s, jug.n) || (s.juggler?.seat === jug.n && s.juggler.day === s.night)))
     items.push(btn('juggler', s.juggler?.day === s.night ? `杂耍艺人（${seatName(jug.n)}）今天猜对 ${s.juggler.correct} 个（改）` : `杂耍艺人（${seatName(jug.n)}）要公开猜角色`));
+  const psycho = s.seats.find((x) => x.alive && x.role === 'psychopath');
+  if (psycho && s.psychoDay !== s.night) items.push(btn('psycho', `精神病患者（${seatName(psycho.n)}）在提名前公开杀人`));
+  const vizier = s.seats.find((x) => x.alive && x.role === 'vizier');
+  if (vizier) items.push(btn('vizier', `维齐尔（${seatName(vizier.n)}）下令立即处决`));
+  const meze = s.seats.find((x) => x.role === 'mezepheles');
+  if (meze && !s.mezeUsed && s.mezeTarget === null && s.mezeWord) items.push(btn('meze', `有善良玩家说出了秘密词「${s.mezeWord}」`));
   const golem = holder('golem');
   if (golem && !golem.used) items.push(btn('golem', `魔像（${seatName(golem.n)}）提名了一个人`));
   const damsel = s.seats.find((x) => x.role === 'damsel');
@@ -286,6 +303,7 @@ function ExecSheet({ g, onClose }: { g: Game; onClose: () => void }) {
   const [goblin, setGoblin] = useState(false);
   const [sgSel, setSgSel] = useState<number | null>(null);
   const [pcSel, setPcSel] = useState<number | null>(null);
+  const [psychoWins, setPsychoWins] = useState(false);
   const n = t[0];
   const sg = n ? scapegoatFor(s, n) : undefined;
   const sgChoices = useMemo(() => (n && sg ? scapegoatChoices(s, n, sg.n) : null), [s, n, sg]);
@@ -305,9 +323,9 @@ function ExecSheet({ g, onClose }: { g: Game; onClose: () => void }) {
   const ending = useMemo(() => {
     if (!n) return null;
     const c = clone(s);
-    execute(c, n, '被处决', { fearmongerNominated: c.fearNominated === e || fear, goblinClaimed: goblin, scapegoat: subst, pacifist });
+    execute(c, n, '被处决', { fearmongerNominated: c.fearNominated === e || fear, goblinClaimed: goblin, scapegoat: subst, pacifist, psychoSurvives: psychoWins });
     return c.winner ? `${c.winner === 'good' ? '善良' : '邪恶'}立即获胜` : null;
-  }, [s, n, e, fear, goblin, subst, pacifist]);
+  }, [s, n, e, fear, goblin, subst, pacifist, psychoWins]);
   const noneEnding = useMemo(() => {
     const c = clone(s);
     execute(c, null);
@@ -371,13 +389,17 @@ function ExecSheet({ g, onClose }: { g: Game; onClose: () => void }) {
             hint={`是的话，${seatName(e)} 所在的阵营直接落败。`}
           />
         )}
+        {st?.role === 'psychopath' && st.alive && !malfunction(s, e) && (
+          <Toggle on={psychoWins} set={setPsychoWins} label={`${seatName(e)} 是精神病患者：和提名他的人猜拳，他没输吗？`} hint="平局或他赢都不死；提名者赢了他才死。" />
+        )}
+        {st?.role === 'boomdandy' && !malfunction(s, e) && <p className="evil">{seatName(e)} 是炸弹人：处决后他会爆炸，网页接着带你处理。</p>}
         {e && goblinAsk(s, e) && (
           <Toggle on={goblin} set={setGoblin} label={`${seatName(e)} 是哥布林：他被提名时公开说了自己是哥布林吗？`} hint="说了的话，邪恶直接获胜。" />
         )}
         <button
           className={`btn btn-block ${ending ? 'btn-danger' : 'btn-primary'}`}
           disabled={!n}
-          onClick={() => g.commit((x) => execute(x, n, '被处决', { fearmongerNominated: x.fearNominated === e || fear, goblinClaimed: goblin, scapegoat: subst, pacifist }))}
+          onClick={() => g.commit((x) => execute(x, n, '被处决', { fearmongerNominated: x.fearNominated === e || fear, goblinClaimed: goblin, scapegoat: subst, pacifist, psychoSurvives: psychoWins }))}
         >
           {!n ? '先点出被处决的人' : ending ? `处决 ${seatName(e)}（${roleName(seatOf(s, e).role)}）→ ${ending}` : `处决 ${seatName(e)}`}
         </button>
@@ -431,6 +453,7 @@ function DayResult({ g }: { g: Game }) {
         {s.executed && s.zombuulFake && seatOf(s, s.executed).role === 'zombuul' && (
           <p className="dim">{seatName(s.executed)} 是僵怖，这是假死：照常宣布他死了，但他其实还活着（只有你知道）。</p>
         )}
+        {s.boomPending && !s.winner && <BoomCard g={g} />}
         {!s.winner && <CannibalNotice g={g} />}
         <KlutzPrompt g={g} />
         <MoonchildPrompt g={g} />
@@ -448,8 +471,8 @@ function DayResult({ g }: { g: Game }) {
         )}
       </div>
       <BottomBar wide>
-        <button className="btn btn-primary btn-block" disabled={!s.winner && promptPending(s)} onClick={() => g.commit((st) => finishDay(st))}>
-          {s.winner ? '宣布结果，查看复盘' : promptPending(s) ? '先处理上面的提示' : '入夜'}
+        <button className="btn btn-primary btn-block" disabled={!s.winner && (promptPending(s) || s.boomPending)} onClick={() => g.commit((st) => finishDay(st))}>
+          {s.winner ? '宣布结果，查看复盘' : promptPending(s) || s.boomPending ? '先处理上面的提示' : '入夜'}
         </button>
       </BottomBar>
     </main>
@@ -960,6 +983,10 @@ function SecretNotices({ s }: { s: GameState }) {
   const vg = s.vigor.filter((v) => !seatOf(s, v.minion).alive && teamOf(seatOf(s, v.minion).role) === 'minion');
   if (vg.length && s.seats.some((x) => x.role === 'vigormortis' && x.alive))
     out.push(<p key="vg">被亡骨魔杀死的爪牙 {vg.map((v) => seatName(v.minion)).join('、')} 能力还在{vg.some((v) => v.poisoned) ? `；${vg.filter((v) => v.poisoned).map((v) => seatName(v.poisoned)).join('、')} 因此中毒` : ''}。</p>);
+  const wraith = s.seats.find((x) => x.alive && x.role === 'wraith');
+  if (wraith) out.push(<p key="wr">亡魂（{seatName(wraith.n)}）：夜里每次叫醒邪恶玩家时，先叫醒他。</p>);
+  if (s.xaanNight && s.night === s.xaanNight && s.seats.some((x) => x.role === 'xaan' && x.alive))
+    out.push(<p key="xa">限：今天是第 {s.xaanNight} 天，所有镇民中毒到黄昏。</p>);
   const zealot = s.seats.find((x) => x.alive && x.role === 'zealot');
   if (zealot && aliveVoters(s) >= 5) out.push(<p key="ze">狂热者（{seatName(zealot.n)}）：存活 5 人以上，每次投票他都必须举手。</p>);
   const qt = s.seats.find((x) => x.alive && x.role === 'qutler');
@@ -1583,5 +1610,122 @@ function PuzzleSheet({ g, onClose }: { g: Game; onClose: () => void }) {
         </button>
       </div>
     </Sheet>
+  );
+}
+
+/** 精神病患者：提名前公开杀一个人 */
+function PsychoSheet({ g, onClose }: { g: Game; onClose: () => void }) {
+  const s = g.s;
+  const ps = s.seats.find((x) => x.alive && x.role === 'psychopath')!;
+  const [t, setT] = useState<number[]>([]);
+  const x = t.length ? seatOf(s, t[0]) : null;
+  const bad = malfunction(s, ps.n);
+  const pv = x ? killPreview(s, x.n) : null;
+  return (
+    <Sheet title={`精神病患者（${seatName(ps.n)}）公开杀人`} onClose={onClose}>
+      <div className="stack">
+        <p className="dim">每天一次，要在提名开始前。他公开说自己是精神病患者并选一个人。</p>
+        <SeatPicker s={s} selected={t} max={1} onChange={setT} disabled={s.seats.filter((y) => !y.alive).map((y) => y.n)} label="他选了谁？" />
+        {x && pv && <div className={`card${!bad && pv.dies ? ' card-evil' : ''}`}><p>{bad ? '他中毒/醉酒：什么都不会发生。' : pv.text}</p></div>}
+        {x && !bad && pv?.dies && isDemonSeat(s, x.n) && demonDeathWarning(s, x.n, '死了')}
+        {x && <SayBox title="公开宣布" lines={!bad && pv?.dies ? [`${seatName(x.n)} 死了。`] : ['什么都没有发生。']} />}
+        <button className="btn btn-primary btn-block" disabled={!x} onClick={() => { g.commit((st) => psychoKill(st, ps.n, t[0])); onClose(); }}>
+          确认
+        </button>
+      </div>
+    </Sheet>
+  );
+}
+
+/** 维齐尔：有善良玩家投了票，下令立即处决 */
+function VizierSheet({ g, onClose }: { g: Game; onClose: () => void }) {
+  const s = g.s;
+  const vz = s.seats.find((x) => x.alive && x.role === 'vizier')!;
+  const [t, setT] = useState<number[]>([]);
+  const [goodVoted, setGoodVoted] = useState<boolean | null>(null);
+  const bad = malfunction(s, vz.n);
+  return (
+    <Sheet title={`维齐尔（${seatName(vz.n)}）下令处决`} onClose={onClose}>
+      <div className="stack">
+        <p className="dim">一次投票数完票后，只要有善良玩家举了手，他可以宣布立即处决这个被提名的人（票数够不够都行），这算今天的处决。</p>
+        <SeatPicker s={s} selected={t} max={1} onChange={setT} label="刚才被提名的是谁？" />
+        <TwoChoice value={goodVoted} onChange={setGoodVoted} yes="有善良玩家投了票" no="没有善良玩家投票" />
+        {t.length > 0 && goodVoted !== null && (
+          <div className={`card${goodVoted && !bad ? ' card-evil' : ''}`}>
+            <p>{bad ? '维齐尔中毒/醉酒：什么都不会发生。' : goodVoted ? `${seatName(t[0])} 立即被处决，今天到此为止。` : '没有善良玩家投票：什么都不会发生。'}</p>
+          </div>
+        )}
+        <button
+          className="btn btn-primary btn-block"
+          disabled={!t.length || goodVoted === null}
+          onClick={() => {
+            if (goodVoted && !bad) g.commit((st) => vizierExecute(st, vz.n, t[0]));
+            onClose();
+          }}
+        >
+          确认
+        </button>
+      </div>
+    </Sheet>
+  );
+}
+
+/** 灵言师：哪个善良玩家说出了秘密词 */
+function MezeSheet({ g, onClose }: { g: Game; onClose: () => void }) {
+  const s = g.s;
+  const [t, setT] = useState<number[]>([]);
+  const evil = s.seats.filter((x) => isEvil(x)).map((x) => x.n);
+  return (
+    <Sheet title={`谁说出了秘密词「${s.mezeWord}」`} onClose={onClose}>
+      <div className="stack">
+        <p className="dim">只算第一个说出来、而且你亲耳听到的善良玩家。今晚叫醒他告诉他变成邪恶了（网页会带你）。</p>
+        <SeatPicker s={s} selected={t} max={1} onChange={setT} disabled={evil} label="谁说的？" />
+        <button className="btn btn-primary btn-block" disabled={!t.length} onClick={() => { g.commit((st) => mezeSaid(st, t[0])); onClose(); }}>
+          记下来
+        </button>
+      </div>
+    </Sheet>
+  );
+}
+
+/** 街头风琴手清醒：投票闭眼、票数保密 */
+function OrganCard({ s }: { s: GameState }) {
+  const og = s.seats.find((x) => x.alive && x.role === 'organgrinder');
+  if (!og) return null;
+  if (malfunction(s, og.n)) return <p className="dim">街头风琴手今天醉酒：投票照常睁眼。</p>;
+  return (
+    <div className="card card-warn stack" style={{ gap: 6 }}>
+      <b style={{ color: 'var(--warn)' }}>街头风琴手在场：每次投票让所有人闭眼</b>
+      <p className="dim">你默数票数，不公布票数，也不说谁"待处决"。有人问为什么，就说"街头风琴手在场"。提名都结束后再宣布处决谁。</p>
+    </div>
+  );
+}
+
+/** 炸弹人爆炸：选三个人活下来，再看被指得最多的人 */
+function BoomCard({ g }: { g: Game }) {
+  const s = g.s;
+  const alive = s.seats.filter((x) => x.alive);
+  const d = demonSeat(s);
+  const [keep, setKeep] = useState<number[]>(() => (d ? [d.n] : []));
+  const [pointed, setPointed] = useState<number[]>([]);
+  const [tie, setTie] = useState(false);
+  const ok = keep.length === Math.min(3, alive.length) && (!d || keep.includes(d.n));
+  return (
+    <div className="card card-evil stack" style={{ gap: 8 }}>
+      <b>炸弹人爆炸了：除三名玩家外，所有活着的人都死</b>
+      <p className="dim">你来选活下来的三个人（恶魔必须在里面，否则游戏就结束了）。宣布时走一圈，对每个人说"你活"或"你死"。</p>
+      <SeatPicker s={s} selected={keep} max={3} onChange={setKeep} disabled={s.seats.filter((x) => !x.alive).map((x) => x.n)} label="谁活下来？" />
+      {d && !keep.includes(d.n) && <p className="evil">恶魔（{seatName(d.n)}）必须活下来。</p>}
+      {ok && (
+        <>
+          <p>然后慢慢倒数十秒，所有人（死人也可以）指一个人。数到一喊"别动"，数谁被指得最多。</p>
+          <SeatPicker s={s} selected={pointed} max={1} onChange={(v) => { setPointed(v); setTie(false); }} disabled={s.seats.filter((x) => !keep.includes(x.n)).map((x) => x.n)} label="谁被指得最多？" />
+          <TwoChoice value={tie} onChange={(v) => { setTie(v); if (v) setPointed([]); }} yes="平票，没人死" no="有人最多" />
+        </>
+      )}
+      <button className="btn btn-primary btn-block" disabled={!ok || (!pointed.length && !tie)} onClick={() => g.commit((st) => boomResolve(st, keep, tie ? null : pointed[0]))}>
+        确认
+      </button>
+    </div>
   );
 }
