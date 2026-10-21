@@ -1,4 +1,4 @@
-import { ROLES, isEvilTeam, roleName, rolesOfTeam, type RoleId, type Team } from './roles';
+import { ROLES, TEAM_NAME, isEvilTeam, roleName, rolesOfTeam, type RoleId, type Team } from './roles';
 import { balance, type Choice } from './balance';
 import {
   aliveCount, aliveNeighbors, circleOrder, deathShield, demonSeat, findRole, isDemonSeat, isEvil, malfunction, mustLie, notInPlay, scriptOf, scriptRolesOf,
@@ -118,6 +118,12 @@ export function pairChoices(s: GameState, kind: PairKind, actorN: number, rng: R
       const g = pickOr(goodOf(rest).filter((x) => x.n !== recluse.n), rng);
       const minionRole = pickOr(targets.map((x) => x.role), rng) ?? pick(rolesOfTeam('minion'), rng);
       if (g) out.push(mk('recluse', { role: minionRole, seats: sorted(recluse.n, g.n) }, -1, `把陌客（${seatName(recluse.n)}）当成爪牙给出去（规则允许）：好人会去怀疑两个善良玩家，帮邪恶。`, 'twist'));
+    }
+    // 场上根本没有这类角色（无神论者局、卡扎力还没定爪牙等）：只能编一个
+    if (!out.length) {
+      const two = shuffle(rest, rng).slice(0, 2);
+      if (two.length === 2)
+        out.push(mk('none', { role: fakeRole(team), seats: sorted(two[0].n, two[1].n) }, 0, `场上没有${TEAM_NAME[team]}可以给：只能编一个（无神论者局里你本来就可以这样做）。`, 'false', true));
     }
     return out;
   }
@@ -657,6 +663,9 @@ export function plagueChoices(s: GameState, rng: Rng): Choice<PlagueInfo>[] {
         reason: '相克规则：恶魔旁边一名好人变成邪恶的提线木偶，他自己不知道，大帮邪恶。',
       });
   }
+  // 板子上没有网页能代办的爪牙能力（自由配板）：就用投毒者的
+  if (!out.length)
+    out.push({ key: 'poisoner', label: '说书人获得投毒者的能力', value: { ability: 'poisoner' }, lean: -2, truth: true, reason: '这个板子上没有网页能代办的其他爪牙能力，就用投毒者的：每晚由你毒一个人。' });
   if (!out.some((c) => c.standard) && out.length) out[0] = { ...out[0], standard: true };
   return out;
 }

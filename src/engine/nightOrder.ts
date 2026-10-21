@@ -82,7 +82,8 @@ export function nightsFor(roles: RoleId[], fabled: FabledId[] = []): { firstNigh
   }
   // 瘟疫医生死后，说书人可能获得投毒者/鹰身女妖的能力
   if (roles.includes('plaguedoctor')) {
-    if (roles.includes('poisoner')) other.add('stPoisoner');
+    // 没有鹰身女妖时，瘟疫医生可能只能给说书人投毒者的能力（见 plagueChoices）
+    if (roles.includes('poisoner') || !roles.includes('harpy')) other.add('stPoisoner');
     if (roles.includes('harpy')) other.add('stHarpy');
   }
   if (fabled.includes('duchess')) other.add('duchess');

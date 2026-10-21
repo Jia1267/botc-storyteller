@@ -743,8 +743,8 @@ function PairStep({ g, s, actor, kind }: StepProps & { kind: PairKind }) {
   const verdict = manualInfo ? pairVerdict(s, kind, actor.n, manualInfo) : null;
   const illegal = sel === -1 && ((healthy && verdict === 'false') || (lie && verdict !== null && verdict !== 'false'));
   const value = sel >= 0 ? choices[sel]?.value : manualInfo;
-  const truth = sel >= 0 ? choices[sel].truth : verdict !== 'false';
-  const twist = sel >= 0 ? !!choices[sel].twist : verdict === 'twist';
+  const truth = sel >= 0 ? !!choices[sel]?.truth : verdict !== 'false';
+  const twist = sel >= 0 ? !!choices[sel]?.twist : verdict === 'twist';
   usePoint(value?.seats ? [...value.seats] : []);
 
   const teamRoles = scriptOf(s).roles.filter((r) => ROLES[r].team === KIND_TEAM[kind]);
