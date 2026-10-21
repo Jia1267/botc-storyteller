@@ -9,7 +9,7 @@ import {
   revealChoices, revealVerdict, starpassChoices, mayorBounceChoices,
 } from './info';
 import {
-  completeSlot, currentSlot, dealNext, execute, nominateVirgin, previewImp, previewSlayer,
+  completeSlot, currentSlot, dealNext, execute, finishDay, nominateVirgin, previewImp, previewSlayer, shouldRun,
   previewVirgin, slayerShoot, startNight,
 } from './flow';
 import { balance, recommend } from './balance';
@@ -464,5 +464,21 @@ describe('平衡', () => {
       { key: 'std', label: '', value: 2, lean: 0, reason: '', truth: true, standard: true },
     ];
     expect(recommend(cs, balance(s).score, seeded(1))).toBe(0);
+  });
+});
+
+describe('驱魔人挡住小恶魔', () => {
+  it('驱魔人选中恶魔的那晚，小恶魔那一步不再出现', () => {
+    const s = newGame();
+    setCount(s, 8, seeded(1));
+    startDeal(s);
+    for (let i = 0; i < s.count; i++) dealNext(s);
+    while (currentSlot(s) !== 'dawn') completeSlot(s, { kind: 'none' });
+    completeSlot(s, { kind: 'none' });
+    execute(s, null);
+    finishDay(s);
+    expect(shouldRun(s, 'imp')).toBe(true);
+    s.ns!.exorcised = true;
+    expect(shouldRun(s, 'imp')).toBe(false);
   });
 });

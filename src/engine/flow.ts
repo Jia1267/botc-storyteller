@@ -77,7 +77,7 @@ function lunaticStepNeeded(s: GameState): boolean {
 function candidates(s: GameState, slot: SlotId): Seat[] {
   if (slot === 'imp' || slot === 'vortox') {
     const d = demonSeat(s);
-    return d && d.role === slot && s.night > 1 ? [d] : [];
+    return d && d.role === slot && s.night > 1 && !s.ns?.exorcised ? [d] : [];
   }
   if (slot === 'scarletwoman') return s.pendingNewDemon ? [seatOf(s, s.pendingNewDemon)] : [];
   if (DEMON_SLOTS.includes(slot)) {
