@@ -481,6 +481,10 @@ function DuskStep({ g, s }: { g: Game; s: GameState }) {
           '等所有人都闭上眼睛、低下头。',
           '接下来按网页顺序，一个一个轻拍肩膀叫醒。不要出声叫名字。',
           s.night === 1 ? '第一晚恶魔不杀人。' : null,
+          s.night === 1 && s.fabled.includes('stormcatcher') && s.stormRole
+            ? `暴风捕手：叫醒所有邪恶玩家，告诉他们【${roleName(s.stormRole)}】是谁（在场的话指给他们看）。`
+            : null,
+          s.fabled.includes('toymaker') ? '玩具匠：恶魔今晚可以选择不杀人（整局至少要有一晚不杀）。' : null,
         ]}
       />
       {sleepers.length > 0 && (

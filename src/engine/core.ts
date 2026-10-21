@@ -269,6 +269,11 @@ export function kill(s: GameState, n: number, when: 'night' | 'day', cause: stri
   const st = seatOf(s, n);
   const fake = st.role === 'zombuul' && s.zombuulFake;
   if (!st.alive && !fake) return false;
+  // 暴风捕手：指定的善良角色只会被处决而死
+  if (!force && s.fabled.includes('stormcatcher') && s.stormRole && st.role === s.stormRole && !cause.includes('处决')) {
+    addLog(s, when, `${seatName(n)} 是暴风捕手指定的角色，只会被处决而死`);
+    return false;
+  }
   // 痢蛭：宿主活着就死不了
   if (!force && st.role === 'lleech' && s.lleechHost && seatOf(s, s.lleechHost).alive && !malfunction(s, n)) {
     addLog(s, when, `${seatName(n)} 是痢蛭，宿主 ${seatName(s.lleechHost)} 还活着，他不会死`);

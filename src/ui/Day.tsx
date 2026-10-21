@@ -11,7 +11,7 @@ import {
   slayerShoot, markUsed, nomResults, voteNeed, type NomResult, type NomRow,
   cereVerdict, jugglerCanGuess, jugglerCount, jugglerGuess, setMinionNominated, twinsBlock, witchActive, witchStrikes,
   damselGuess, golemNominates, puzzleGuess, boomResolve, mezeSaid, psychoKill, vizierExecute, riotDay, riotNominate, yaggaSay, cultVote, executeStoryteller,
-  butcherAgain, gangsterKill, gnomeKill, judgeRules, voudonActive,
+  butcherAgain, gangsterKill, gnomeKill, judgeRules, voudonActive, doomsayerUse, fiddlerDuel,
 } from '../engine/flow';
 import { activeTravellers, beggarLearns, exile, gunslingerPreview, gunslingerShoot, leave, swapPlayers } from '../engine/travellers';
 import { clone } from '../engine/core';
@@ -71,7 +71,7 @@ function demonDeathWarning(s: GameState, n: number, verb: '被处决了' | '死�
 }
 
 type Panel = 'nom' | 'virgin' | 'slayer' | 'exec' | 'artist' | 'fisherman' | 'savant' | 'amnesiac' | 'mutant' | 'duchess' | 'fear' | 'alsaahir' | 'gossip' | 'tinker' | 'juggler' | 'golem' | 'damsel' | 'puzzle'
-  | 'psycho' | 'vizier' | 'meze' | 'cult' | null;
+  | 'psycho' | 'vizier' | 'meze' | 'cult' | 'doom' | 'fiddler' | null;
 
 export function DayScreen({ g }: { g: Game }) {
   const s = g.s;
@@ -209,6 +209,8 @@ export function DayScreen({ g }: { g: Game }) {
       {panel === 'vizier' && <VizierSheet g={g} onClose={close} />}
       {panel === 'meze' && <MezeSheet g={g} onClose={close} />}
       {panel === 'cult' && <CultSheet g={g} onClose={close} />}
+      {panel === 'doom' && <DoomSheet g={g} onClose={close} />}
+      {panel === 'fiddler' && <FiddlerSheet g={g} onClose={close} />}
       {panel === 'nom' && (
         <NomSheet
           g={g}
@@ -277,6 +279,8 @@ function DayAbilities({ s, open }: { s: GameState; open: (p: Panel) => void }) {
   if (tinker) items.push(btn('tinker', `让修补匠（${seatName(tinker.n)}）现在死亡`));
   const mutant = s.seats.find((x) => x.alive && x.role === 'mutant');
   if (mutant) items.push(btn('mutant', `畸形秀演员（${seatName(mutant.n)}）说自己是外来者了`));
+  if (s.fabled.includes('doomsayer') && aliveCount(s) >= 4) items.push(btn('doom', '末日预言者：有人公开选择让自己阵营的一人死'));
+  if (s.fabled.includes('fiddler') && !s.fiddlerUsed && demonSeat(s)) items.push(btn('fiddler', '小提琴手：恶魔发起对决'));
   if (s.fabled.includes('duchess')) items.push(btn('duchess', s.duchessVisitors.length ? `公爵夫人的拜访者：${s.duchessVisitors.map((n) => `${seatName(n)}`).join('、')}（改）` : '有人来拜访公爵夫人'));
   if (!items.length) return null;
   return (
@@ -1069,6 +1073,8 @@ function SecretNotices({ s }: { s: GameState }) {
     out.push(<p key="at">无神论者在场：没有邪恶玩家，你可以打破规则假装有邪恶。有人提名你（说书人）并且票数够，就处决你：善良获胜。</p>);
   if (s.fauxPaw && s.seats.some((x) => x.role === 'lycanthrope' && x.alive)) out.push(<p key="fp">{seatName(s.fauxPaw)} 被半兽人的能力当成邪恶（各种信息里算邪恶）。</p>);
   if (s.seats.some((x) => x.role === 'summoner' && x.alive) && !s.summonDone) out.push(<p key="sm">召唤师还没召唤恶魔（第三晚）：现在没有恶魔，游戏照常进行。</p>);
+  for (const f of s.fabled) if (FABLED[f].remind) out.push(<p key={`f-${f}`}>{FABLED[f].remind}</p>);
+  if (s.fabled.includes('ferryman') && aliveCount(s) <= 3) out.push(<p key="fm">摆渡人：现在可能是最后一天，所有死人重新拿回投票标记。</p>);
   const wraith = s.seats.find((x) => x.alive && x.role === 'wraith');
   if (wraith) out.push(<p key="wr">亡魂（{seatName(wraith.n)}）：夜里每次叫醒邪恶玩家时，先叫醒他。</p>);
   if (s.xaanNight && s.night === s.xaanNight && s.seats.some((x) => x.role === 'xaan' && x.alive))
@@ -1928,6 +1934,53 @@ function CackleSheet({ g, onClose }: { g: Game; onClose: () => void }) {
         <SeatPicker s={s} selected={t} max={1} onChange={setT} label="他点了谁？" />
         <button className="btn btn-primary btn-block" disabled={!t.length} onClick={() => { g.commit((st) => { st.cackleSafe = { seat: t[0], day: st.night }; logDay(st, `笑匠点了 ${seatName(t[0])}：今晚他不会被换角色`); }); onClose(); }}>
           记下来
+        </button>
+      </div>
+    </Sheet>
+  );
+}
+
+/** 末日预言者：活人公开选择让自己阵营的一人死（整局一次） */
+function DoomSheet({ g, onClose }: { g: Game; onClose: () => void }) {
+  const s = g.s;
+  const [c, setC] = useState<number[]>([]);
+  const chooser = c.length ? seatOf(s, c[0]) : null;
+  const victims = chooser ? s.seats.filter((x) => x.alive && isEvil(x) === isEvil(chooser)) : [];
+  const [v, setV] = useState<number[]>([]);
+  return (
+    <Sheet title="末日预言者" onClose={onClose}>
+      <div className="stack">
+        <p className="dim">存活 4 人以上时，每个活人整局可以用一次：他公开说要用，你选一个和他同阵营的人死（可以是他自己）。</p>
+        <SeatPicker s={s} selected={c} max={1} onChange={(x) => { setC(x); setV([]); }} disabled={s.seats.filter((x) => !x.alive || s.doomUsed.includes(x.n)).map((x) => x.n)} label="谁要用？" />
+        {chooser && <SeatPicker s={s} selected={v} max={1} onChange={setV} disabled={s.seats.filter((x) => !victims.includes(x)).map((x) => x.n)} label={`你让谁死？（和他同阵营：${isEvil(chooser) ? '邪恶' : '善良'}）`} />}
+        {v.length > 0 && <SayBox title="公开宣布" lines={[`${seatName(v[0])} 死了。`]} />}
+        <button className="btn btn-primary btn-block" disabled={!c.length || !v.length} onClick={() => { g.commit((st) => doomsayerUse(st, c[0], v[0])); onClose(); }}>
+          确认
+        </button>
+      </div>
+    </Sheet>
+  );
+}
+
+/** 小提琴手：恶魔和一名对立阵营玩家对决 */
+function FiddlerSheet({ g, onClose }: { g: Game; onClose: () => void }) {
+  const s = g.s;
+  const d = demonSeat(s)!;
+  const [r, setR] = useState<number[]>([]);
+  const [demonWins, setDemonWins] = useState<boolean | null>(null);
+  return (
+    <Sheet title="小提琴手：对决" onClose={onClose}>
+      <div className="stack">
+        <p className="dim">整局一次：恶魔私下选一名对立阵营的玩家，你公开宣布这两个人对决（不说谁是恶魔），所有人投票决定哪一方获胜，游戏就此结束。</p>
+        <SeatPicker s={s} selected={r} max={1} onChange={setR} disabled={s.seats.filter((x) => !x.alive || isEvil(x)).map((x) => x.n)} label="恶魔选了谁？" />
+        {r.length > 0 && (
+          <>
+            <SayBox title="公开宣布" lines={[`${seatName(d.n)} 和 ${seatName(r[0])} 对决！大家投票：你们支持谁那一方获胜？`]} />
+            <TwoChoice value={demonWins} onChange={setDemonWins} yes={`${seatName(d.n)} 得票多（邪恶赢）`} no={`${seatName(r[0])} 得票多（善良赢）`} />
+          </>
+        )}
+        <button className="btn btn-primary btn-block" disabled={!r.length || demonWins === null} onClick={() => { g.commit((st) => fiddlerDuel(st, d.n, r[0], !!demonWins)); onClose(); }}>
+          确认结果
         </button>
       </div>
     </Sheet>

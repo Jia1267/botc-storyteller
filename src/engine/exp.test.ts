@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { ROLES, type RoleId } from './roles';
 import { seeded } from './rng';
 import { newGame, randomSetup, refreshSetup, setCount, startDeal } from './setup';
-import { boomResolve, butcherAgain, completeSlot, cultVote, currentSlot, damselGuess, dealNext, execute, executeStoryteller, finishDay, golemNominates, judgeRules, mezeSaid, psychoKill, riotNominate, shouldRun, slotActor, voteNeed, yaggaSay, type SlotPayload } from './flow';
+import { boomResolve, butcherAgain, completeSlot, cultVote, currentSlot, damselGuess, dealNext, doomsayerUse, execute, executeStoryteller, fiddlerDuel, finishDay, golemNominates, judgeRules, mezeSaid, psychoKill, riotNominate, shouldRun, slotActor, voteNeed, yaggaSay, type SlotPayload } from './flow';
+import { rulesFor } from './rulesSpeech';
 import { addTraveller, swapPlayers } from './travellers';
 import { makeCustom } from './custom';
 import { shugenjaChoices, shugenjaSteps } from './info';
@@ -542,5 +543,38 @@ describe('旅行者', () => {
     expect(s.executed).toBeUndefined();
     execute(s, 2);
     expect(seatOf(s, 2).alive).toBe(false);
+  });
+});
+
+describe('传奇角色与 Loric', () => {
+  it('末日预言者：选同阵营的人死', () => {
+    const s = game(['chef', 'empath', 'poisoner', 'monk', 'imp', 'soldier', 'undertaker'], undefined, { fabled: ['doomsayer'] });
+    night(s);
+    doomsayerUse(s, 1, 2);
+    expect(seatOf(s, 2).alive).toBe(false);
+    expect(s.doomUsed).toContain(1);
+  });
+
+  it('小提琴手：对决结果直接决定胜负', () => {
+    const s = game(['chef', 'empath', 'poisoner', 'monk', 'imp', 'soldier', 'undertaker'], undefined, { fabled: ['fiddler'] });
+    night(s);
+    fiddlerDuel(s, 5, 1, false);
+    expect(s.winner).toBe('good');
+  });
+
+  it('暴风捕手：指定的角色晚上杀不死，只会被处决而死', () => {
+    const s = game(['chef', 'empath', 'poisoner', 'monk', 'imp', 'soldier', 'undertaker'], undefined, { fabled: ['stormcatcher'], stormRole: 'empath' });
+    night(s);
+    day(s);
+    night(s, { imp: { kind: 'imp', target: 2 } });
+    expect(seatOf(s, 2).alive).toBe(true);
+    execute(s, 2);
+    expect(seatOf(s, 2).alive).toBe(false);
+  });
+
+  it('灵灯：规则讲稿里列出相克', () => {
+    const def = makeCustom('灵灯', ['chef', 'empath', 'mathematician', 'drunk', 'poisoner', 'imp']);
+    const secs = rulesFor(def, ['djinn']);
+    expect(secs.some((x) => x.title.includes('相克') && x.lines.some((l) => l.includes('数学家')))).toBe(true);
   });
 });

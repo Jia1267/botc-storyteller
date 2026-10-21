@@ -132,7 +132,7 @@ export default function App() {
           </Overlay>
         )}
         {panel === 'roles' && <RolesRef sc={scriptOf(s)} onClose={() => setPanel(null)} />}
-        {panel === 'rules' && <RulesSpeech sc={scriptOf(s)} onClose={() => setPanel(null)} />}
+        {panel === 'rules' && <RulesSpeech sc={scriptOf(s)} fabled={s.fabled} onClose={() => setPanel(null)} />}
         {panel === 'log' && <LogView s={s} onClose={() => setPanel(null)} />}
         {panel === 'sheet' && <ScriptSheet sc={scriptOf(s)} onClose={() => setPanel(null)} />}
         {panel === 'menu' && (

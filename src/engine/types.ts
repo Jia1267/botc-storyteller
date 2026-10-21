@@ -276,6 +276,12 @@ export interface GameState {
   gnomeAmigo: number | null;
   /** 集骨者让这个死人今晚到明天黄昏有能力 */
   boneRegain: { seat: number; night: number } | null;
+  /** 末日预言者：已经用过的玩家 */
+  doomUsed: number[];
+  /** 小提琴手用过了 */
+  fiddlerUsed: boolean;
+  /** 暴风捕手：说书人指定的善良角色 */
+  stormRole: RoleId | null;
   /** 恶魔的 3 个伪装 */
   bluffs: RoleId[];
   /** 占卜师干扰项 */

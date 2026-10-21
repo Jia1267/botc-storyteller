@@ -14,7 +14,7 @@ const TABS: { team: CatalogTeam; label: string }[] = [
 ];
 const EDITIONS = ['暗流涌动', '暗月初升', '梦殒春宵', '实验性角色', '—'];
 
-const supported = (id: string) => id in ROLES || id in FABLED;
+const supported = (id: string) => id in ROLES || id in FABLED || id === 'godofug-ug-mode';
 const abilityOf = (id: string, fallback?: string) =>
   id in ROLES ? ROLES[id as RoleId].ability : id in FABLED ? FABLED[id as FabledId].ability : (fallback ?? '');
 

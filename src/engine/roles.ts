@@ -35,7 +35,11 @@ export type RoleId =
   | 'cacklejack' | 'gangster' | 'gnome';
 
 /** 传奇角色：说书人的角色，不发给玩家 */
-export type FabledId = 'sentinel' | 'duchess';
+export type FabledId =
+  | 'sentinel' | 'duchess' | 'angel' | 'buddhist' | 'deusexfiasco' | 'djinn' | 'doomsayer' | 'ferryman' | 'fibbin' | 'fiddler'
+  | 'hellslibrarian' | 'revolutionary' | 'spiritofivory' | 'toymaker'
+  // Loric：说书人的场外规则
+  | 'bigwig' | 'bootlegger' | 'gardener' | 'godofug' | 'hindu' | 'knaves' | 'pope' | 'stormcatcher' | 'tor' | 'ventriloquist' | 'zenomancer';
 
 export interface RoleDef {
   id: RoleId;
@@ -1091,16 +1095,45 @@ export interface FabledDef {
   id: FabledId;
   name: string;
   ability: string;
+  /** Loric（场外规则）还是传奇角色 */
+  loric?: boolean;
+  /** 说书人这局要记得做什么（白天、入夜时提醒） */
+  remind?: string;
 }
 
-export const FABLED: Record<FabledId, FabledDef> = {
-  sentinel: { id: 'sentinel', name: '哨兵', ability: '开局时，外来者可能会多一个或少一个。' },
-  duchess: {
-    id: 'duchess',
-    name: '公爵夫人',
+const F_LIST: FabledDef[] = [
+  { id: 'sentinel', name: '哨兵', ability: '开局时，外来者可能会多一个或少一个。' },
+  {
+    id: 'duchess', name: '公爵夫人',
     ability: '每个白天，最多三名玩家可以一起拜访说书人。当晚（第一晚除外），每名拜访者会得知拜访者中有几个是邪恶的，但其中一人得到的数字是错的。',
   },
-};
+  { id: 'angel', name: '天使', ability: '谁对新玩家的死亡负最大责任，谁可能遇到坏事。', remind: '天使：有新玩家死了，对此负最大责任的人可能会遇到坏事（由你决定）。' },
+  { id: 'buddhist', name: '佛教徒', ability: '每个白天的前两分钟，老玩家不能说话。', remind: '佛教徒：每个白天开始的前两分钟，老玩家不能说话。' },
+  { id: 'deusexfiasco', name: 'Deus ex Fiasco', ability: '每局至少一次，说书人会犯一个错误、纠正它，并公开承认。', remind: 'Deus ex Fiasco：这局你至少要犯一次错，纠正它并公开承认。' },
+  { id: 'djinn', name: '灯神', ability: '使用灯神的特别规则（处理相克），所有玩家都知道是什么。', remind: '灯神：这局的相克规则都公开，规则讲稿里已经列出来了。' },
+  { id: 'doomsayer', name: '末日预言者', ability: '存活 4 人以上时，每名存活玩家可以公开选择（整局一次）让一名自己阵营的玩家死亡。', remind: '末日预言者：存活 4 人以上时，每个活人整局可以公开选一次让自己阵营的一人死（你来选死谁）。' },
+  { id: 'ferryman', name: '摆渡人', ability: '最后一天，所有死人重新获得投票标记。', remind: '摆渡人：最后一天，所有死人重新拿回投票标记。' },
+  { id: 'fibbin', name: '骗人精', ability: '整局一次，一名善良玩家可能得到错误信息。', remind: '骗人精：整局一次，你可以给一名善良玩家错误的信息。' },
+  { id: 'fiddler', name: '小提琴手', ability: '整局一次，恶魔秘密选一名对立阵营的玩家：所有玩家投票决定这两人中谁的阵营获胜。', remind: '小提琴手：整局一次，恶魔可以私下选一名好人和他对决，所有人投票决定谁的阵营赢。' },
+  { id: 'hellslibrarian', name: '地狱藏书员', ability: '说书人要求安静时还说话的人，可能遇到坏事。', remind: '地狱藏书员：你要求安静时还说话的人，可能会遇到坏事。' },
+  { id: 'revolutionary', name: '革命者', ability: '有两名相邻的玩家被公开告知是同一阵营。整局一次，其中一人会被错误地登记。', remind: '革命者：开局公开两名相邻的同阵营玩家；整局一次，其中一人可以被当成另一阵营。' },
+  { id: 'spiritofivory', name: '圣洁之魂', ability: '额外的邪恶玩家最多只能有一个。', remind: '圣洁之魂：额外的邪恶玩家（被转成邪恶的人等）最多只能有一个。' },
+  { id: 'toymaker', name: '玩具匠', ability: '恶魔可以选择不攻击，且整局至少要有一次不攻击。5–6 人局的邪恶玩家照常得到开局信息。', remind: '玩具匠：恶魔可以不杀人，整局至少要有一晚不杀。' },
+  { id: 'bigwig', name: '首席律师', loric: true, ability: '每名被提名者选一名玩家：投票前只有他能说话，他要疯狂地证明被提名者是善良的，否则可能死亡。', remind: '首席律师：每次提名，被提名者选一个"律师"，投票前只有律师能说话，他要疯狂地证明被提名者是好人。' },
+  { id: 'bootlegger', name: '私货商人', loric: true, ability: '这个剧本有自制角色或自制规则。', remind: '私货商人：这局有自制规则，开局讲清楚。' },
+  { id: 'gardener', name: '园丁', loric: true, ability: '由说书人给所有玩家分配角色。', remind: '园丁：角色由你分配（配角色那一步你可以手动换）。' },
+  { id: 'godofug', name: '讷神', loric: true, ability: '场上有一顶"讷帽"：戴帽的人说话一次只能发一个音，但投票算两票；做不到就把帽子传给别人。', remind: '讷神：戴讷帽的人一次只能发一个音、投票算两票；做不到就传帽子。' },
+  { id: 'hindu', name: '印度教教徒', loric: true, ability: '最先死亡的四名玩家会立刻以同阵营旅行者的身份转生。', remind: '印度教教徒：最先死的四个人立刻以同阵营旅行者的身份回来（在"旅行者"里加）。' },
+  { id: 'knaves', name: '诡诈杰克', loric: true, ability: '有两位说书人，一个说谎、一个说真话。整局一次，在黄昏时他们可能互换。', remind: '诡诈杰克：两位说书人一真一假，整局一次可以在黄昏互换。' },
+  { id: 'pope', name: '教皇', loric: true, ability: '场上有重复的善良角色，它们也可能出现在伪装里。', remind: '教皇：场上可以有重复的善良角色。' },
+  { id: 'stormcatcher', name: '暴风捕手', loric: true, ability: '说书人指定一个善良角色：如果它在场，那名玩家只会被处决而死，但邪恶玩家知道他是谁。', remind: '暴风捕手：你指定的那个善良角色只会被处决而死；第一晚告诉邪恶玩家他是谁。' },
+  { id: 'tor', name: '遗忘之门', loric: true, ability: '玩家不知道自己的角色和阵营，死亡时才得知。', remind: '遗忘之门：玩家不知道自己的角色，死了才告诉他。' },
+  { id: 'ventriloquist', name: '腹语师', loric: true, ability: '被提名时疯狂地扮演一个新角色的玩家，今天被处决可能不会死。', remind: '腹语师：被提名的人疯狂地扮演一个新角色，今天被处决可能不会死（由你决定）。' },
+  { id: 'zenomancer', name: '异术士', loric: true, ability: '有一名或多名玩家各有一个目标，达成后那名玩家得到一条真信息。', remind: '异术士：给一些玩家定目标，达成了就给他一条真信息。' },
+];
+
+export const FABLED: Record<FabledId, FabledDef> = Object.fromEntries(F_LIST.map((f) => [f.id, f])) as Record<FabledId, FabledDef>;
+export const FABLED_LIST = F_LIST;
 
 export const ROLES: Record<RoleId, RoleDef> = Object.fromEntries(R.map((r) => [r.id, r])) as Record<RoleId, RoleDef>;
 export const ROLE_LIST = R;

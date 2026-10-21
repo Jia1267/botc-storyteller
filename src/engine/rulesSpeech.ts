@@ -1,5 +1,6 @@
 import type { ScriptDef, ScriptId } from './editions';
-import type { RoleId } from './roles';
+import { FABLED, type FabledId, type RoleId } from './roles';
+import { jinxLabel, jinxesIn } from './custom';
 
 type Section = { title: string; lines: string[] };
 
@@ -93,8 +94,19 @@ const NIGHT_KILL: Partial<Record<ScriptId, string>> = {
   alvsal: '从第二晚开始，恶魔每晚会选三个人，让他们自己决定生死（后面细讲）。',
 };
 
+/** 这局加入的传奇角色/Loric 都是公开的；有灵灯就把相克也念一遍 */
+export function fabledSection(fabled: FabledId[], roles: RoleId[]): Section[] {
+  if (!fabled.length) return [];
+  const out: Section[] = [{ title: '这局的传奇角色（说书人的规则）', lines: fabled.map((f) => `${FABLED[f].name}：${FABLED[f].ability}`) }];
+  if (fabled.includes('djinn')) {
+    const js = jinxesIn(roles);
+    if (js.length) out.push({ title: '灯神：这个剧本的相克', lines: js.map((j) => `${jinxLabel(j)}：${j.text}`) });
+  }
+  return out;
+}
+
 /** 某个剧本的完整讲稿：通用部分 + 剧本特别规则（插在"最后提醒"前）。自由配板按角色表挑要讲的 */
-export function rulesFor(sc: ScriptDef): Section[] {
+export function rulesFor(sc: ScriptDef, fabled: FabledId[] = []): Section[] {
   const script = sc.id;
   const extra =
     script === 'custom'
@@ -104,7 +116,7 @@ export function rulesFor(sc: ScriptDef): Section[] {
   const base = kill
     ? RULES_SPEECH.map((sec) => ({ ...sec, lines: sec.lines.map((l) => (l.startsWith('从第二晚开始') ? kill : l)) }))
     : RULES_SPEECH;
-  return [...base.slice(0, -1), ...extra, base[base.length - 1]];
+  return [...base.slice(0, -1), ...extra, ...fabledSection(fabled, sc.roles), base[base.length - 1]];
 }
 
 /** 开局给新玩家念的规则讲稿（约 5 分钟） */

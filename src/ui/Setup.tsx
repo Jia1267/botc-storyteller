@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { FABLED, ROLES, TEAM_NAME, isEvilTeam, roleName, type FabledId, type RoleId, type Team } from '../engine/roles';
+import { FABLED, FABLED_LIST, ROLES, TEAM_NAME, isEvilTeam, roleName, type FabledId, type RoleId, type Team } from '../engine/roles';
 import { recommend, setupLabel, balance } from '../engine/balance';
 import { actorFor, addLog, inPlay, isEvil, lilMonsta, scriptOf, seatName } from '../engine/core';
 import { SCRIPT_LIST, type ScriptDef, type ScriptId } from '../engine/editions';
@@ -180,7 +180,7 @@ function RolesStep({ g }: { g: Game }) {
             </div>
           );
         })}
-        {sc.fabled.length > 0 && <FabledCard g={g} />}
+        <FabledCard g={g} />
         {godfatherModFor(s) && <GodfatherCard g={g} />}
         <button className="btn btn-outline btn-sm" onClick={() => g.commit((st) => (st.setupStep = 'count'))}>
           改人数
@@ -215,21 +215,45 @@ function RolesStep({ g }: { g: Game }) {
 function FabledCard({ g }: { g: Game }) {
   const s = g.s;
   const on = (f: FabledId) => s.fabled.includes(f);
+  const own = scriptOf(s).fabled;
+  const others = FABLED_LIST.filter((f) => !own.includes(f.id)).map((f) => f.id);
+  const row = (f: FabledId) => (
+    <div key={f} className="stack" style={{ gap: 6 }}>
+      <div className="row" style={{ justifyContent: 'space-between', flexWrap: 'nowrap' }}>
+        <b>
+          {FABLED[f].name}
+          {FABLED[f].loric && <small className="dim"> · Loric</small>}
+        </b>
+        <button className={`btn btn-sm ${on(f) ? 'btn-primary' : 'btn-outline'}`} onClick={() => g.commit((st) => toggleFabled(st, f, !on(f), defaultRng))}>
+          {on(f) ? '已加入' : '加入'}
+        </button>
+      </div>
+      <p className="dim">{FABLED[f].ability}</p>
+      {f === 'sentinel' && on(f) && <SentinelPick g={g} />}
+      {f === 'stormcatcher' && on(f) && (
+        <div className="stack" style={{ gap: 6 }}>
+          <span className="dim">指定一个善良角色：{s.stormRole ? `【${roleName(s.stormRole)}】` : '还没选'}</span>
+          <div className="role-grid compact">
+            {scriptOf(s).roles.filter((r) => ['townsfolk', 'outsider'].includes(ROLES[r].team)).map((r) => (
+              <button key={r} className="role-chip" style={s.stormRole === r ? { boxShadow: '0 0 0 2px var(--gold) inset' } : undefined} onClick={() => g.commit((st) => (st.stormRole = r))}>
+                {roleName(r)}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
   return (
     <div className="card stack" style={{ gap: 10 }}>
       <h3 style={{ margin: 0 }}>传奇角色（说书人用，默认不加）</h3>
-      {scriptOf(s).fabled.map((f) => (
-        <div key={f} className="stack" style={{ gap: 6 }}>
-          <div className="row" style={{ justifyContent: 'space-between', flexWrap: 'nowrap' }}>
-            <b>{FABLED[f].name}</b>
-            <button className={`btn btn-sm ${on(f) ? 'btn-primary' : 'btn-outline'}`} onClick={() => g.commit((st) => toggleFabled(st, f, !on(f), defaultRng))}>
-              {on(f) ? '已加入' : '加入'}
-            </button>
-          </div>
-          <p className="dim">{FABLED[f].ability}</p>
-          {f === 'sentinel' && on(f) && <SentinelPick g={g} />}
-        </div>
-      ))}
+      {own.map(row)}
+      <details className="more" open={others.some(on)}>
+        <summary>
+          <Icon name="chevronDown" size={18} /> {own.length ? '其他' : '加'}传奇角色 / Loric（{others.length} 个，可选）
+        </summary>
+        <div className="stack" style={{ gap: 10, marginTop: 8 }}>{others.map(row)}</div>
+      </details>
     </div>
   );
 }

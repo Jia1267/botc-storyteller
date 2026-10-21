@@ -1915,6 +1915,20 @@ export function twinActive(s: GameState): boolean {
 
 /* ---------------- 梦殒春宵：白天 ---------------- */
 
+/** 末日预言者：一名活人公开选择让自己阵营的一人死亡（整局一次） */
+export function doomsayerUse(s: GameState, chooser: number, victim: number) {
+  s.doomUsed.push(chooser);
+  addLog(s, 'day', `末日预言者：${seatName(chooser)} 公开选择让自己阵营的一人死亡`);
+  dayDeath(s, victim, '末日预言者：被同阵营的人选中死亡');
+}
+
+/** 小提琴手：恶魔和一名对立阵营玩家对决，大家投票决定谁的阵营赢 */
+export function fiddlerDuel(s: GameState, demonN: number, rival: number, demonWins: boolean) {
+  s.fiddlerUsed = true;
+  addLog(s, 'day', `小提琴手：恶魔（${seatName(demonN)}）和 ${seatName(rival)} 对决，大家投票让${demonWins ? '恶魔' : seatName(rival)}一方获胜`);
+  win(s, demonWins ? 'evil' : 'good', `小提琴手的对决：${demonWins ? '邪恶' : '善良'}一方得票更多`, 'day');
+}
+
 /** 屠夫：今天已经处决过人，再提名一次（回到白天） */
 export function butcherAgain(s: GameState) {
   s.butcherDay = s.night;

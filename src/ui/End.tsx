@@ -1,6 +1,6 @@
 import { isEvil, scriptOf, seatName } from '../engine/core';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { ROLES, TEAM_NAME, TRAVELLER_ROLES, isEvilTeam, roleName, type Team } from '../engine/roles';
+import { ROLES, TEAM_NAME, TRAVELLER_ROLES, isEvilTeam, roleName, type FabledId, type Team } from '../engine/roles';
 import { SCRIPT_LIST, type ScriptDef } from '../engine/editions';
 import { endLines } from '../engine/scripts';
 import { balance } from '../engine/balance';
@@ -324,14 +324,14 @@ export function ScriptSheet({ sc: start, onClose }: { sc: ScriptDef; onClose: ()
   );
 }
 
-export function RulesSpeech({ sc, onClose }: { sc: ScriptDef; onClose: () => void }) {
+export function RulesSpeech({ sc, fabled = [], onClose }: { sc: ScriptDef; fabled?: FabledId[]; onClose: () => void }) {
   return (
     <Overlay title="规则讲稿（约 5 分钟）" onClose={onClose}>
       <p className="dim" style={{ marginBottom: 12 }}>
         开局前念给新玩家听。照着读就行。
       </p>
       <div className="stack">
-        {rulesFor(sc).map((sec) => (
+        {rulesFor(sc, fabled).map((sec) => (
           <div key={sec.title} className="say">
             <div className="lbl">{sec.title}</div>
             {sec.lines.map((l) => (

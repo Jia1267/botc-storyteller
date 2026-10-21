@@ -1,4 +1,4 @@
-import { ROLES, isEvilTeam, roleName, type FabledId, type RoleId } from './roles';
+import { FABLED, ROLES, isEvilTeam, roleName, type FabledId, type RoleId } from './roles';
 import { balance, recommend, type Choice } from './balance';
 import { actorFor, inPlay, isEvil, lilMonsta, notInPlay, scriptOf, scriptRolesOf, seatName } from './core';
 import { SCRIPTS, type ScriptDef, type ScriptId } from './editions';
@@ -365,6 +365,9 @@ export function newGame(): GameState {
     cackleSafe: null,
     gnomeAmigo: null,
     boneRegain: null,
+    doomUsed: [],
+    fiddlerUsed: false,
+    stormRole: null,
     bluffs: [],
     redHerring: null,
     setupZ: 0,
@@ -705,7 +708,8 @@ export const MEZE_WORDS = ['蒲公英', '棉花糖', '灯塔', '企鹅', '风铃
 /** 科学怪人：恶魔拿到哪个不在场的善良能力（剧本上的，夜里才有它的位置） */
 export function boffinChoices(s: GameState, rng: Rng): Choice<RoleId>[] {
   if (!s.seats.some((x) => x.role === 'boffin')) return [];
-  const pool = notInPlay(s, ['townsfolk', 'outsider'], ['drunk', 'lunatic', 'boffin']);
+  // 相克：恶魔不能拿到酒鬼、异端分子、食人魔、政客的能力
+  const pool = notInPlay(s, ['townsfolk', 'outsider'], ['drunk', 'lunatic', 'boffin', 'heretic', 'ogre', 'politician']);
   if (!pool.length) return [];
   const mk = (key: string, r: RoleId, lean: number, reason: string, standard = false): Choice<RoleId> => ({ key, label: roleName(r), value: r, lean, reason, truth: true, standard });
   const out: Choice<RoleId>[] = [];
@@ -913,6 +917,7 @@ export function startDeal(s: GameState) {
   if (s.mezeWord && inPlay(s, 'mezepheles')) lines.push(`灵言师的秘密词：「${s.mezeWord}」`);
   if (s.yaggaPhrase && s.demonChar === 'yaggababble') lines.push(`牙噶巴卜的秘密短语：「${s.yaggaPhrase}」`);
   if (s.fabled.includes('sentinel')) lines.push(`传奇角色哨兵：外来者 ${s.sentinelDelta > 0 ? '+1' : s.sentinelDelta < 0 ? '−1' : '不变'}`);
-  if (s.fabled.includes('duchess')) lines.push('传奇角色：公爵夫人');
+  for (const f of s.fabled) if (f !== 'sentinel') lines.push(`${FABLED[f].loric ? 'Loric' : '传奇角色'}：${FABLED[f].name}`);
+  if (s.stormRole && s.fabled.includes('stormcatcher')) lines.push(`暴风捕手指定：【${roleName(s.stormRole)}】`);
   for (const text of lines) s.log.push({ night: 0, phase: 'setup', text });
 }
