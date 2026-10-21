@@ -7,8 +7,8 @@ import type { SlotId } from './types';
  * 说书人自己的步骤：爪牙互认/恶魔得知爪牙、说书人的投毒者/鹰身女妖能力（紧跟在对应爪牙后面）。
  */
 export const FIRST_ORDER: SlotId[] = [
-  'dusk', 'bureaucrat', 'thief', 'boffin', 'philosopher', 'alchemist', 'minionInfo', 'snitch', 'lunatic', 'demonInfo', 'king', 'sailor', 'marionette',
-  'preacher', 'lilmonsta', 'poisoner', 'widow', 'courtier', 'wizard', 'snakecharmer', 'godfather', 'organgrinder', 'devilsadvocate', 'eviltwin',
+  'dusk', 'kazali', 'bureaucrat', 'thief', 'boffin', 'philosopher', 'alchemist', 'yaggababble', 'minionInfo', 'snitch', 'lunatic', 'demonInfo', 'king', 'sailor', 'marionette',
+  'preacher', 'lilmonsta', 'lleech', 'poisoner', 'widow', 'courtier', 'wizard', 'snakecharmer', 'godfather', 'organgrinder', 'devilsadvocate', 'eviltwin',
   'witch', 'cerenovus', 'fearmonger', 'harpy', 'mezepheles', 'pukka', 'pixie', 'huntsman', 'damsel', 'amnesiac', 'washerwoman', 'librarian', 'investigator', 'chef', 'empath', 'fortuneteller',
   'butler', 'qutler', 'grandmother', 'clockmaker', 'dreamer', 'seamstress', 'steward', 'knight', 'noble', 'balloonist', 'shugenja', 'bountyhunter',
   'nightwatchman', 'spy', 'ogre', 'highpriestess', 'general', 'chambermaid', 'mathematician', 'dawn',
@@ -17,11 +17,11 @@ export const FIRST_ORDER: SlotId[] = [
 export const OTHER_ORDER: SlotId[] = [
   'dusk', 'duchess', 'bureaucrat', 'thief', 'philosopher', 'poppygrower', 'sailor', 'preacher', 'poisoner', 'stPoisoner', 'courtier',
   'innkeeper', 'wizard', 'gambler', 'acrobat', 'snakecharmer', 'monk', 'organgrinder', 'devilsadvocate', 'witch', 'cerenovus', 'pithag',
-  'fearmonger', 'harpy', 'stHarpy', 'mezepheles', 'scarletwoman', 'lunatic', 'exorcist', 'imp', 'zombuul', 'pukka', 'shabaloth', 'po', 'fanggu', 'nodashii', 'vortox',
-  'vigormortis', 'alhadikhia', 'lilmonsta', 'assassin', 'godfather', 'gossip', 'hatter', 'barber', 'sweetheart', 'plaguedoctor', 'sage', 'professor',
+  'fearmonger', 'harpy', 'stHarpy', 'mezepheles', 'scarletwoman', 'lunatic', 'exorcist', 'imp', 'zombuul', 'pukka', 'shabaloth', 'po', 'fanggu', 'nodashii', 'vortox', 'lordoftyphon',
+  'vigormortis', 'ojo', 'alhadikhia', 'lleech', 'lilmonsta', 'yaggababble', 'kazali', 'assassin', 'godfather', 'gossip', 'hatter', 'barber', 'sweetheart', 'plaguedoctor', 'sage', 'professor',
   'choirboy', 'huntsman', 'amnesiac', 'farmer', 'tinker', 'moonchild', 'ravenkeeper', 'empath', 'fortuneteller', 'undertaker', 'dreamer', 'flowergirl',
   'towncrier', 'oracle', 'seamstress', 'juggler', 'balloonist', 'king', 'bountyhunter', 'nightwatchman', 'butler', 'qutler', 'spy', 'highpriestess',
-  'general', 'chambermaid', 'mathematician', 'dawn',
+  'general', 'chambermaid', 'mathematician', 'riot', 'dawn',
 ];
 
 type Nights = { first?: true; other?: true };
@@ -43,6 +43,7 @@ const ROLE_NIGHTS: Partial<Record<RoleId, Nights>> = {
   steward: F, knight: F, noble: F, shugenja: F, highpriestess: FO, king: FO, choirboy: O, nightwatchman: FO, farmer: O, acrobat: O,
   preacher: FO, poppygrower: O, huntsman: FO, damsel: F, snitch: F, ogre: F, hatter: O, qutler: FO,
   boffin: F, wizard: FO, organgrinder: FO, mezepheles: FO,
+  ojo: O, lleech: FO, yaggababble: FO, lordoftyphon: O, kazali: FO, riot: O,
 };
 
 /** 只在第一晚醒的能力（哲学家后来的夜晚获得它们时，当晚马上用） */

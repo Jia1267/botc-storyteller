@@ -41,7 +41,7 @@ export type SlotId =
   // 实验性角色
   | 'steward' | 'knight' | 'noble' | 'shugenja' | 'highpriestess' | 'king' | 'choirboy' | 'nightwatchman' | 'farmer' | 'acrobat'
   | 'preacher' | 'poppygrower' | 'huntsman' | 'damsel' | 'snitch' | 'ogre' | 'hatter' | 'qutler'
-  | 'boffin' | 'wizard' | 'organgrinder' | 'mezepheles';
+  | 'boffin' | 'wizard' | 'organgrinder' | 'mezepheles' | 'ojo' | 'lleech' | 'yaggababble' | 'lordoftyphon' | 'kazali' | 'riot';
 
 export interface NightState {
   /** 当前所在的夜晚顺序位置 */
@@ -251,6 +251,11 @@ export interface GameState {
   xaanNight: number;
   /** 炸弹人被处决了，还没结算爆炸 */
   boomPending: boolean;
+  /** 痢蛭的宿主 */
+  lleechHost: number | null;
+  /** 牙噶巴卜的秘密短语；某一天说了几次 */
+  yaggaPhrase: string;
+  yaggaSaid: { day: number; count: number };
   /** 恶魔的 3 个伪装 */
   bluffs: RoleId[];
   /** 占卜师干扰项 */

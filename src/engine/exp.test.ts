@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { ROLES, type RoleId } from './roles';
 import { seeded } from './rng';
-import { newGame, randomSetup, refreshSetup, startDeal } from './setup';
-import { boomResolve, completeSlot, currentSlot, damselGuess, dealNext, execute, finishDay, golemNominates, mezeSaid, psychoKill, shouldRun, slotActor, type SlotPayload } from './flow';
+import { newGame, randomSetup, refreshSetup, setCount, startDeal } from './setup';
+import { boomResolve, completeSlot, currentSlot, damselGuess, dealNext, execute, finishDay, golemNominates, mezeSaid, psychoKill, riotNominate, shouldRun, slotActor, yaggaSay, type SlotPayload } from './flow';
 import { makeCustom } from './custom';
 import { shugenjaChoices, shugenjaSteps } from './info';
 import { isEvil, isPoisoned, malfunction, seatOf } from './core';
@@ -288,5 +288,84 @@ describe('实验性爪牙', () => {
     boomResolve(s, [1, 2, 5], 2);
     expect(s.seats.filter((x) => x.alive).map((x) => x.n)).toEqual([1, 5]);
     expect(s.winner).toBe('evil');
+  });
+});
+
+describe('实验性恶魔（一）', () => {
+  it('奥赫指角色：在场就那人死', () => {
+    const s = game(['chef', 'empath', 'poisoner', 'monk', 'ojo', 'soldier', 'undertaker']);
+    night(s);
+    day(s);
+    night(s, { ojo: { kind: 'ojo', role: 'empath', target: 2 } });
+    expect(seatOf(s, 2).alive).toBe(false);
+  });
+
+  it('痢蛭：宿主整局中毒；宿主活着痢蛭不死，宿主死了痢蛭跟着死、善良获胜', () => {
+    const s = game(['chef', 'empath', 'poisoner', 'monk', 'lleech', 'soldier', 'undertaker']);
+    night(s, { lleech: { kind: 'target', target: 2 } });
+    expect(s.lleechHost).toBe(2);
+    expect(isPoisoned(s, 2)).toBe(true);
+    execute(s, 5);
+    expect(seatOf(s, 5).alive).toBe(true);
+    finishDay(s);
+    night(s, { lleech: { kind: 'target', target: 1 } });
+    expect(seatOf(s, 1).alive).toBe(false);
+    execute(s, 2);
+    expect(seatOf(s, 5).alive).toBe(false);
+    expect(s.winner).toBe('good');
+  });
+
+  it('牙噶巴卜：白天说了两次，当晚最多死两人', () => {
+    const s = game(['chef', 'empath', 'poisoner', 'monk', 'yaggababble', 'soldier', 'undertaker']);
+    expect(s.yaggaPhrase).not.toBe('');
+    expect(night(s)).toContain('yaggababble');
+    yaggaSay(s, 1);
+    yaggaSay(s, 1);
+    day(s);
+    const seen = night(s, { yaggababble: { kind: 'yagga', picks: [1, 2] } });
+    expect(seen).toContain('yaggababble');
+    expect([1, 2].every((n) => !seatOf(s, n).alive)).toBe(true);
+  });
+
+  it('堤丰之首：多一个爪牙，邪恶坐成一排、恶魔在中间', () => {
+    const board: RoleId[] = ['chef', 'empath', 'monk', 'soldier', 'undertaker', 'washerwoman', 'fortuneteller', 'poisoner', 'spy', 'scarletwoman', 'lordoftyphon'];
+    const def = makeCustom('堤丰', board);
+    for (let i = 0; i < 20; i++) {
+      const s = newGame();
+      s.script = 'custom';
+      s.custom = def;
+      setCount(s, 8, seeded(i));
+      const d = s.seats.find((x) => x.role === 'lordoftyphon')!;
+      const evil = s.seats.filter((x) => ROLES[x.role].team === 'minion').map((x) => x.n);
+      expect(evil).toHaveLength(2);
+      const nb = [((d.n - 2 + 8) % 8) + 1, (d.n % 8) + 1];
+      expect([...evil].sort()).toEqual([...nb].sort());
+    }
+  });
+
+  it('卡扎力：开局没有爪牙；第一晚他定下爪牙，再做爪牙互认', () => {
+    const board: RoleId[] = ['chef', 'empath', 'monk', 'soldier', 'undertaker', 'washerwoman', 'fortuneteller', 'poisoner', 'spy', 'kazali'];
+    const def = makeCustom('卡扎力', board);
+    const x = randomSetup(def, 7, seeded(3));
+    expect(x.roles.some((r) => ROLES[r].team === 'minion')).toBe(false);
+    const s = game(['chef', 'empath', 'monk', 'soldier', 'kazali', 'undertaker', 'washerwoman'], board);
+    const seen = night(s, { kazali: { kind: 'kazali', picks: [{ seat: 2, role: 'poisoner' }] } });
+    expect(seen.indexOf('kazali')).toBeLessThan(seen.indexOf('minionInfo'));
+    expect(seatOf(s, 2).role).toBe('poisoner');
+    expect(isEvil(seatOf(s, 2))).toBe(true);
+  });
+
+  it('暴乱：第三晚爪牙变暴乱；第三天被提名就死，暴乱都死了善良赢', () => {
+    const s = game(['chef', 'empath', 'poisoner', 'monk', 'riot', 'soldier', 'undertaker']);
+    night(s);
+    day(s);
+    night(s);
+    day(s);
+    expect(night(s)).toContain('riot');
+    expect(seatOf(s, 3).role).toBe('riot');
+    riotNominate(s, 3);
+    expect(s.winner).toBeNull();
+    riotNominate(s, 5);
+    expect(s.winner).toBe('good');
   });
 });

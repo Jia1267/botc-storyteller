@@ -28,7 +28,7 @@ const ROLE_SLOTS: SlotId[] = [
 ];
 
 /** 恶魔自己醒来行动的步骤（驱魔人选中恶魔、麻脸巫婆造了恶魔说书人决定今晚不死人时都不醒） */
-const DEMON_SLOTS: SlotId[] = ['zombuul', 'alhadikhia', 'pukka', 'shabaloth', 'po', 'fanggu', 'nodashii', 'vigormortis'];
+const DEMON_SLOTS: SlotId[] = ['zombuul', 'alhadikhia', 'pukka', 'shabaloth', 'po', 'fanggu', 'nodashii', 'vigormortis', 'ojo', 'lleech', 'lordoftyphon', 'kazali'];
 
 
 /** 女巫的诅咒还有效：女巫的能力在（活着或被亡骨魔杀死）、健康、存活超过三人 */
@@ -103,8 +103,9 @@ function candidates(s: GameState, slot: SlotId): Seat[] {
   if (DEMON_SLOTS.includes(slot)) {
     const d = demonSeat(s);
     if (!d || d.role !== slot || s.ns?.exorcised || s.ns?.noDemonKill) return [];
-    // 普卡第一晚也醒（只下毒）；其他恶魔第一晚不醒
-    if (s.night === 1 && slot !== 'pukka') return [];
+    // 普卡第一晚也醒（只下毒）；痢蛭第一晚选宿主；卡扎力第一晚定爪牙；其他恶魔第一晚不醒
+    if (s.night === 1 && slot !== 'pukka' && slot !== 'lleech' && slot !== 'kazali') return [];
+    if (slot === 'kazali' && s.night === 1 && s.seats.some((x) => !x.traveller && teamOf(x.role) === 'minion')) return [];
     // 僵怖：今天白天有人死了就不醒
     if (slot === 'zombuul' && diedOnDay(s, s.night - 1).length) return [];
     return [d];
@@ -193,6 +194,15 @@ export function shouldRun(s: GameState, slot: SlotId): boolean {
     // 唯一的爪牙是提线木偶（他不知道自己是爪牙）：没有爪牙要互认
     case 'minionInfo':
       return s.night === 1 && s.count >= 7 && !lilMonsta(s) && minionSeats(s).length > 0 && !poppyActive(s);
+    // 牙噶巴卜：第一晚看短语；之后前一天说过短语的那晚由你决定谁死
+    case 'yaggababble': {
+      const d = demonSeat(s);
+      if (!d || d.role !== 'yaggababble') return false;
+      return s.night === 1 || (s.yaggaSaid.day === s.night - 1 && s.yaggaSaid.count > 0);
+    }
+    // 第三晚：爪牙变成暴乱
+    case 'riot':
+      return s.night === 3 && s.seats.some((x) => x.role === 'riot') && s.seats.some((x) => x.alive && teamOf(x.role) === 'minion');
     // 第一晚：落难少女、告密者在场，叫醒爪牙
     case 'damsel':
     case 'snitch':
@@ -370,7 +380,10 @@ export type SlotPayload =
   | { kind: 'farmer'; to: number }
   | { kind: 'huntsman'; target: number | null; become?: RoleId }
   | { kind: 'hatter'; changes: { seat: number; role: RoleId }[] }
-  | { kind: 'wish'; text: string | null };
+  | { kind: 'wish'; text: string | null }
+  | { kind: 'ojo'; role: RoleId; target: number | null }
+  | { kind: 'kazali'; picks: { seat: number; role: RoleId }[] }
+  | { kind: 'yagga'; picks: number[] };
 
 /** 这一步里玩家用能力"选择"了哪些人（莽夫用） */
 function chosenSeats(p: SlotPayload): number[] {
@@ -491,6 +504,8 @@ function usedAbility(p: SlotPayload): boolean {
       return p.changes.length > 0;
     case 'wish':
       return !!p.text;
+    case 'yagga':
+      return p.picks.length > 0;
     case 'seamstress':
       return !!p.picks;
     case 'po':
@@ -1171,6 +1186,54 @@ export function completeSlot(s: GameState, p: SlotPayload) {
         s.mezeTarget = null;
       }
       break;
+    case 'ojo':
+      if (p.kind === 'ojo') {
+        addLog(s, 'night', `奥赫 ${seatName(actor!.n)} 选择了【${roleName(p.role)}】${p.target ? `：${seatName(p.target)} 死亡` : ''}`);
+        if (malfunction(s, actor!.n)) addLog(s, 'night', '奥赫中毒/醉酒：没有人死');
+        else if (p.target) demonKill(s, p.target);
+      }
+      break;
+    case 'lleech':
+      if (p.kind === 'target') {
+        if (!s.lleechHost) {
+          s.lleechHost = p.target;
+          addLog(s, 'night', `痢蛭 ${seatName(actor!.n)} 选择 ${seatName(p.target)} 当宿主：他整局中毒，宿主死痢蛭才会死`);
+        } else {
+          addLog(s, 'night', `痢蛭 ${seatName(actor!.n)} 选择了 ${seatName(p.target)}`);
+          if (malfunction(s, actor!.n)) addLog(s, 'night', '痢蛭中毒/醉酒：没有人死');
+          else demonKill(s, p.target);
+        }
+      }
+      break;
+    case 'lordoftyphon':
+    case 'kazali':
+      if (p.kind === 'kazali') {
+        for (const c of p.picks) {
+          const x = seatOf(s, c.seat);
+          x.role = c.role;
+          delete x.alignment;
+          s.roleSince[x.n] = s.night;
+        }
+        addLog(s, 'night', `卡扎力 ${seatName(actor!.n)} 定下爪牙：${p.picks.map((c) => `${seatName(c.seat)} 变成${roleName(c.role)}`).join('，')}，已分别告知`);
+      } else if (p.kind === 'target') {
+        addLog(s, 'night', `${roleName(eff as RoleId)} ${seatName(actor!.n)} 选择了 ${seatName(p.target)}`);
+        if (malfunction(s, actor!.n)) addLog(s, 'night', '恶魔中毒/醉酒：没有人死');
+        else demonKill(s, p.target);
+      }
+      break;
+    case 'yaggababble':
+      if (s.night === 1) addLog(s, 'night', `牙噶巴卜得知秘密短语「${s.yaggaPhrase}」`);
+      else if (p.kind === 'yagga') {
+        const d = demonSeat(s);
+        const ok = !!d && !malfunction(s, d.n);
+        addLog(s, 'night', `牙噶巴卜今天说了 ${s.yaggaSaid.count} 次短语${ok ? `：说书人决定 ${p.picks.map((n) => seatName(n)).join('、') || '没有人'} 死亡` : '，但他中毒/醉酒：没有人死'}`);
+        if (ok) for (const n of p.picks) kill(s, n, 'night', '被恶魔杀死（牙噶巴卜的短语）');
+      }
+      break;
+    case 'riot':
+      for (const x of s.seats) if (x.alive && teamOf(x.role) === 'minion') x.role = 'riot';
+      addLog(s, 'night', '第三晚：所有爪牙变成了暴乱，已告知他们');
+      break;
     case 'dusk':
       break;
   }
@@ -1692,6 +1755,21 @@ export function twinActive(s: GameState): boolean {
 }
 
 /* ---------------- 梦殒春宵：白天 ---------------- */
+
+/** 牙噶巴卜白天公开说了一次秘密短语 */
+export function yaggaSay(s: GameState, delta: number) {
+  const c = s.yaggaSaid.day === s.night ? s.yaggaSaid.count : 0;
+  s.yaggaSaid = { day: s.night, count: Math.max(0, c + delta) };
+  addLog(s, 'day', `牙噶巴卜今天说了 ${s.yaggaSaid.count} 次秘密短语`);
+}
+
+/** 第三天的暴乱：被提名的人当场死亡（然后他要马上再提名） */
+export function riotNominate(s: GameState, nominee: number) {
+  dayDeath(s, nominee, '第三天暴乱：被提名即死亡');
+}
+
+/** 第三天、暴乱在场：提名就死 */
+export const riotDay = (s: GameState) => s.night === 3 && s.seats.some((x) => x.alive && x.role === 'riot');
 
 /** 精神病患者白天公开杀人（提名开始前，每天一次） */
 export function psychoKill(s: GameState, pN: number, target: number) {

@@ -27,6 +27,7 @@ export type RoleId =
   | 'acrobat' | 'preacher' | 'magician' | 'poppygrower' | 'huntsman'
   | 'golem' | 'zealot' | 'damsel' | 'snitch' | 'puzzlemaster' | 'ogre' | 'hatter' | 'politician' | 'heretic' | 'qutler'
   | 'psychopath' | 'vizier' | 'wraith' | 'mezepheles' | 'organgrinder' | 'boffin' | 'xaan' | 'wizard' | 'boomdandy'
+  | 'ojo' | 'lleech' | 'yaggababble' | 'lordoftyphon' | 'kazali' | 'riot'
   // 旅行者（暗流涌动）
   | 'scapegoat' | 'gunslinger' | 'beggar' | 'bureaucrat' | 'thief';
 
@@ -895,6 +896,38 @@ const R: RoleDef[] = [
     id: 'boomdandy', name: '炸弹人', short: '炸弹', team: 'minion', weight: -1, bluff: 0,
     ability: '如果你被处决，除三名玩家外所有人死亡。倒数十秒后，被最多人指着的玩家死亡。',
     tips: ['他被处决（死不死都算）：宣布他爆炸了，你选三个人活下来（恶魔必须在里面），其余活人都死。', '然后慢慢倒数十秒，所有人（死人也可以）指一个人，被指最多的死；平票就没人死。'],
+  },
+
+  /* ---------- 实验性角色：恶魔 ---------- */
+  {
+    id: 'ojo', name: '奥赫', short: '奥赫', team: 'demon', weight: -0.5, bluff: 0,
+    ability: '每晚（第一晚除外），你选择一个角色：那个角色的玩家死亡。如果这个角色不在场，由说书人决定谁死。',
+    tips: ['他在角色表上指一个角色，不是指人。', '那个角色在场就是那人死；不在场你来选一个人死（一般选活着的好人）。'],
+  },
+  {
+    id: 'lleech', name: '痢蛭', short: '痢蛭', team: 'demon', weight: -0.5, bluff: 0,
+    ability: '每晚（第一晚除外），你选择一名玩家：他死亡。第一晚你选择一名玩家：他整局中毒。你只会在他死亡时死亡。',
+    tips: ['第一晚他选一个"宿主"：宿主整局中毒（网页会一直标着）。', '宿主活着，痢蛭就死不了（被处决也不死，只宣布他没死）。宿主一死，痢蛭跟着死，善良获胜。', '给中毒的宿主假信息时要让它看起来像真的。'],
+  },
+  {
+    id: 'yaggababble', name: '牙噶巴卜', short: '牙噶', team: 'demon', weight: -0.5, bluff: 0,
+    ability: '你开局得知一句秘密短语。今天你每公开说一次，就可能有一名玩家死亡。',
+    tips: ['第一晚把短语给他看（网页会出一句平常的话，可以换）。', '白天他每说一次，就在"白天有人来找你"里点一下记次数。', '当晚你决定死几个人（不超过他说的次数）、死谁。他中毒醉酒时没人死。'],
+  },
+  {
+    id: 'lordoftyphon', name: '堤丰之首', short: '堤丰', team: 'demon', weight: -1, bluff: 0,
+    ability: '每晚（第一晚除外），你选择一名玩家：他死亡。[邪恶玩家坐成一排，你在正中间；爪牙 +1]',
+    tips: ['开局多一个爪牙，所有邪恶玩家挨着坐成一排，堤丰之首在中间（网页安排座位时会自动做到）。', '其他和小恶魔一样：每晚杀一个人。'],
+  },
+  {
+    id: 'kazali', name: '卡扎力', short: '卡扎', team: 'demon', weight: -0.5, bluff: 0,
+    ability: '每晚（第一晚除外），你选择一名玩家：他死亡。[开局由你决定谁是哪个爪牙]',
+    tips: ['开局袋子里没有爪牙。第一晚叫醒卡扎力，让他指人、再指爪牙角色：那人变成这个爪牙（邪恶），叫醒告诉他。', '之后和小恶魔一样每晚杀人。'],
+  },
+  {
+    id: 'riot', name: '暴乱', short: '暴乱', team: 'demon', weight: -0.5, bluff: 0,
+    ability: '第三天，爪牙都变成暴乱；被提名的人当场死亡，然后要立刻提名一名活着的玩家。这必须发生。',
+    tips: ['暴乱晚上不杀人。第三晚叫醒所有爪牙，告诉他们变成暴乱了。', '第三天：每次有人被提名就当场死亡，他马上（倒数 3 秒）再提名一个活人；没人提名就你来提名。', '暴乱都死了善良赢；只剩两人邪恶赢。'],
   },
 
   /* ---------- 旅行者：迟到/早退的人，阵营由说书人定 ---------- */

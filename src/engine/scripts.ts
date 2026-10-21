@@ -103,9 +103,39 @@ export const SLOT_TITLE: Record<SlotId, string> = {
   wizard: '巫师',
   organgrinder: '街头风琴手',
   mezepheles: '灵言师',
+  ojo: '奥赫',
+  lleech: '痢蛭',
+  yaggababble: '牙噶巴卜',
+  lordoftyphon: '堤丰之首',
+  kazali: '卡扎力',
+  riot: '暴乱：爪牙变成暴乱',
 };
 
 const SLOT_LINES: Partial<Record<SlotId, Lines>> = {
+  ojo: {
+    simple: ['请在角色表上指一个角色：他会死亡。'],
+    atmo: ['奥赫的眼睛在黑暗里睁开……', '你要哪个角色的命？'],
+  },
+  lleech: {
+    simple: ['请选择一名玩家。'],
+    atmo: ['痢蛭在暗处蠕动……', '选择你的猎物。'],
+  },
+  yaggababble: {
+    simple: ['这是你的秘密短语。'],
+    atmo: ['一句话，一条命……', '记住这句话。'],
+  },
+  lordoftyphon: {
+    simple: ['请选择一名玩家：他会死亡。'],
+    atmo: ['堤丰的百个头颅同时睁开了眼睛……', '选择你的猎物。'],
+  },
+  kazali: {
+    simple: ['请选择一名玩家：他会死亡。'],
+    atmo: ['卡扎力的爪子划过黑暗……', '选择你的猎物。'],
+  },
+  riot: {
+    simple: ['你现在是暴乱。'],
+    atmo: ['街上燃起了火光……', '你加入了暴乱。'],
+  },
   boffin: {
     simple: ['科学怪人选中了你们：恶魔拥有这个角色的能力。'],
     atmo: ['实验室里电光一闪……', '恶魔获得了这个能力。'],

@@ -10,7 +10,7 @@ import {
   harpyPunish, nominateVirgin, previewSlayer, previewVirgin, setCannibalFake, setDemonVoted, savantVisit, scapegoatFor, setDuchessVisitors,
   slayerShoot, markUsed, nomResults, voteNeed, type NomResult, type NomRow,
   cereVerdict, jugglerCanGuess, jugglerCount, jugglerGuess, setMinionNominated, twinsBlock, witchActive, witchStrikes,
-  damselGuess, golemNominates, puzzleGuess, boomResolve, mezeSaid, psychoKill, vizierExecute,
+  damselGuess, golemNominates, puzzleGuess, boomResolve, mezeSaid, psychoKill, vizierExecute, riotDay, riotNominate, yaggaSay,
 } from '../engine/flow';
 import { activeTravellers, beggarLearns, exile, gunslingerPreview, gunslingerShoot, leave } from '../engine/travellers';
 import { clone } from '../engine/core';
@@ -132,8 +132,10 @@ export function DayScreen({ g }: { g: Game }) {
           <TimerDisplay />
         </div>
         <DayAbilities s={s} open={setPanel} />
+        <YaggaCard g={g} />
         <TravellerDay g={g} />
         <SayBox lines={nominationLines(s.style)} title="讨论结束后说" />
+        <RiotCard g={g} />
         <HarpyCard g={g} />
         <OrganCard s={s} />
         <WitchCard g={g} />
@@ -277,6 +279,47 @@ function DayAbilities({ s, open }: { s: GameState; open: (p: Panel) => void }) {
       <div className="stack" style={{ gap: 8 }}>
         {items}
       </div>
+    </div>
+  );
+}
+
+/** 牙噶巴卜：白天说了几次秘密短语 */
+function YaggaCard({ g }: { g: Game }) {
+  const s = g.s;
+  const y = s.seats.find((x) => x.role === 'yaggababble' && x.alive);
+  if (!y || !s.yaggaPhrase) return null;
+  const n = s.yaggaSaid.day === s.night ? s.yaggaSaid.count : 0;
+  return (
+    <div className="card stack" style={{ gap: 8 }}>
+      <p>
+        <b>牙噶巴卜（{seatName(y.n)}）的秘密短语「{s.yaggaPhrase}」</b>：他今天每公开说一次就点一下，今晚最多死这么多人。
+      </p>
+      <div className="row">
+        <button className="btn btn-outline" disabled={!n} onClick={() => g.commit((st) => yaggaSay(st, -1))}>
+          −1
+        </button>
+        <b style={{ fontSize: 22, minWidth: 40, textAlign: 'center' }}>{n}</b>
+        <button className="btn btn-primary grow" onClick={() => g.commit((st) => yaggaSay(st, 1))}>
+          他又说了一次
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** 第三天的暴乱：每次提名就当场死亡 */
+function RiotCard({ g }: { g: Game }) {
+  const s = g.s;
+  const [t, setT] = useState<number[]>([]);
+  if (!riotDay(s) || s.winner) return null;
+  return (
+    <div className="card card-evil stack" style={{ gap: 8 }}>
+      <b>第三天：暴乱！被提名的人当场死亡</b>
+      <p className="dim">他死后要马上提名一个活人（你倒数 3、2、1）；他没提名或没人提名，就你来提名。暴乱都死了善良赢，只剩两人邪恶赢。今天不用投票。</p>
+      <SeatPicker s={s} selected={t} max={1} onChange={setT} disabled={s.seats.filter((x) => !x.alive).map((x) => x.n)} label="谁被提名了？" />
+      <button className="btn btn-danger btn-block" disabled={!t.length} onClick={() => { g.commit((st) => riotNominate(st, t[0])); setT([]); }}>
+        {t.length ? `${seatName(t[0])} 被提名：当场死亡` : '先点出被提名的人'}
+      </button>
     </div>
   );
 }

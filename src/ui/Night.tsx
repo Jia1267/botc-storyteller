@@ -10,6 +10,7 @@ import {
   pithagBlock, previewImp, shouldRun, slotActor, slotsFor, type SlotPayload, magicianSeat, poppyActive,
 } from '../engine/flow';
 import { firstNightOnly } from '../engine/nightOrder';
+import { DISTRIBUTION } from '../engine/setup';
 import type { Choice } from '../engine/balance';
 import {
   balloonistChoices, bountyChoices, chambermaidChoices, chambermaidCount, chefCount, dreamLabel, dreamerChoices, duchessChoices, duchessCount,
@@ -413,6 +414,18 @@ function SlotBody({ g, s, slot, actor }: { g: Game; s: GameState; slot: SlotId; 
       return <OrganStep g={g} s={s} actor={actor!} />;
     case 'mezepheles':
       return <MezeStep g={g} s={s} actor={actor!} />;
+    case 'ojo':
+      return <OjoStep g={g} s={s} actor={actor!} />;
+    case 'lleech':
+      return s.lleechHost ? <SvDemonStep g={g} s={s} actor={actor!} slot="lleech" /> : <LleechHostStep g={g} s={s} actor={actor!} />;
+    case 'lordoftyphon':
+      return <SvDemonStep g={g} s={s} actor={actor!} slot="lordoftyphon" />;
+    case 'kazali':
+      return s.night === 1 ? <KazaliStep g={g} s={s} actor={actor!} /> : <SvDemonStep g={g} s={s} actor={actor!} slot="kazali" />;
+    case 'yaggababble':
+      return <YaggaStep g={g} s={s} />;
+    case 'riot':
+      return <RiotNightStep g={g} s={s} />;
     default:
       return <SkipStep g={g} />;
   }
@@ -3093,7 +3106,7 @@ function PithagStep({ g, s, actor }: StepProps) {
 }
 
 /** 梦殒春宵的恶魔：方古 / 诺-达鲺 / 亡骨魔 */
-function SvDemonStep({ g, s, actor, slot }: StepProps & { slot: 'fanggu' | 'nodashii' | 'vigormortis' }) {
+function SvDemonStep({ g, s, actor, slot }: StepProps & { slot: 'fanggu' | 'nodashii' | 'vigormortis' | 'lleech' | 'lordoftyphon' | 'kazali' }) {
   const done = useDone(g);
   const ui = useUi();
   const [t, setT] = useState<number[]>([]);
@@ -3111,6 +3124,7 @@ function SvDemonStep({ g, s, actor, slot }: StepProps & { slot: 'fanggu' | 'noda
     <>
       {slot === 'nodashii' && <p className="muted">他左右最近的镇民 {nd.map((n) => seatName(n)).join('、') || '—'} 一直中毒（网页已经标出）。</p>}
       {slot === 'fanggu' && !s.fangguJumped && <p className="muted">方古还没跳过：他第一次杀死外来者时，外来者变成新方古，他代替那人死。</p>}
+      {slot === 'lleech' && s.lleechHost && <p className="muted">宿主是 {seatName(s.lleechHost)}（整局中毒）：宿主活着痢蛭就死不了，宿主一死痢蛭跟着死。</p>}
       <DoBox items={[wake(actor.n), '让他用手指向一名玩家，你在下面点出来。']} />
       <SayBox lines={slotLines(slot, s.style)} title="小声说" />
       <SeatPicker s={s} selected={t} max={1} onChange={(v) => { setT(v); setPSel(null); }} label="他要杀谁？" />
@@ -3606,6 +3620,185 @@ function MezeStep({ g, s, actor }: StepProps) {
       )}
       <BottomBar wide>
         {!bad && <CardButton onClick={() => ui.showCard({ title: '你现在是', big: ['邪恶阵营'], note: '你的角色不变，但你现在和邪恶一伙。' })} />}
+        <button className="btn btn-primary grow" onClick={() => done({ kind: 'none' })}>
+          完成，下一步
+        </button>
+      </BottomBar>
+    </>
+  );
+}
+
+/* ---------------- 实验性角色：恶魔 ---------------- */
+
+function OjoStep({ g, s, actor }: StepProps) {
+  const done = useDone(g);
+  const [role, setRole] = useState<RoleId | null>(null);
+  const [pick, setPick] = useState<number[]>([]);
+  const bad = malfunction(s, actor.n);
+  const holder = role ? s.seats.find((x) => x.role === role && x.alive) : undefined;
+  const target = holder ? holder.n : pick[0] ?? null;
+  const pv = target ? demonKillPreview(s, target) : null;
+  return (
+    <>
+      <DoBox items={[wake(actor.n), '让他在角色表上指一个角色（不是指人），你在下面点出来。', sleep]} />
+      <SayBox lines={slotLines('ojo', s.style)} title="小声说" />
+      <RoleGrid roles={scriptOf(s).roles} value={role} onPick={(r) => { setRole(r); setPick([]); }} />
+      {role && (
+        <Reveal key={role}>
+          {holder ? (
+            <p className="muted">【{roleName(role)}】是 {seatName(holder.n)}。</p>
+          ) : (
+            <>
+              <p className="muted">【{roleName(role)}】不在场（或已经死了）：由你选一个人死，一般选活着的好人。</p>
+              <SeatPicker s={s} selected={pick} max={1} onChange={setPick} disabled={s.seats.filter((x) => !x.alive).map((x) => x.n)} label="你让谁死？" />
+            </>
+          )}
+          {pv && (
+            <div className={`card${pv.dies && !bad ? ' card-evil' : ''}`}>
+              <p>{bad ? '奥赫中毒/醉酒：没有人会死。' : pv.text}</p>
+            </div>
+          )}
+          <DoBox items={['天亮时再统一宣布死讯。']} />
+        </Reveal>
+      )}
+      <Tips role="ojo" />
+      <BottomBar wide>
+        <button className="btn btn-primary btn-block" disabled={!role || !target} onClick={() => role && done({ kind: 'ojo', role, target })}>
+          {!role ? '先点出他指的角色' : !target ? '先选谁死' : '完成，下一步'}
+        </button>
+      </BottomBar>
+    </>
+  );
+}
+
+/** 痢蛭第一晚（或刚变成痢蛭的那晚）：选宿主 */
+function LleechHostStep({ g, s, actor }: StepProps) {
+  const done = useDone(g);
+  const [t, setT] = useState<number[]>([]);
+  return (
+    <>
+      <DoBox items={[wake(actor.n), '让他指一名活着的玩家，你在下面点出来：这是他的宿主。', sleep]} />
+      <SayBox lines={['请选择一名玩家。']} title="小声说" />
+      <SeatPicker s={s} selected={t} max={1} onChange={setT} disabled={s.seats.filter((x) => !x.alive).map((x) => x.n)} label="他选了谁当宿主？" />
+      {t.length > 0 && <p className="dim">{seatName(t[0])} 整局中毒（网页会一直标着）。宿主活着痢蛭就死不了，宿主一死痢蛭跟着死。</p>}
+      <Tips role="lleech" />
+      <BottomBar wide>
+        <button className="btn btn-primary btn-block" disabled={!t.length} onClick={() => done({ kind: 'target', target: t[0] })}>
+          {t.length ? '完成，下一步' : '先点出他选的人'}
+        </button>
+      </BottomBar>
+    </>
+  );
+}
+
+/** 卡扎力第一晚：指定谁是哪个爪牙 */
+function KazaliStep({ g, s, actor }: StepProps) {
+  const done = useDone(g);
+  const ui = useUi();
+  const need = DISTRIBUTION[s.count]?.[2] ?? 1;
+  const [picks, setPicks] = useState<{ seat: number; role: RoleId }[]>([]);
+  const [seat, setSeat] = useState<number[]>([]);
+  const minions = scriptOf(s).roles.filter((r) => teamOf(r) === 'minion' && !picks.some((p) => p.role === r));
+  return (
+    <>
+      <p className="muted">开局没有爪牙：卡扎力现在指定 {need} 个爪牙。每次让他先指一个人，再在角色表上指一个爪牙。</p>
+      <DoBox items={[wake(actor.n), '让他指人、再指爪牙角色，你在下面点出来。', sleep]} />
+      {picks.map((c) => (
+        <p key={c.seat}>
+          · {seatName(c.seat)} → <b>{roleName(c.role)}</b>
+        </p>
+      ))}
+      {picks.length < need && (
+        <>
+          <SeatPicker s={s} selected={seat} max={1} onChange={setSeat} disabled={[actor.n, ...picks.map((c) => c.seat)]} label={`第 ${picks.length + 1} 个：他指了谁？`} />
+          {seat.length > 0 && <RoleGrid roles={minions} value={null} onPick={(r) => { setPicks([...picks, { seat: seat[0], role: r }]); setSeat([]); }} />}
+        </>
+      )}
+      {picks.length === need && (
+        <Reveal>
+          <DoBox
+            title="然后一个一个叫醒新爪牙"
+            items={picks.map((c) => (
+              <>
+                轻拍 <b>{seatName(c.seat)}</b>，点「给 {seatName(c.seat)} 看」：你现在是<b>【{roleName(c.role)}】</b>，邪恶阵营。让他闭眼。
+              </>
+            ))}
+          />
+          <div className="row">
+            {picks.map((c) => (
+              <button key={c.seat} className="btn btn-ghost grow" onClick={() => ui.showCard(newRoleCard(c.role, true))}>
+                <Icon name="eye" /> 给 {seatName(c.seat)} 看
+              </button>
+            ))}
+          </div>
+        </Reveal>
+      )}
+      <Tips role="kazali" />
+      <BottomBar wide>
+        {picks.length > 0 && picks.length < need && <button className="btn btn-ghost" onClick={() => setPicks(picks.slice(0, -1))}>撤回一个</button>}
+        <button className="btn btn-primary grow" disabled={picks.length < need} onClick={() => done({ kind: 'kazali', picks })}>
+          {picks.length < need ? `还差 ${need - picks.length} 个爪牙` : '完成，接着爪牙互认'}
+        </button>
+      </BottomBar>
+    </>
+  );
+}
+
+/** 牙噶巴卜：第一晚看短语；之后按他白天说的次数决定谁死 */
+function YaggaStep({ g, s }: { g: Game; s: GameState }) {
+  const done = useDone(g);
+  const ui = useUi();
+  const d = demonSeat(s)!;
+  const [t, setT] = useState<number[]>([]);
+  if (s.night === 1)
+    return (
+      <>
+        <DoBox items={[wake(d.n), <>点「给他看」：秘密短语<b>「{s.yaggaPhrase}」</b>。</>, sleep]} />
+        <SayBox lines={slotLines('yaggababble', s.style)} title="小声说" />
+        <Tips role="yaggababble" />
+        <BottomBar wide>
+          <CardButton onClick={() => ui.showCard({ title: '你的秘密短语', big: [s.yaggaPhrase] })} />
+          <button className="btn btn-primary grow" onClick={() => done({ kind: 'none' })}>
+            完成，下一步
+          </button>
+        </BottomBar>
+      </>
+    );
+  const n = s.yaggaSaid.count;
+  const bad = malfunction(s, d.n);
+  return (
+    <>
+      <p className="muted">
+        牙噶巴卜（{seatName(d.n)}）今天公开说了 <b>{n}</b> 次「{s.yaggaPhrase}」：你可以让最多 {n} 个人死（可以少于这个数）。恶魔不用醒。
+      </p>
+      {bad ? (
+        <div className="card"><p>牙噶巴卜中毒/醉酒：今晚没有人因此死亡。</p></div>
+      ) : (
+        <SeatPicker s={s} selected={t} max={n} onChange={setT} disabled={s.seats.filter((x) => !x.alive).map((x) => x.n)} label="你让谁死？（不选就是没人死）" />
+      )}
+      <Tips role="yaggababble" />
+      <BottomBar wide>
+        <button className="btn btn-primary btn-block" onClick={() => done({ kind: 'yagga', picks: bad ? [] : t })}>
+          {t.length && !bad ? `${t.map((x) => seatName(x)).join('、')} 死亡，下一步` : '没人死，下一步'}
+        </button>
+      </BottomBar>
+    </>
+  );
+}
+
+/** 第三晚：爪牙变成暴乱 */
+function RiotNightStep({ g, s }: { g: Game; s: GameState }) {
+  const done = useDone(g);
+  const ui = useUi();
+  const ms = s.seats.filter((x) => x.alive && teamOf(x.role) === 'minion');
+  return (
+    <>
+      <p className="muted">明天是第三天：所有爪牙变成暴乱。明天每次有人被提名就当场死亡，他要马上再提名一个活人。</p>
+      <DoBox items={[<>轻拍爪牙 <b>{seatsText(ms.map((x) => x.n))}</b>，让他们睁眼。</>, '点「给他们看」：你们现在是暴乱。', '让他们闭眼。']} />
+      <SayBox lines={slotLines('riot', s.style)} title="小声说" />
+      <Tips role="riot" />
+      <BottomBar wide>
+        <CardButton label="给他们看" onClick={() => ui.showCard(newRoleCard('riot', true))} />
         <button className="btn btn-primary grow" onClick={() => done({ kind: 'none' })}>
           完成，下一步
         </button>

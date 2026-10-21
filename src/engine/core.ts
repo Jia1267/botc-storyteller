@@ -73,6 +73,8 @@ export function isPoisoned(s: GameState, n: number): boolean {
   if (s.pukkaPoison === n && s.seats.some((x) => x.role === 'pukka' && reallyAlive(s, x))) return true;
   // 被舞蛇人换掉的前恶魔：一直中毒
   if (s.snakePoisoned.includes(n)) return true;
+  // 痢蛭的宿主：痢蛭活着就一直中毒
+  if (s.lleechHost === n && s.seats.some((x) => x.role === 'lleech' && x.alive && x.n !== n)) return true;
   // 限：第 X 夜到第 X 天黄昏，所有镇民中毒
   if (s.xaanNight && s.night === s.xaanNight && teamOf(seatOf(s, n).role) === 'townsfolk') {
     const xa = s.seats.find((x) => x.role === 'xaan' && x.alive);
@@ -257,6 +259,11 @@ export function kill(s: GameState, n: number, when: 'night' | 'day', cause: stri
   const st = seatOf(s, n);
   const fake = st.role === 'zombuul' && s.zombuulFake;
   if (!st.alive && !fake) return false;
+  // 痢蛭：宿主活着就死不了
+  if (!force && st.role === 'lleech' && s.lleechHost && seatOf(s, s.lleechHost).alive && !malfunction(s, n)) {
+    addLog(s, when, `${seatName(n)} 是痢蛭，宿主 ${seatName(s.lleechHost)} 还活着，他不会死`);
+    return false;
+  }
   // 维齐尔白天不会死
   if (when === 'day' && !force && st.role === 'vizier' && !malfunction(s, n)) {
     addLog(s, when, `${seatName(n)} 是维齐尔，白天不会死`);
@@ -283,6 +290,14 @@ export function kill(s: GameState, n: number, when: 'night' | 'day', cause: stri
   st.alive = false;
   st.death = { night: s.night, when, cause, sick: malfunction(s, n) };
   if (when === 'night' && s.ns && !s.ns.deaths.includes(n)) s.ns.deaths.push(n);
+  // 痢蛭的宿主死了：痢蛭跟着死
+  if (s.lleechHost === n) {
+    const l = s.seats.find((x) => x.role === 'lleech' && x.alive);
+    if (l && !malfunction(s, l.n)) {
+      addLog(s, when, `宿主 ${seatName(n)} 死了：痢蛭（${seatName(l.n)}）跟着死亡`);
+      kill(s, l.n, when, '宿主死了，痢蛭跟着死亡', true);
+    }
+  }
   return true;
 }
 

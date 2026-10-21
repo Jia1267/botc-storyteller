@@ -84,8 +84,10 @@ export function randomSetup(script: ScriptRef, count: number, rng: Rng, sentinel
   for (let tries = 0; ; tries++) {
     const demon = pick(of('demon'), rng);
     const lil = demon === 'lilmonsta';
-    const minions = sample(of('minion'), m + (lil ? 1 : 0), rng);
-    let towns = pickTownsfolk(of('townsfolk'), t, 0, rng, !!sc.f4Cap);
+    // 卡扎力：开局没有爪牙（第一晚由他指定）；堤丰之首：多一个爪牙
+    const mCount = demon === 'kazali' ? 0 : m + (lil ? 1 : 0) + (demon === 'lordoftyphon' ? 1 : 0);
+    const minions = sample(of('minion'), mCount, rng);
+    let towns = pickTownsfolk(of('townsfolk'), t + (demon === 'kazali' ? m : 0), 0, rng, !!sc.f4Cap);
     const outs = of('outsider');
     // 教父：本来没有外来者就只能 +1
     const gfd = o === 0 || rng() < 0.5 ? 1 : -1;
@@ -318,6 +320,9 @@ export function newGame(): GameState {
     boffinAbility: null,
     xaanNight: 0,
     boomPending: false,
+    lleechHost: null,
+    yaggaPhrase: '',
+    yaggaSaid: { day: 0, count: 0 },
     bluffs: [],
     redHerring: null,
     setupZ: 0,
@@ -522,9 +527,33 @@ export function fixMarionette(s: GameState) {
   next.startRole = next.role;
 }
 
+/** 堤丰之首：所有邪恶玩家挨着坐成一排，恶魔在中间（爪牙左右交替排开） */
+export function fixTyphon(s: GameState) {
+  const d = s.seats.find((x) => !x.traveller && x.role === 'lordoftyphon');
+  if (!d) return;
+  const N = s.count;
+  const minions = s.seats.filter((x) => !x.traveller && ROLES[x.role].team === 'minion');
+  // 目标座位：d 两边交替 +1、-1、+2、-2……
+  const targets: number[] = [];
+  for (let k = 1; targets.length < minions.length; k++) {
+    targets.push(((d.n - 1 + k) % N) + 1);
+    if (targets.length < minions.length) targets.push(((d.n - 1 - k + N * 2) % N) + 1);
+  }
+  for (const tgt of targets) {
+    const cur = s.seats[tgt - 1];
+    if (ROLES[cur.role].team === 'minion') continue;
+    const m = s.seats.find((x) => !x.traveller && ROLES[x.role].team === 'minion' && !targets.includes(x.n));
+    if (!m) break;
+    [m.role, cur.role] = [cur.role, m.role];
+    m.startRole = m.role;
+    cur.startRole = cur.role;
+  }
+}
+
 /** 座位变了：提线木偶归位、重选邪恶镇民、占卜干扰项和镜像双子的双子 */
 function refreshSeating(s: GameState, rng: Rng) {
   fixMarionette(s);
+  fixTyphon(s);
   refreshEvilTownsfolk(s, rng);
   refreshRedHerring(s, rng);
   refreshTwin(s, rng);
@@ -559,6 +588,7 @@ export function setTwin(s: GameState, n: number) {
 /** 角色变了以后重新算配板强度和各项推荐 */
 export function refreshSetup(s: GameState, rng: Rng) {
   fixMarionette(s);
+  fixTyphon(s);
   s.setupZ = setupZ(s.seats.map((x) => x.role), s.count, scriptOf(s), s.demonChar ?? 'imp');
   const score = balance(s).score;
   const df = drunkFakeChoices(s);
@@ -590,7 +620,11 @@ export function refreshSetup(s: GameState, rng: Rng) {
   // 限：开局有几个外来者就在第几夜下毒
   s.xaanNight = s.seats.some((x) => x.role === 'xaan') ? s.seats.filter((x) => !x.traveller && ROLES[x.role].team === 'outsider').length : 0;
   if (s.seats.some((x) => x.role === 'mezepheles') && !s.mezeWord) s.mezeWord = pick(MEZE_WORDS, rng);
+  if (s.demonChar === 'yaggababble' && !s.yaggaPhrase) s.yaggaPhrase = pick(YAGGA_PHRASES, rng);
 }
+
+/** 牙噶巴卜的秘密短语：平常说话会用到的 */
+export const YAGGA_PHRASES = ['说实话', '我觉得有道理', '这事有点怪', '我们想一想', '好问题', '我不太确定', '有可能', '我同意'];
 
 /** 灵言师的秘密词：平时不会随口说出来的词 */
 export const MEZE_WORDS = ['蒲公英', '棉花糖', '灯塔', '企鹅', '风铃', '火烈鸟', '万花筒', '橡皮鸭', '仙人掌', '热气球', '章鱼', '跷跷板', '霓虹灯', '鹦鹉螺', '彩虹糖'];
@@ -804,6 +838,7 @@ export function startDeal(s: GameState) {
   if (s.boffinAbility) lines.push(`科学怪人：恶魔拥有【${roleName(s.boffinAbility)}】的能力`);
   if (s.xaanNight) lines.push(`限：第 ${s.xaanNight} 夜所有镇民中毒到黄昏`);
   if (s.mezeWord && inPlay(s, 'mezepheles')) lines.push(`灵言师的秘密词：「${s.mezeWord}」`);
+  if (s.yaggaPhrase && s.demonChar === 'yaggababble') lines.push(`牙噶巴卜的秘密短语：「${s.yaggaPhrase}」`);
   if (s.fabled.includes('sentinel')) lines.push(`传奇角色哨兵：外来者 ${s.sentinelDelta > 0 ? '+1' : s.sentinelDelta < 0 ? '−1' : '不变'}`);
   if (s.fabled.includes('duchess')) lines.push('传奇角色：公爵夫人');
   for (const text of lines) s.log.push({ night: 0, phase: 'setup', text });
