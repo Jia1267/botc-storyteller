@@ -1,6 +1,6 @@
-import { circleOrder, isEvil, seatName } from '../engine/core';
-import { SCRIPTS } from '../engine/editions';
-import { ROLES, roleName } from '../engine/roles';
+import { circleOrder, isEvil, scriptOf, seatName } from '../engine/core';
+import type { ScriptDef } from '../engine/editions';
+import { ROLES, TEAM_NAME, roleName, type Team } from '../engine/roles';
 import type { GameState } from '../engine/types';
 import { EMBLEM } from './Emblem';
 
@@ -117,12 +117,15 @@ function mark(g: CanvasRenderingContext2D, x: number, y: number, size: number) {
   g.restore();
 }
 
+/** 行首不能是这些标点：放不下也挂在上一行末尾 */
+const NO_START = '，。、；：！？）」』”’》】';
+
 /** 按宽度把中文一个字一个字折行 */
 function wrap(g: CanvasRenderingContext2D, text: string, maxW: number): string[] {
   const lines: string[] = [];
   let cur = '';
   for (const ch of text) {
-    if (cur && g.measureText(cur + ch).width > maxW) {
+    if (cur && g.measureText(cur + ch).width > maxW && !NO_START.includes(ch)) {
       lines.push(cur);
       cur = ch;
     } else cur += ch;
@@ -242,7 +245,7 @@ export async function drawResult(s: GameState): Promise<{ url: string; blob: Blo
   g.textAlign = 'right';
   g.fillStyle = C.text2;
   g.font = `24px ${SANS}`;
-  g.fillText(`${now.getFullYear()}.${now.getMonth() + 1}.${now.getDate()} · ${SCRIPTS[s.script].name} · ${s.count} 人`, W - 72, 87);
+  g.fillText(`${now.getFullYear()}.${now.getMonth() + 1}.${now.getDate()} · ${scriptOf(s).name} · ${s.count} 人`, W - 72, 87);
   g.textAlign = 'left';
 
   // 胜负
@@ -321,6 +324,97 @@ export async function drawResult(s: GameState): Promise<{ url: string; blob: Blo
   g.font = `22px ${SANS}`;
   g.fillText('jia1267.github.io', W - 72, 1246);
   g.fillText('/botc-storyteller', W - 72, 1278);
+  g.textAlign = 'left';
+
+  const url = cv.toDataURL('image/png');
+  const blob = await new Promise<Blob>((res, rej) => cv.toBlob((b) => (b ? res(b) : rej(new Error('toBlob'))), 'image/png'));
+  return { url, blob };
+}
+
+/* ---------------- 剧本图（没有现成图片的剧本、自由配板由网页画一张） ---------------- */
+
+/** 按角色表画一张剧本图：四个阵营分段，每个角色一行名字 + 能力。高度按内容算 */
+export async function drawScriptSheet(sc: ScriptDef): Promise<{ url: string; blob: Blob }> {
+  await Promise.all([document.fonts.load(`900 40px "Noto Serif SC"`), document.fonts.load(`600 40px "Noto Serif SC"`)]).catch(() => undefined);
+  const teams: Team[] = ['townsfolk', 'outsider', 'minion', 'demon'];
+  const nameW = 210;
+  const textX = 72 + nameW;
+  const textW = W - 72 - textX;
+  // 先量一遍高度
+  const probe = document.createElement('canvas').getContext('2d')!;
+  probe.font = `26px ${SANS}`;
+  const rows = teams.map((t) => ({
+    t,
+    roles: sc.roles.filter((r) => ROLES[r].team === t).map((r) => ({ r, lines: wrap(probe, ROLES[r].ability, textW) })),
+  }));
+  const rowH = (n: number) => Math.max(1, n) * 36 + 26;
+  let h = 300;
+  for (const sec of rows) if (sec.roles.length) h += 86 + sec.roles.reduce((a, x) => a + rowH(x.lines.length), 0);
+  h += 150;
+
+  const cv = document.createElement('canvas');
+  cv.width = W;
+  cv.height = h;
+  const g = cv.getContext('2d')!;
+  g.fillStyle = C.bg;
+  g.fillRect(0, 0, W, h);
+  const glow = g.createRadialGradient(W / 2, 0, 0, W / 2, 0, 700);
+  glow.addColorStop(0, 'rgba(209,173,102,.14)');
+  glow.addColorStop(1, 'rgba(0,0,0,0)');
+  g.fillStyle = glow;
+  g.fillRect(0, 0, W, 700);
+
+  // 页眉
+  mark(g, 72, 60, 52);
+  g.textBaseline = 'middle';
+  g.fillStyle = C.text2;
+  g.font = `600 26px ${SERIF}`;
+  g.fillText('钟楼说书人 · 剧本', 138, 87);
+  g.textBaseline = 'alphabetic';
+  g.fillStyle = C.gold;
+  g.font = `900 84px ${SERIF}`;
+  g.fillText(sc.name, 72, 222);
+  g.fillStyle = C.text2;
+  g.font = `26px ${SANS}`;
+  g.fillText(`${sc.min === sc.max ? sc.min : `${sc.min}–${sc.max}`} 人 · ${sc.roles.length} 个角色`, 72, 268);
+
+  let y = 300;
+  for (const sec of rows) {
+    if (!sec.roles.length) continue;
+    const evil = sec.t === 'minion' || sec.t === 'demon';
+    y += 40;
+    g.fillStyle = evil ? C.evil : C.good;
+    g.font = `900 34px ${SERIF}`;
+    g.fillText(TEAM_NAME[sec.t], 72, y + 16);
+    g.fillStyle = C.line;
+    g.fillRect(72 + g.measureText(TEAM_NAME[sec.t]).width + 20, y + 4, W - 144 - g.measureText(TEAM_NAME[sec.t]).width - 20, 1);
+    y += 46;
+    for (const x of sec.roles) {
+      g.fillStyle = C.text;
+      g.font = `900 30px ${SERIF}`;
+      g.fillText(roleName(x.r), 72, y + 30);
+      g.fillStyle = C.text2;
+      g.font = `26px ${SANS}`;
+      x.lines.forEach((ln, i) => g.fillText(ln, textX, y + 30 + i * 36));
+      y += rowH(x.lines.length);
+    }
+  }
+
+  // 页脚
+  y = h - 104;
+  g.fillStyle = C.line;
+  g.fillRect(72, y, W - 144, 1);
+  g.fillStyle = C.text2;
+  g.font = `700 20px ${SANS}`;
+  g.fillText('非官方工具', 72, y + 48);
+  const lw = g.measureText('非官方工具').width;
+  g.fillStyle = C.text3;
+  g.font = `20px ${SANS}`;
+  g.fillText('，能力是说书人助手的白话转述，以实体规则书为准', 72 + lw, y + 48);
+  g.textAlign = 'right';
+  g.fillStyle = C.text2;
+  g.font = `22px ${SANS}`;
+  g.fillText('jia1267.github.io/botc-storyteller', W - 72, y + 82);
   g.textAlign = 'left';
 
   const url = cv.toDataURL('image/png');

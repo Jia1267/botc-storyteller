@@ -1,6 +1,15 @@
-import type { ScriptId } from './editions';
+import type { ScriptDef, ScriptId } from './editions';
+import type { RoleId } from './roles';
 
 type Section = { title: string; lines: string[] };
+
+const MADNESS: Section = {
+  title: '什么是"疯狂"',
+  lines: [
+    '有的角色要你"疯狂"地证明某件事：意思是你要真心实意、努力地让大家相信它。',
+    '做不到的话，你可能会受到惩罚，或者拿不到好处。',
+  ],
+};
 
 /** 小剧本（5–6 人）额外要讲的 */
 const TEENSY: Section[] = [
@@ -11,14 +20,11 @@ const TEENSY: Section[] = [
       '所以邪恶玩家要自己找队友，善良玩家也可以放心地撒谎来骗邪恶。',
     ],
   },
-  {
-    title: '什么是"疯狂"',
-    lines: [
-      '有的角色要你"疯狂"地证明某件事：意思是你要真心实意、努力地让大家相信它。',
-      '做不到的话，你可能会受到惩罚，或者拿不到好处。',
-    ],
-  },
+  MADNESS,
 ];
+
+/** 跟"疯狂"有关的角色：自由配板里有它们就讲一下什么是疯狂 */
+const MAD_ROLES: RoleId[] = ['cerenovus', 'harpy', 'mutant', 'pixie', 'klutz'];
 
 const BY_SCRIPT: Partial<Record<ScriptId, Section[]>> = {
   spooky: [
@@ -57,6 +63,16 @@ const BY_SCRIPT: Partial<Record<ScriptId, Section[]>> = {
       ],
     },
   ],
+  sv: [
+    MADNESS,
+    {
+      title: '梦殒春宵要注意',
+      lines: [
+        '这个剧本里角色会变：有人夜里被换成别的角色，我会叫醒他告诉他。你的阵营一般不会跟着变。',
+        '中毒、醉酒的人很多，拿到的信息可能是错的。',
+      ],
+    },
+  ],
   alvsal: [
     {
       title: '王不见王要注意',
@@ -77,10 +93,14 @@ const NIGHT_KILL: Partial<Record<ScriptId, string>> = {
   alvsal: '从第二晚开始，恶魔每晚会选三个人，让他们自己决定生死（后面细讲）。',
 };
 
-/** 某个剧本的完整讲稿：通用部分 + 剧本特别规则（插在"最后提醒"前） */
-export function rulesFor(script: ScriptId): Section[] {
-  const extra = BY_SCRIPT[script] ?? [];
-  const kill = NIGHT_KILL[script];
+/** 某个剧本的完整讲稿：通用部分 + 剧本特别规则（插在"最后提醒"前）。自由配板按角色表挑要讲的 */
+export function rulesFor(sc: ScriptDef): Section[] {
+  const script = sc.id;
+  const extra =
+    script === 'custom'
+      ? [...(sc.max <= 6 ? TEENSY.slice(0, 1) : []), ...(sc.roles.some((r) => MAD_ROLES.includes(r)) ? [MADNESS] : [])]
+      : (BY_SCRIPT[script] ?? []);
+  const kill = script === 'custom' ? undefined : NIGHT_KILL[script];
   const base = kill
     ? RULES_SPEECH.map((sec) => ({ ...sec, lines: sec.lines.map((l) => (l.startsWith('从第二晚开始') ? kill : l)) }))
     : RULES_SPEECH;

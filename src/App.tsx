@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { currentSlot, slotActor } from './engine/flow';
+import { scriptOf } from './engine/core';
 import { SLOT_TITLE } from './engine/scripts';
 import { useGame } from './store';
 import type { GameState } from './engine/types';
@@ -130,10 +131,10 @@ export default function App() {
             <GrimoirePanel s={s} detail />
           </Overlay>
         )}
-        {panel === 'roles' && <RolesRef script={s.script} onClose={() => setPanel(null)} />}
-        {panel === 'rules' && <RulesSpeech script={s.script} onClose={() => setPanel(null)} />}
+        {panel === 'roles' && <RolesRef sc={scriptOf(s)} onClose={() => setPanel(null)} />}
+        {panel === 'rules' && <RulesSpeech sc={scriptOf(s)} onClose={() => setPanel(null)} />}
         {panel === 'log' && <LogView s={s} onClose={() => setPanel(null)} />}
-        {panel === 'sheet' && <ScriptSheet script={s.script} onClose={() => setPanel(null)} />}
+        {panel === 'sheet' && <ScriptSheet sc={scriptOf(s)} onClose={() => setPanel(null)} />}
         {panel === 'menu' && (
           <Sheet title="菜单" onClose={() => setPanel(null)}>
             <div className="stack">

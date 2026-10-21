@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useId, useRef, useSt
 import { createPortal } from 'react-dom';
 import { ROLES, TEAM_NAME, isEvilTeam, roleName, type Team } from '../engine/roles';
 import { balance, leanTag, whyPrefix, type Choice } from '../engine/balance';
-import { believedRole, isEvil, isPoisoned, seatOf, seatName } from '../engine/core';
+import { believedRole, isEvil, isPoisoned, keepsAbility, philoDrunk, seatOf, seatName } from '../engine/core';
 import type { GameState } from '../engine/types';
 import { Icon } from './icons';
 import { Emblem } from './Emblem';
@@ -434,7 +434,7 @@ export interface Mark {
 }
 
 /** 醉酒原因：why 记的是让他醉的角色（或"选了莽夫"） */
-export const drunkWhy = (why: string) => (why === '选了莽夫' ? '选了莽夫' : `被${why}弄醉`);
+export const drunkWhy = (why: string) => (why === '选了莽夫' || why.startsWith('哲学家') ? why : `被${why}弄醉`);
 
 export function seatMarks(s: GameState, n: number): Mark[] {
   const x = seatOf(s, n);
@@ -453,7 +453,12 @@ export function seatMarks(s: GameState, n: number): Mark[] {
   if (s.bountyKnown[s.bountyKnown.length - 1] === n) out.push({ key: 'bounty', short: '赏', text: '赏金猎人现在盯着的邪恶玩家' });
   if (s.bansheeActive === n) out.push({ key: 'banshee', short: '妖', text: '报丧女妖能力生效：每天提名两次、投票算两票' });
   const td = s.tempDrunk.find((d) => d.seat === n && d.from <= s.night && s.night <= d.to);
-  if (td) out.push({ key: 'tdrunk', short: '醉', text: `醉酒到第 ${td.to} 天黄昏（${drunkWhy(td.why)}）`, cls: 'm-drunk' });
+  if (td) out.push({ key: 'tdrunk', short: '醉', text: `${td.to >= 999 ? '一直醉酒' : `醉酒到第 ${td.to} 天黄昏`}（${drunkWhy(td.why)}）`, cls: 'm-drunk' });
+  if (s.philoDrunk === n && philoDrunk(s, n)) out.push({ key: 'phd', short: '醉', text: '哲学家拿了他的能力：醉酒，直到哲学家死亡或失灵', cls: 'm-drunk' });
+  if (s.twin === n && s.seats.some((y) => y.role === 'eviltwin')) out.push({ key: 'twin', short: '双', text: '镜像双子的善良双子：他被处决邪恶直接获胜' });
+  if (s.witchCurse && s.witchCurse.seat === n && s.witchCurse.night === s.night) out.push({ key: 'curse', short: '咒', text: '被女巫诅咒：这一天提名就会死', cls: 'm-evil' });
+  if (s.cereMad && s.cereMad.seat === n && s.cereMad.night === s.night) out.push({ key: 'cere', short: '狂', text: `要疯狂地证明自己是${roleName(s.cereMad.role)}（洗脑师）` });
+  if (!x.alive && keepsAbility(s, n)) out.push({ key: 'vigor', short: '留', text: '被亡骨魔杀死：能力还在，夜里照常叫醒', cls: 'm-evil' });
   if (s.grandchild === n && s.seats.some((y) => y.role === 'grandmother' && y.alive)) out.push({ key: 'gc', short: '孙', text: '祖母的孙子：被恶魔杀死时祖母也死' });
   if (s.phase === 'night' && s.ns?.innkeeper?.includes(n)) out.push({ key: 'inn', short: '护', text: '今晚受旅店老板保护' });
   if (x.role === 'po' && s.poCharged) out.push({ key: 'po', short: '蓄', text: '珀上次没选人：下次要选三个', cls: 'm-evil' });
@@ -469,7 +474,13 @@ export function seatMarks(s: GameState, n: number): Mark[] {
               ? '被说书人用投毒者能力下毒（今晚和明天白天）'
               : s.pukkaPoison === n
                 ? '被普卡毒了：下一次普卡行动时死亡'
-                : '中毒中（今晚和明天白天）',
+                : s.snakePoisoned.includes(n)
+                  ? '被舞蛇人换下来：一直中毒'
+                  : s.vigor.some((v) => v.poisoned === n)
+                    ? '被亡骨魔杀死的爪牙毒了（亡骨魔活着就一直中毒）'
+                    : s.seats.some((y) => y.role === 'nodashii' && y.alive) && !(s.poison?.seat === n && s.poison.night === s.night)
+                      ? '诺-达鲺的邻居镇民：诺-达鲺活着就一直中毒'
+                      : '中毒中（今晚和明天白天）',
     });
   if (s.babysitter === n && s.demonChar === 'lilmonsta') out.push({ key: 'baby', short: '宝', text: '正在照看小怪宝（算作恶魔）', cls: 'm-evil' });
   if (s.fearTarget === n && s.seats.some((y) => y.role === 'fearmonger' && y.alive)) out.push({ key: 'fear', short: '惧', text: '恐惧之灵的目标', cls: 'm-evil' });

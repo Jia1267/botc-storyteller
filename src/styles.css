@@ -397,6 +397,8 @@ details.more[open] summary svg { transform: rotate(180deg); }
 .nom.tie .res { color: var(--warn); }
 .nom-sum { margin-top: 8px; }
 .stepper { display: flex; align-items: center; gap: 10px; }
+.input { width: 100%; min-height: 48px; padding: 0 14px; font-size: 18px; background: var(--bg-2); color: var(--text); border: 1px solid var(--line-2); border-radius: 12px; font-family: inherit; }
+.input:focus { outline: 2px solid var(--gold-2); outline-offset: 1px; }
 .stepper input { width: 6em; min-height: 52px; text-align: center; font-size: 28px; font-weight: 800; background: var(--bg-2); color: var(--text); border: 1px solid var(--line-2); border-radius: 12px; }
 
 /* ---------- 手机夜里：迷你魔典（顶栏第二行）、步数挪到顶栏 ---------- */

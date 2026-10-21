@@ -1,5 +1,5 @@
 import type { FabledId, RoleId, Team } from './roles';
-import type { ScriptId } from './editions';
+import type { ScriptDef, ScriptId } from './editions';
 
 export interface Seat {
   /** 座位号，从 1 开始，顺时针 */
@@ -34,7 +34,10 @@ export type SlotId =
   | 'marionette' | 'harpy' | 'stHarpy' | 'stPoisoner' | 'dreamer' | 'seamstress' | 'bountyhunter' | 'general'
   | 'alhadikhia' | 'sweetheart' | 'barber' | 'plaguedoctor'
   | 'sailor' | 'courtier' | 'pukka' | 'grandmother' | 'innkeeper' | 'gambler' | 'shabaloth' | 'po' | 'assassin'
-  | 'gossip' | 'professor' | 'tinker' | 'moonchild';
+  | 'gossip' | 'professor' | 'tinker' | 'moonchild'
+  // 梦殒春宵
+  | 'clockmaker' | 'snakecharmer' | 'mathematician' | 'towncrier' | 'oracle' | 'philosopher' | 'juggler' | 'sage'
+  | 'eviltwin' | 'witch' | 'cerenovus' | 'pithag' | 'fanggu' | 'nodashii' | 'vigormortis';
 
 export interface NightState {
   /** 当前所在的夜晚顺序位置 */
@@ -53,6 +56,10 @@ export interface NightState {
   exorcised?: boolean;
   /** 今晚已经走过的步骤（进度条用：用过一次性能力后这一步不会再"该跑"，但已经算一步） */
   ran?: number[];
+  /** 哲学家今晚获得了只在第一晚用的能力：在哲学家这一步里马上用 */
+  philoNow?: RoleId;
+  /** 麻脸巫婆造了恶魔，说书人决定今晚恶魔杀人无效 */
+  noDemonKill?: boolean;
   /** 旅店老板今晚保护的人（老板健康时） */
   innkeeper?: number[];
   /** 莽夫今晚已经被人选过了 */
@@ -83,7 +90,9 @@ export interface Nomination {
 
 export interface GameState {
   v: 1;
-  script: ScriptId;
+  script: ScriptId | 'custom';
+  /** 自由配板：这一局用的角色表（存一份，改板子不影响进行中的游戏） */
+  custom?: ScriptDef;
   phase: Phase;
   setupStep: SetupStep;
   count: number;
@@ -185,6 +194,26 @@ export interface GameState {
   moonchildResolved: boolean;
   /** 主谋：恶魔被处决后多出来的那一天 */
   mastermindDay: number;
+  /** 数学家：从天亮到现在没有正常生效的能力（谁、为什么），天亮清空 */
+  abnormal: { seat: number; why: string }[];
+  /** 城镇公告员：哪一天有爪牙提名过 */
+  minionNominatedDay: number;
+  /** 杂耍艺人：成为杂耍艺人的那一夜（他的第一个白天是同一天）；guesses = 那天公开猜的 */
+  juggler: { seat: number; since: number; day?: number; guesses?: { seat: number; role: RoleId }[]; correct?: number } | null;
+  /** 女巫诅咒的人（第 night 夜诅咒，管第 night 天） */
+  witchCurse: { seat: number; night: number } | null;
+  /** 洗脑师：某人第 night 天要疯狂地证明自己是 role */
+  cereMad: { seat: number; role: RoleId; night: number } | null;
+  /** 镜像双子的善良双子 */
+  twin: number | null;
+  /** 被舞蛇人换掉的前恶魔：一直中毒 */
+  snakePoisoned: number[];
+  /** 哲学家选了在场的角色：那个人醉酒（哲学家死了或失灵就恢复） */
+  philoDrunk: number | null;
+  /** 方古已经跳到过外来者身上（整局一次） */
+  fangguJumped: boolean;
+  /** 亡骨魔杀死的爪牙（保留能力）和因此中毒的镇民 */
+  vigor: { minion: number; poisoned: number }[];
   /** 恶魔的 3 个伪装 */
   bluffs: RoleId[];
   /** 占卜师干扰项 */

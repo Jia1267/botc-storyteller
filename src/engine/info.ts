@@ -1,8 +1,8 @@
 import { ROLES, isEvilTeam, roleName, rolesOfTeam, type RoleId, type Team } from './roles';
 import { balance, type Choice } from './balance';
 import {
-  aliveCount, aliveNeighbors, circleOrder, deathShield, findRole, isDemonSeat, isEvil, malfunction, mustLie, notInPlay, scriptOf, scriptRolesOf,
-  seatLabel, seatOf, seatName, teamOf,
+  aliveCount, aliveNeighbors, circleOrder, deathShield, demonSeat, findRole, isDemonSeat, isEvil, malfunction, mustLie, notInPlay, scriptOf, scriptRolesOf,
+  seatLabel, seatOf, seatName, teamOf, townsfolkNeighbors,
 } from './core';
 import { pick, shuffle, type Rng } from './rng';
 import type { GameState, Seat } from './types';
@@ -349,7 +349,7 @@ export function starpassChoices(s: GameState, impN: number): Choice<number>[] {
 /* ---------------- 幽灵茶会 / 窃窃私语 ---------------- */
 
 /** 通用的"比数字"选项：健康给真数字；中毒/酒鬼/涡流给假数字 */
-function countChoices(s: GameState, ability: RoleId, actorN: number, base: number, max: number, sick = false): Choice<number>[] {
+export function countChoices(s: GameState, ability: RoleId, actorN: number, base: number, max: number, sick = false): Choice<number>[] {
   const lbl = (n: number) => `比 ${n}`;
   if (!sick && !malfunction(s, actorN) && !mustLie(s, ability))
     return [{ key: `n${base}`, label: lbl(base), value: base, lean: 0, truth: true, standard: true, reason: '真实答案。' }];
@@ -831,5 +831,144 @@ export function pacifistChoices(s: GameState, n: number): Choice<boolean>[] {
   return [
     { key: 'die', label: `照常：${seatName(n)} 死亡`, value: false, lean: 0, truth: true, standard: true, reason: '按正常流程走。' },
     { key: 'save', label: `和平主义者：${seatName(n)} 不死`, value: true, lean: 1, truth: true, reason: `${seatLabel(s, n)}是善良的，留住他帮善良。` },
+  ];
+}
+
+/* ---------------- 梦殒春宵 ---------------- */
+
+/** 圆桌上两个座位隔几步（左右取近的） */
+function steps(s: GameState, a: number, b: number): number {
+  const order = circleOrder(s);
+  const d = Math.abs(order.indexOf(a) - order.indexOf(b));
+  return Math.min(d, order.length - d);
+}
+
+/** 钟表匠：恶魔到最近的爪牙几步。spyMinion = 间谍算不算爪牙，recluse = 陌客被当成什么 */
+export function clockmakerCount(s: GameState, spyMinion = true, recluse: 'none' | 'minion' | 'demon' = 'none'): number {
+  const d = recluse === 'demon' ? s.seats.find((x) => x.role === 'recluse') : demonSeat(s) ?? s.seats.find((x) => !x.traveller && teamOf(x.role) === 'demon');
+  if (!d) return 0;
+  const minions = s.seats.filter(
+    (x) => !x.traveller && x.n !== d.n && ((teamOf(x.role) === 'minion' && (spyMinion || x.role !== 'spy')) || (recluse === 'minion' && x.role === 'recluse')),
+  );
+  if (!minions.length) return 0;
+  return Math.min(...minions.map((m) => steps(s, d.n, m.n)));
+}
+
+export function clockmakerChoices(s: GameState, actorN: number): Choice<number>[] {
+  const base = clockmakerCount(s);
+  const max = Math.max(1, Math.floor(circleOrder(s).length / 2));
+  if (!malfunction(s, actorN) && !mustLie(s, 'clockmaker')) {
+    const alt = new Map<number, string>();
+    if (s.seats.some((x) => x.role === 'spy')) alt.set(clockmakerCount(s, false), '间谍不算爪牙（规则允许）');
+    if (s.seats.some((x) => x.role === 'recluse')) {
+      alt.set(clockmakerCount(s, true, 'minion'), '陌客被当成爪牙（规则允许）');
+      alt.set(clockmakerCount(s, true, 'demon'), '陌客被当成恶魔（规则允许）');
+    }
+    alt.delete(base);
+    const out: Choice<number>[] = [{ key: `n${base}`, label: `比 ${base}`, value: base, lean: alt.size ? 1 : 0, truth: true, standard: !alt.size, reason: '真实答案。' }];
+    for (const [n, why] of alt) out.push({ key: `n${n}`, label: `比 ${n}`, value: n, lean: -1, truth: true, twist: true, reason: `${why}，帮邪恶。` });
+    return out;
+  }
+  return countChoices(s, 'clockmaker', actorN, base, max);
+}
+
+/** 数学家：从天亮到现在有几名玩家的能力没正常生效（他自己不算） */
+export function mathCount(s: GameState, actorN: number): number {
+  return new Set(s.abnormal.filter((a) => a.seat !== actorN).map((a) => a.seat)).size;
+}
+
+export function mathChoices(s: GameState, actorN: number): Choice<number>[] {
+  const base = mathCount(s, actorN);
+  return countChoices(s, 'mathematician', actorN, base, base + 2);
+}
+
+/** 神谕者：死去的玩家中有几个邪恶的 */
+export const oracleCount = (s: GameState) => s.seats.filter((x) => !x.alive && !x.left && isEvil(x)).length;
+
+export function oracleChoices(s: GameState, actorN: number): Choice<number>[] {
+  const base = oracleCount(s);
+  const dead = s.seats.filter((x) => !x.alive && !x.left);
+  if (!malfunction(s, actorN) && !mustLie(s, 'oracle')) {
+    const out: Choice<number>[] = [{ key: `n${base}`, label: `比 ${base}`, value: base, lean: 0, truth: true, standard: true, reason: '真实答案。' }];
+    if (dead.some((x) => x.role === 'recluse' && !isEvil(x)))
+      out.push({ key: `n${base + 1}`, label: `比 ${base + 1}`, value: base + 1, lean: -1, truth: true, twist: true, reason: '死去的陌客被当成邪恶（规则允许），帮邪恶。' });
+    if (dead.some((x) => x.role === 'spy'))
+      out.push({ key: `n${base - 1}`, label: `比 ${base - 1}`, value: base - 1, lean: -1, truth: true, twist: true, reason: '死去的间谍被当成善良（规则允许），帮邪恶。' });
+    if (out.length > 1) out[0] = { ...out[0], lean: 1, standard: false, reason: '按真实阵营算，帮善良。' };
+    return out;
+  }
+  return countChoices(s, 'oracle', actorN, base, Math.max(base + 2, 2));
+}
+
+/** 杂耍艺人：今天公开猜对了几个 */
+export function jugglerChoices(s: GameState, actorN: number): Choice<number>[] {
+  const j = s.juggler;
+  const base = j?.correct ?? 0;
+  return countChoices(s, 'juggler', actorN, base, Math.max(1, j?.guesses?.length ?? 1));
+}
+
+/** 城镇公告员：今天有没有爪牙提名过 */
+export function towncrierChoices(s: GameState, actorN: number): Choice<boolean>[] {
+  const yesTruth = s.minionNominatedDay === s.night - 1;
+  const yes = (lean: number, reason: string, truth: boolean, standard = false): Choice<boolean> => ({ key: 'yes', label: '点头：有爪牙提名过', value: true, lean, reason, truth, standard });
+  const no = (lean: number, reason: string, truth: boolean, standard = false): Choice<boolean> => ({ key: 'no', label: '摇头：没有爪牙提名', value: false, lean, reason, truth, standard });
+  if (!malfunction(s, actorN) && !mustLie(s, 'towncrier')) return [yesTruth ? yes(0, '今天有爪牙提名过。', true, true) : no(0, '今天没有爪牙提名。', true, true)];
+  const out = yesTruth
+    ? [yes(1, '中毒/醉酒也可以给真答案。帮善良。', true), no(-1, '假答案：替爪牙打掩护。', false, true)]
+    : [no(1, '中毒/醉酒也可以给真答案。帮善良。', true), yes(0, '假答案：让他去怀疑今天提名过的人。', false, true)];
+  return vortoxOnly(s, 'towncrier', out);
+}
+
+/** 贤者：指两个人，其中一个是杀死他的恶魔 */
+export function sageChoices(s: GameState, actorN: number, rng: Rng): Choice<[number, number]>[] {
+  const d = demonSeat(s);
+  const pair = (a: number, b: number): [number, number] => sorted(a, b);
+  const lbl = (pr: [number, number]) => `指向 ${seatName(pr[0])} 和 ${seatName(pr[1])}`;
+  const aliveOthers = s.seats.filter((x) => x.alive && x.n !== actorN && x.n !== d?.n);
+  const deadOthers = s.seats.filter((x) => !x.alive && x.n !== actorN && x.n !== d?.n);
+  const out: Choice<[number, number]>[] = [];
+  if (!d) return out;
+  if (!malfunction(s, actorN) && !mustLie(s, 'sage')) {
+    const a = pickOr(aliveOthers.filter((x) => !isEvil(x)), rng) ?? pickOr(aliveOthers, rng);
+    if (a) out.push({ key: 'alive', label: lbl(pair(d.n, a.n)), value: pair(d.n, a.n), lean: 0, truth: true, standard: true, reason: '恶魔 + 一名活着的善良玩家：二选一，标准做法。' });
+    const m = pickOr(aliveOthers.filter((x) => isEvil(x)), rng);
+    if (m) out.push({ key: 'evil', label: lbl(pair(d.n, m.n)), value: pair(d.n, m.n), lean: 1, truth: true, reason: '恶魔 + 一名爪牙：两个都是邪恶，好人怎么选都不亏，帮善良。' });
+    const dd = pickOr(deadOthers, rng);
+    if (dd) out.push({ key: 'dead', label: lbl(pair(d.n, dd.n)), value: pair(d.n, dd.n), lean: 2, truth: true, reason: '恶魔 + 一名死人：等于直接点出恶魔，大帮善良（最后一晚可以这样给）。' });
+    return out;
+  }
+  const g2 = shuffle(aliveOthers.filter((x) => !isEvil(x)), rng).slice(0, 2);
+  if (g2.length === 2) out.push({ key: 'fake', label: lbl(pair(g2[0].n, g2[1].n)), value: pair(g2[0].n, g2[1].n), lean: -1, truth: false, standard: true, reason: '假信息：两个都是好人，替恶魔打掩护。' });
+  const a = pickOr(aliveOthers, rng);
+  if (a) out.push({ key: 'true', label: lbl(pair(d.n, a.n)), value: pair(d.n, a.n), lean: 1, truth: true, reason: '中毒/醉酒也可以给真信息。帮善良。' });
+  return vortoxOnly(s, 'sage', out);
+}
+
+/** 亡骨魔杀死爪牙：他两边最近的镇民里选一个中毒 */
+export function vigorPoisonChoices(s: GameState, minionN: number): Choice<number>[] {
+  const ns = townsfolkNeighbors(s, minionN);
+  return ns.map((n): Choice<number> => {
+    const x = seatOf(s, n);
+    const lbl = `${seatName(n)}（${roleName(x.role)}${x.alive ? '' : '，已死'}）`;
+    if (!x.alive) return { key: `p${n}`, label: lbl, value: n, lean: 1, truth: true, reason: '他已经死了，中毒影响小，帮善良。' };
+    if (ROLES[x.role].info) return { key: `p${n}`, label: lbl, value: n, lean: -1, truth: true, reason: `${roleName(x.role)}靠信息吃饭，中毒后信息全是假的，帮邪恶。` };
+    return { key: `p${n}`, label: lbl, value: n, lean: 0, truth: true, standard: true, reason: '一名活着的镇民中毒，标准做法。' };
+  });
+}
+
+/** 麻脸巫婆造出了恶魔：今晚怎么死人 */
+export interface PithagNight {
+  noKill: boolean;
+}
+export function pithagNightChoices(s: GameState, target: number): Choice<PithagNight>[] {
+  const typeChange = isDemonSeat(s, target);
+  if (typeChange)
+    return [
+      { key: 'quiet', label: '今晚没人死', value: { noKill: true }, lean: 0, truth: true, standard: true, reason: '恶魔换了类型：平安夜给好人一个提示，标准做法。' },
+      { key: 'kill', label: '新恶魔照常杀人', value: { noKill: false }, lean: -1, truth: true, reason: '好人很难察觉恶魔变了，帮邪恶。' },
+    ];
+  return [
+    { key: 'kill', label: '原来的恶魔死，新恶魔照常杀人', value: { noKill: false }, lean: 0, truth: true, standard: true, reason: '天亮死两个人，好人能猜到恶魔换人了，标准做法。' },
+    { key: 'quiet', label: '原来的恶魔死，新恶魔今晚不杀人', value: { noKill: true }, lean: 1, truth: true, reason: '只死原来的恶魔：好人可能以为恶魔自杀或被杀，帮善良。' },
   ];
 }

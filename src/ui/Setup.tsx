@@ -1,13 +1,13 @@
 import { useMemo, useState } from 'react';
 import { FABLED, ROLES, TEAM_NAME, isEvilTeam, roleName, type FabledId, type RoleId, type Team } from '../engine/roles';
 import { recommend, setupLabel, balance } from '../engine/balance';
-import { actorFor, addLog, inPlay, lilMonsta, scriptOf, seatName } from '../engine/core';
-import { SCRIPT_LIST, SCRIPTS, type ScriptId } from '../engine/editions';
+import { actorFor, addLog, inPlay, isEvil, lilMonsta, scriptOf, seatName } from '../engine/core';
+import { SCRIPT_LIST, type ScriptDef, type ScriptId } from '../engine/editions';
 import { defaultRng } from '../engine/rng';
 import {
   DISTRIBUTION, F4, MAX_F4, alchemistChoices, amnesiacChoices, bluffChoicesWith, bluffPool, drunkFakeChoices, evilTownsfolkChoices, godfatherChoices, godfatherModFor,
   marionetteFakeChoices, redHerringChoices, replaceDemon, replaceRole, rerollRoles, sentinelChoices, setAlchemistAbility, setCount, setEvilTownsfolk,
-  setGodfatherDelta, setScript, setSentinelDelta, setupReasons, shuffleSeats, startDeal, swapSeats, toggleFabled,
+  setGodfatherDelta, setScript, setSentinelDelta, setupReasons, shuffleSeats, startDeal, swapSeats, toggleFabled, setTwin, twinChoices,
 } from '../engine/setup';
 import { stepRng, type Game } from '../store';
 import { BottomBar, ChoicePanel, Sheet, SeatPicker } from './common';
@@ -15,6 +15,8 @@ import { AddTravellerSheet } from './Travellers';
 import { removeTravellerAtSetup } from '../engine/travellers';
 import { GrimoireCircle } from './Grimoire';
 import { ScriptSheet } from './End';
+import { CustomBoard } from './Custom';
+import { Catalog } from './Catalog';
 import { Icon } from './icons';
 
 export function SetupScreen({ g, onRules, onRoles, onSheet }: { g: Game; onRules: () => void; onRoles: () => void; onSheet: () => void }) {
@@ -25,7 +27,9 @@ export function SetupScreen({ g, onRules, onRoles, onSheet }: { g: Game; onRules
 }
 
 function ScriptStep({ g }: { g: Game }) {
-  const [sheet, setSheet] = useState<ScriptId | null>(null);
+  const [sheet, setSheet] = useState<ScriptDef | null>(null);
+  const [mode, setMode] = useState<'list' | 'custom' | 'catalog'>('list');
+  if (mode === 'custom') return <CustomBoard g={g} onBack={() => setMode('list')} />;
   return (
     <main className="main home-scene">
       <div className="stack">
@@ -37,7 +41,7 @@ function ScriptStep({ g }: { g: Game }) {
         <div className="choices">
           {SCRIPT_LIST.map((sc) => (
             <div key={sc.id} className="stack" style={{ gap: 4 }}>
-              <button className="choice" style={{ padding: '14px 16px' }} onClick={() => g.commit((s) => setScript(s, sc.id))}>
+              <button className="choice" style={{ padding: '14px 16px' }} onClick={() => g.commit((s) => setScript(s, sc.id as ScriptId))}>
                 <div className="top">
                   <span className="lab" style={{ fontFamily: 'var(--serif)', fontSize: 22 }}>
                     {sc.name}
@@ -51,14 +55,25 @@ function ScriptStep({ g }: { g: Game }) {
                   {sc.roles.length} 个角色{sc.fabled.length ? ` · 传奇角色：${sc.fabled.map((f) => FABLED[f].name).join('、')}` : ''}
                 </span>
               </button>
-              <button className="btn btn-outline btn-sm" style={{ alignSelf: 'flex-end' }} onClick={() => setSheet(sc.id)}>
+              <button className="btn btn-outline btn-sm" style={{ alignSelf: 'flex-end' }} onClick={() => setSheet(sc)}>
                 看{sc.name}的剧本图
               </button>
             </div>
           ))}
         </div>
+        <h2 style={{ fontSize: 22, marginTop: 8 }}>手上的板子这里没有？</h2>
+        <p className="dim">自己挑角色凑一个板子，网页照样一步一步带你主持。</p>
+        <div className="row">
+          <button className="btn btn-outline grow" onClick={() => setMode('custom')}>
+            自由配板
+          </button>
+          <button className="btn btn-outline grow" onClick={() => setMode('catalog')}>
+            角色大全
+          </button>
+        </div>
       </div>
-      {sheet && <ScriptSheet script={sheet} onClose={() => setSheet(null)} />}
+      {sheet && <ScriptSheet sc={sheet} onClose={() => setSheet(null)} />}
+      {mode === 'catalog' && <Catalog onClose={() => setMode('list')} onCustom={() => setMode('custom')} />}
     </main>
   );
 }
@@ -292,7 +307,7 @@ function RolePicker({
   );
 }
 
-type Edit = 'drunk' | 'bluffs' | 'rh' | 'lunatic' | 'amnesiac' | 'traveller' | 'marionette' | 'etf' | 'alchemist' | null;
+type Edit = 'drunk' | 'bluffs' | 'rh' | 'lunatic' | 'amnesiac' | 'traveller' | 'marionette' | 'etf' | 'alchemist' | 'twin' | null;
 
 function SeatsStep({ g, onRules }: { g: Game; onRules: () => void }) {
   const s = g.s;
@@ -305,6 +320,7 @@ function SeatsStep({ g, onRules }: { g: Game; onRules: () => void }) {
   const alchemist = s.seats.find((x) => x.role === 'alchemist');
   const etf = s.seats.find((x) => !x.traveller && x.alignment === 'evil');
   const ft = actorFor(s, 'fortuneteller');
+  const evilTwin = s.seats.find((x) => x.role === 'eviltwin');
 
   const tapSeat = (n: number) => {
     // 旅行者的位置由"坐在谁旁边"决定，不参与交换
@@ -385,6 +401,18 @@ function SeatsStep({ g, onRules }: { g: Game; onRules: () => void }) {
             </button>
           </div>
         )}
+        {evilTwin && s.twin && (
+          <div className="card">
+            <h3>镜像双子</h3>
+            <p>
+              {seatName(evilTwin.n)} 是镜像双子，他的善良双子是 <b className="good">{seatName(s.twin)}（{roleName(s.seats[s.twin - 1].role)}）</b>。第一晚叫醒两人互认。
+            </p>
+            <p className="dim">处决善良的双子邪恶直接获胜；两人都活着时善良赢不了。</p>
+            <button className="btn btn-outline btn-sm" style={{ marginTop: 10 }} onClick={() => setEdit('twin')}>
+              看理由 / 更换
+            </button>
+          </div>
+        )}
         {etf && (
           <div className="card">
             <h3>赏金猎人：邪恶的镇民</h3>
@@ -411,7 +439,7 @@ function SeatsStep({ g, onRules }: { g: Game; onRules: () => void }) {
         {s.count >= 7 ? (
           <div className="card">
             <h3>恶魔的 3 个伪装</h3>
-            <p>{s.bluffs.map(roleName).join('、') || '（无）'}</p>
+            <p>{s.bluffs.map(roleName).join('、') || '（没有）板子上的善良角色都在场，恶魔没有可以伪装的角色。想要伪装，就给板子多加几个善良角色。'}</p>
             <p className="dim">这些角色不在场，第一晚告诉恶魔，他可以假装成这些角色。</p>
             <button className="btn btn-outline btn-sm" style={{ marginTop: 10 }} onClick={() => setEdit('bluffs')}>
               看理由 / 更换
@@ -449,6 +477,7 @@ function SeatsStep({ g, onRules }: { g: Game; onRules: () => void }) {
       {edit === 'marionette' && <MarionetteEdit g={g} onClose={() => setEdit(null)} />}
       {edit === 'etf' && <EvilTownsfolkEdit g={g} onClose={() => setEdit(null)} />}
       {edit === 'alchemist' && <AlchemistEdit g={g} onClose={() => setEdit(null)} />}
+      {edit === 'twin' && <TwinEdit g={g} onClose={() => setEdit(null)} />}
       <BottomBar>
         <button className="btn btn-primary btn-block" onClick={() => g.commit((st) => startDeal(st))}>
           开始发身份
@@ -516,6 +545,23 @@ function AlchemistEdit({ g, onClose }: { g: Game; onClose: () => void }) {
   );
 }
 
+/** 镜像双子的善良双子 */
+function TwinEdit({ g, onClose }: { g: Game; onClose: () => void }) {
+  const s = g.s;
+  const choices = useMemo(() => twinChoices(s, stepRng(s, 9)), [s]);
+  const rec = useMemo(() => recommend(choices, balance(s).score, stepRng(s, 10)), [choices, s]);
+  const sel = choices.findIndex((c) => c.value === s.twin);
+  const evil = s.seats.filter((x) => x.traveller || isEvil(x)).map((x) => x.n);
+  return (
+    <Sheet title="镜像双子的善良双子" onClose={onClose}>
+      <div className="stack">
+        <ChoicePanel s={s} choices={choices} sel={sel} rec={rec} defaultOpen moreLabel="其他推荐" onSel={(i) => i >= 0 && g.commit((st) => setTwin(st, choices[i].value))} />
+        <SeatPicker s={s} selected={s.twin ? [s.twin] : []} max={1} onChange={(v) => v.length && g.commit((st) => setTwin(st, v[0]))} disabled={evil} label="或者直接点一名善良玩家" />
+      </div>
+    </Sheet>
+  );
+}
+
 /** 赏金猎人：哪个镇民是邪恶的 */
 function EvilTownsfolkEdit({ g, onClose }: { g: Game; onClose: () => void }) {
   const s = g.s;
@@ -539,7 +585,7 @@ function EvilTownsfolkEdit({ g, onClose }: { g: Game; onClose: () => void }) {
 /** 疯子以为自己是哪个恶魔 */
 export function LunaticEdit({ g, onClose }: { g: Game; onClose: () => void }) {
   const s = g.s;
-  const demons = SCRIPTS[s.script].roles.filter((r) => ROLES[r].team === 'demon');
+  const demons = scriptOf(s).roles.filter((r) => ROLES[r].team === 'demon');
   return (
     <Sheet title="疯子以为自己是" onClose={onClose}>
       <div className="choices">

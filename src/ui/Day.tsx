@@ -1,14 +1,15 @@
 import { useMemo, useState, type ReactNode } from 'react';
-import { FABLED, ROLES, roleName } from '../engine/roles';
+import { FABLED, ROLES, roleName, type RoleId } from '../engine/roles';
 import { balance, recommend, type Choice } from '../engine/balance';
 import {
   actorFor, aliveCount, aliveVoters, demonSeat, hasAbility, isDemonSeat, isEvil, isTraveller, lilMonsta, malfunction, scriptOf, seatOf, teamOf,
-  vortoxActive, seatName,
+  vortoxActive, seatName, townsfolkNeighbors, philoDrunk,
 } from '../engine/core';
 import {
   LEVIATHAN_DAYS, advocateSaves, alsaahirCorrect, alsaahirGuess, execute, pacifistCanSave, setGossip, tinkerDies, fearPreview, fearmongerAsk, fearmongerNominates, finishDay, goblinAsk,
   harpyPunish, nominateVirgin, previewSlayer, previewVirgin, setCannibalFake, setDemonVoted, savantVisit, scapegoatFor, setDuchessVisitors,
   slayerShoot, markUsed, nomResults, voteNeed, type NomResult, type NomRow,
+  cereVerdict, jugglerCanGuess, jugglerCount, jugglerGuess, setMinionNominated, twinsBlock, witchActive, witchStrikes,
 } from '../engine/flow';
 import { activeTravellers, beggarLearns, exile, gunslingerPreview, gunslingerShoot, leave } from '../engine/travellers';
 import { clone } from '../engine/core';
@@ -67,7 +68,7 @@ function demonDeathWarning(s: GameState, n: number, verb: '被处决了' | '死�
   );
 }
 
-type Panel = 'nom' | 'virgin' | 'slayer' | 'exec' | 'artist' | 'fisherman' | 'savant' | 'amnesiac' | 'mutant' | 'duchess' | 'fear' | 'alsaahir' | 'gossip' | 'tinker' | null;
+type Panel = 'nom' | 'virgin' | 'slayer' | 'exec' | 'artist' | 'fisherman' | 'savant' | 'amnesiac' | 'mutant' | 'duchess' | 'fear' | 'alsaahir' | 'gossip' | 'tinker' | 'juggler' | null;
 
 export function DayScreen({ g }: { g: Game }) {
   const s = g.s;
@@ -126,6 +127,8 @@ export function DayScreen({ g }: { g: Game }) {
         <TravellerDay g={g} />
         <SayBox lines={nominationLines(s.style)} title="讨论结束后说" />
         <HarpyCard g={g} />
+        <WitchCard g={g} />
+        <CereCard g={g} />
         <VoteMods s={s} />
         {butler && s.butlerMaster && (
           <div className="card card-warn">
@@ -160,6 +163,7 @@ export function DayScreen({ g }: { g: Game }) {
           </button>
         </div>
         <FlowergirlCard g={g} />
+        <TownCrierCard g={g} />
       </div>
       {panel === 'virgin' && virgin && (
         <VirginSheet
@@ -184,6 +188,7 @@ export function DayScreen({ g }: { g: Game }) {
       {panel === 'alsaahir' && <AlsaahirSheet g={g} onClose={close} />}
       {panel === 'gossip' && <GossipSheet g={g} onClose={close} />}
       {panel === 'tinker' && <TinkerSheet g={g} onClose={close} />}
+      {panel === 'juggler' && <JugglerSheet g={g} onClose={close} />}
       {panel === 'nom' && (
         <NomSheet
           g={g}
@@ -225,6 +230,9 @@ function DayAbilities({ s, open }: { s: GameState; open: (p: Panel) => void }) {
   if (savant && s.savantDay !== s.night) items.push(btn('savant', `博学者（${seatName(savant.n)}）来要今天的两条信息`));
   const amn = s.seats.find((x) => x.alive && x.role === 'amnesiac');
   if (amn) items.push(btn('amnesiac', `失忆者（${seatName(amn.n)}）来猜自己的能力`));
+  const jug = holder('juggler');
+  if (jug && (jugglerCanGuess(s, jug.n) || (s.juggler?.seat === jug.n && s.juggler.day === s.night)))
+    items.push(btn('juggler', s.juggler?.day === s.night ? `杂耍艺人（${seatName(jug.n)}）今天猜对 ${s.juggler.correct} 个（改）` : `杂耍艺人（${seatName(jug.n)}）要公开猜角色`));
   const als = holder('alsaahir');
   if (als && s.alsaahirDay !== s.night) items.push(btn('alsaahir', `戏法师（${seatName(als.n)}）要公开猜谁是爪牙和恶魔`));
   const gossip = s.seats.find((x) => x.alive && x.role === 'gossip');
@@ -935,6 +943,17 @@ function SecretNotices({ s }: { s: GameState }) {
   if (s.bansheeActive)
     out.push(<p key="b">报丧女妖（<b>{seatName(s.bansheeActive)}</b>）能力生效：每天可以提名两次（死了也行），每次投票举双手算两票。</p>);
   if (s.sweetheartDrunk) out.push(<p key="sw">{seatName(s.sweetheartDrunk)} 被心上人弄醉了：他的能力无效。</p>);
+  if (s.philoDrunk && philoDrunk(s, s.philoDrunk)) out.push(<p key="ph">{seatName(s.philoDrunk)} 被哲学家拿了能力，正在醉酒：他的能力无效。</p>);
+  const nd = s.seats.find((x) => x.role === 'nodashii' && x.alive);
+  if (nd && !malfunction(s, nd.n)) out.push(<p key="nd">诺-达鲺（{seatName(nd.n)}）左右最近的镇民 {townsfolkNeighbors(s, nd.n).map((n) => seatName(n)).join('、')} 一直中毒。</p>);
+  const vg = s.vigor.filter((v) => !seatOf(s, v.minion).alive && teamOf(seatOf(s, v.minion).role) === 'minion');
+  if (vg.length && s.seats.some((x) => x.role === 'vigormortis' && x.alive))
+    out.push(<p key="vg">被亡骨魔杀死的爪牙 {vg.map((v) => seatName(v.minion)).join('、')} 能力还在{vg.some((v) => v.poisoned) ? `；${vg.filter((v) => v.poisoned).map((v) => seatName(v.poisoned)).join('、')} 因此中毒` : ''}。</p>);
+  if (s.snakePoisoned.length) out.push(<p key="sn">{s.snakePoisoned.map((n) => seatName(n)).join('、')} 被舞蛇人换下来，一直中毒。</p>);
+  if (s.twin && s.seats.some((x) => x.role === 'eviltwin')) {
+    const e = s.seats.find((x) => x.role === 'eviltwin')!;
+    out.push(<p key="tw">镜像双子 {seatName(e.n)}，善良的双子 {seatName(s.twin)}：处决 {seatName(s.twin)} 邪恶直接获胜{twinsBlock(s) ? '；两人都活着时善良赢不了' : ''}。</p>);
+  }
   const h = s.harpy;
   if (h && !h.done && h.night === s.night)
     out.push(
@@ -1275,6 +1294,144 @@ function NomSheet({ g, onClose, initial }: { g: Game; onClose: () => void; initi
             {n === undefined ? '先点出被提名的人' : votes === null ? '再填票数' : '记下'}
           </button>
         )}
+      </div>
+    </Sheet>
+  );
+}
+
+/* ---------------- 梦殒春宵 ---------------- */
+
+/** 女巫：被诅咒的人今天一提名就死 */
+function WitchCard({ g }: { g: Game }) {
+  const s = g.s;
+  const c = s.witchCurse;
+  if (!c || c.night !== s.night || !witchActive(s) || s.winner || !seatOf(s, c.seat).alive) return null;
+  return (
+    <div className="card card-warn stack" style={{ gap: 8 }}>
+      <b style={{ color: 'var(--warn)' }}>女巫诅咒了 {seatName(c.seat)}：他今天一提名就会死</b>
+      <p className="dim">他提名时立刻公开宣布他死亡，他的提名照常投票。只有你知道诅咒，别提前说。</p>
+      <ConfirmButton className="btn btn-primary btn-block" label={`${seatName(c.seat)} 提名了：宣布他死亡`} confirmLabel="再点一次，确认他死亡" onConfirm={() => g.commit((st) => witchStrikes(st))} />
+    </div>
+  );
+}
+
+/** 洗脑师：被洗脑的人今天要疯狂地装成某个角色 */
+function CereCard({ g }: { g: Game }) {
+  const s = g.s;
+  const m = s.cereMad;
+  if (!m || m.night !== s.night || s.winner || s.executed !== undefined) return null;
+  return (
+    <div className="card card-warn stack" style={{ gap: 8 }}>
+      <b style={{ color: 'var(--warn)' }}>
+        洗脑师：{seatName(m.seat)} 今天要疯狂地证明自己是{roleName(m.role)}
+      </b>
+      <p className="dim">
+        <b>提名结束前再判断</b>：他没有认真装，你可以公开宣布处决他（算今天的处决，今天就结束）。被洗脑的是邪恶玩家时可以不处决。
+      </p>
+      <div className="row">
+        <button className="btn btn-outline grow" onClick={() => g.commit((st) => cereVerdict(st, false))}>
+          他做到了 / 不处决
+        </button>
+        <ConfirmButton className="btn btn-danger grow" label="他没做到：处决他" confirmLabel="再点一次确认处决" onConfirm={() => g.commit((st) => cereVerdict(st, true))} />
+      </div>
+    </div>
+  );
+}
+
+/** 城镇公告员：爪牙提名时点一下 */
+function TownCrierCard({ g }: { g: Game }) {
+  const s = g.s;
+  const tc = s.seats.find((x) => x.alive && hasAbility(s, x, 'towncrier'));
+  if (!tc) return null;
+  const yes = s.minionNominatedDay === s.night;
+  const minions = s.seats.filter((x) => !x.traveller && teamOf(x.role) === 'minion');
+  return (
+    <div className="card stack" style={{ gap: 8 }}>
+      <p>
+        <b>城镇公告员在场</b>：留意爪牙（{minions.map((x) => seatName(x.n)).join('、') || '无'}）有没有提名，今晚要告诉他。
+      </p>
+      <button className={`btn btn-block ${yes ? 'btn-primary' : 'btn-outline'}`} onClick={() => g.commit((st) => setMinionNominated(st, !yes))}>
+        {yes ? '已记下：今天有爪牙提名过（点一下取消）' : '有爪牙提名了，点这里记一下'}
+      </button>
+    </div>
+  );
+}
+
+/** 杂耍艺人：第一个白天公开猜最多五个人的角色 */
+function JugglerSheet({ g, onClose }: { g: Game; onClose: () => void }) {
+  const s = g.s;
+  const j = holderOf(s, 'juggler')!;
+  const prev = s.juggler?.day === s.night ? (s.juggler.guesses ?? []) : [];
+  const [guesses, setGuesses] = useState<{ seat: number; role: RoleId }[]>(prev);
+  const [seat, setSeat] = useState<number[]>([]);
+  const real = jugglerCount(s, guesses);
+  const [override, setOverride] = useState<number | null>(null);
+  const correct = override ?? real;
+  const twist = guesses.some((x) => ['spy', 'recluse'].includes(seatOf(s, x.seat).role));
+  const add = (r: RoleId) => {
+    if (!seat.length || guesses.length >= 5) return;
+    setGuesses([...guesses, { seat: seat[0], role: r }]);
+    setSeat([]);
+    setOverride(null);
+  };
+  return (
+    <Sheet title={`杂耍艺人（${seatName(j.n)}）公开猜角色`} onClose={onClose}>
+      <div className="stack">
+        <p className="dim">他成为杂耍艺人后的第一个白天，可以公开猜最多五次"某人是某角色"。每猜一次：先点那个人，再点角色。当晚他会得知猜对了几个。</p>
+        {guesses.length > 0 && (
+          <div className="card stack" style={{ gap: 4 }}>
+            {guesses.map((x, i) => (
+              <div key={i} className="row" style={{ justifyContent: 'space-between', flexWrap: 'nowrap' }}>
+                <span>
+                  {i + 1}. {seatName(x.seat)} 是{roleName(x.role)}{' '}
+                  <span className={seatOf(s, x.seat).role === x.role ? 'good' : 'dim'}>{seatOf(s, x.seat).role === x.role ? '✓ 对' : '✗ 错'}</span>
+                </span>
+                <button className="btn btn-outline btn-sm" onClick={() => { setGuesses(guesses.filter((_, k) => k !== i)); setOverride(null); }}>
+                  删掉
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        {guesses.length < 5 && (
+          <>
+            <SeatPicker s={s} selected={seat} max={1} onChange={setSeat} label={`第 ${guesses.length + 1} 个猜测：他说谁？`} />
+            {seat.length > 0 && (
+              <div className="role-grid compact">
+                {scriptOf(s).roles.map((r) => (
+                  <button key={r} className={`role-chip${teamOf(r) === 'minion' || teamOf(r) === 'demon' ? ' evil-c' : ''}`} onClick={() => add(r)}>
+                    {roleName(r)}
+                  </button>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+        <div className="card">
+          <b>猜对 {correct} 个</b>
+          {twist && (
+            <div className="stack" style={{ gap: 6, marginTop: 8 }}>
+              <p className="dim">他猜到了间谍/陌客：他们可以被当成别的角色，你可以改判猜对的个数。</p>
+              <div className="row">
+                {Array.from({ length: guesses.length + 1 }, (_, n) => (
+                  <button key={n} className={`btn btn-sm ${n === correct ? 'btn-primary' : 'btn-outline'}`} onClick={() => setOverride(n)}>
+                    {n}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+        <p className="dim">只记下来，现在不用对他说什么；今晚网页会叫醒他告诉他。</p>
+        <button
+          className="btn btn-primary btn-block"
+          onClick={() => {
+            g.commit((st) => jugglerGuess(st, j.n, guesses, correct));
+            onClose();
+          }}
+        >
+          记下他的猜测
+        </button>
       </div>
     </Sheet>
   );

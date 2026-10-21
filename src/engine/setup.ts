@@ -1,8 +1,9 @@
 import { ROLES, roleName, type FabledId, type RoleId } from './roles';
 import { balance, recommend, type Choice } from './balance';
 import { actorFor, inPlay, isEvil, lilMonsta, notInPlay, scriptOf, scriptRolesOf, seatName } from './core';
-import { SCRIPTS, type ScriptId } from './editions';
+import { SCRIPTS, type ScriptDef, type ScriptId } from './editions';
 import { pick, sample, seeded, shuffle, type Rng } from './rng';
+import { jinxLabel, jinxesIn, unhandledClash } from './custom';
 import type { GameState, Seat } from './types';
 
 /** 官方人数表：镇民 / 外来者 / 爪牙 / 恶魔 */
@@ -46,22 +47,27 @@ function pickTownsfolk(pool: RoleId[], n: number, f4Already: number, rng: Rng, c
 /** 会改外来者人数的镇民：配板增删镇民时不动它们，免得人数又变 */
 const SETUP_TOWNS: RoleId[] = ['balloonist', 'alchemist'];
 
+/** 固定剧本写 id，自由配板直接给角色表 */
+export type ScriptRef = ScriptId | ScriptDef;
+const defOf = (x: ScriptRef): ScriptDef => (typeof x === 'string' ? SCRIPTS[x] : x);
+
 /** 炼金术士拿到的爪牙能力：剧本里不在场的爪牙 */
-export function alchemistAbilityFor(script: ScriptId, roles: RoleId[]): RoleId | null {
+export function alchemistAbilityFor(script: ScriptRef, roles: RoleId[]): RoleId | null {
   if (!roles.includes('alchemist')) return null;
-  return SCRIPTS[script].roles.find((r) => ROLES[r].team === 'minion' && !roles.includes(r)) ?? null;
+  return defOf(script).roles.find((r) => ROLES[r].team === 'minion' && !roles.includes(r)) ?? null;
 }
 
 /** 教父的能力在场（教父本人，或拿到教父能力的炼金术士）：外来者 ±1。alch = 说书人手动给炼金术士定的能力 */
-export const godfatherMod = (script: ScriptId, roles: RoleId[], alch?: RoleId | null) =>
+export const godfatherMod = (script: ScriptRef, roles: RoleId[], alch?: RoleId | null) =>
   roles.includes('godfather') || (roles.includes('alchemist') && (alch !== undefined ? alch : alchemistAbilityFor(script, roles)) === 'godfather');
 
 /** 按当前局面（含说书人手动换的炼金术士能力）判断教父的能力在不在场 */
-export const godfatherModFor = (s: GameState) => godfatherMod(s.script, s.seats.map((x) => x.role), s.alchemistPicked ? s.alchemistAbility : undefined);
+export const godfatherModFor = (s: GameState) => godfatherMod(scriptOf(s), s.seats.map((x) => x.role), s.alchemistPicked ? s.alchemistAbility : undefined);
 
-/** 外来者人数的修正：男爵 +2、气球驾驶员 +1、哨兵 ±1、教父 ±1 */
-const outsiderDelta = (roles: RoleId[], sentinelDelta: number, script: ScriptId = 'tb', godfatherDelta = 1, alch?: RoleId | null) =>
-  (roles.includes('baron') ? 2 : 0) + (roles.includes('balloonist') ? 1 : 0) + sentinelDelta + (godfatherMod(script, roles, alch) ? godfatherDelta : 0);
+/** 外来者人数的修正：男爵 +2、气球驾驶员 +1、方古 +1、亡骨魔 −1、哨兵 ±1、教父 ±1。roles 要包含恶魔 */
+const outsiderDelta = (roles: RoleId[], sentinelDelta: number, script: ScriptRef = 'tb', godfatherDelta = 1, alch?: RoleId | null) =>
+  (roles.includes('baron') ? 2 : 0) + (roles.includes('balloonist') ? 1 : 0) + (roles.includes('fanggu') ? 1 : 0) - (roles.includes('vigormortis') ? 1 : 0) +
+  sentinelDelta + (godfatherMod(script, roles, alch) ? godfatherDelta : 0);
 
 export interface RandomSetup {
   /** 每个座位的角色（小怪宝时没有恶魔座位） */
@@ -71,8 +77,8 @@ export interface RandomSetup {
   godfatherDelta?: number;
 }
 
-export function randomSetup(script: ScriptId, count: number, rng: Rng, sentinelDelta = 0): RandomSetup {
-  const sc = SCRIPTS[script];
+export function randomSetup(script: ScriptRef, count: number, rng: Rng, sentinelDelta = 0): RandomSetup {
+  const sc = defOf(script);
   const of = (t: string) => sc.roles.filter((r) => ROLES[r].team === t);
   const [t, o, m] = DISTRIBUTION[count];
   for (let tries = 0; ; tries++) {
@@ -83,7 +89,7 @@ export function randomSetup(script: ScriptId, count: number, rng: Rng, sentinelD
     const outs = of('outsider');
     // 教父：本来没有外来者就只能 +1
     const gfd = o === 0 || rng() < 0.5 ? 1 : -1;
-    const outCount = Math.max(0, Math.min(outs.length, o + outsiderDelta([...towns, ...minions], sentinelDelta, script, gfd)));
+    const outCount = Math.max(0, Math.min(outs.length, o + outsiderDelta([...towns, ...minions, demon], sentinelDelta, script, gfd)));
     const tFinal = count - minions.length - (lil ? 0 : 1) - outCount;
     if (tFinal < 1 && tries < 50) continue;
     // 多了就去掉几个（保留气球驾驶员/炼金术士），少了就补（不再补它们，免得外来者人数又变）
@@ -97,6 +103,8 @@ export function randomSetup(script: ScriptId, count: number, rng: Rng, sentinelD
       towns = [...towns, ...more];
     }
     const roles = [...towns, ...sample(outs, outCount, rng), ...minions, ...(lil ? [] : [demon])];
+    // 自由配板：网页没做的相克不让同时上场
+    if (sc.id === 'custom' && unhandledClash([...roles, demon]) && tries < 50) continue;
     if (roles.length === count || tries >= 50) return { roles, demonChar: demon, godfatherDelta: gfd };
   }
 }
@@ -109,10 +117,12 @@ export const rolesWeight = (roles: RoleId[]) => roles.reduce((a, r) => a + ROLES
 const setupWeight = (x: RandomSetup) => rolesWeight(x.roles) + (x.roles.includes(x.demonChar) ? 0 : ROLES[x.demonChar].weight);
 
 const statsCache: Record<string, { mean: number; sd: number }> = {};
-function stats(script: ScriptId, count: number) {
-  const key = `${script}:${count}`;
+function stats(script: ScriptRef, count: number) {
+  const sc = defOf(script);
+  // 自由配板的角色表会变：按角色表记缓存
+  const key = `${sc.id === 'custom' ? sc.roles.join(',') : sc.id}:${count}`;
   if (!statsCache[key]) {
-    const rng = seeded(1000 + count + script.length * 97);
+    const rng = seeded(1000 + count + sc.id.length * 97);
     const xs = Array.from({ length: 800 }, () => setupWeight(randomSetup(script, count, rng)));
     const mean = xs.reduce((a, b) => a + b, 0) / xs.length;
     const sd = Math.sqrt(xs.reduce((a, b) => a + (b - mean) ** 2, 0) / xs.length) || 1;
@@ -122,7 +132,7 @@ function stats(script: ScriptId, count: number) {
 }
 
 /** 配板强度标准分：0 = 平均，正数偏善良 */
-export function setupZ(roles: RoleId[], count: number, script: ScriptId = 'tb', demonChar: RoleId = 'imp'): number {
+export function setupZ(roles: RoleId[], count: number, script: ScriptRef = 'tb', demonChar: RoleId = 'imp'): number {
   const { mean, sd } = stats(script, count);
   return (setupWeight({ roles, demonChar }) - mean) / sd;
 }
@@ -131,9 +141,9 @@ export function setupZ(roles: RoleId[], count: number, script: ScriptId = 'tb', 
  * 一键生成：先随机定一个"这次一定出场"的角色，再在含它的组合里挑最均衡的。
  * 这样剧本上每个角色都有机会出场（像教父、男爵这种怎么配都不太均衡的角色，也会偶尔出现，配板会标"偏X"）。
  */
-export function balancedSetup(script: ScriptId, count: number, rng: Rng, sentinelDelta = 0): RandomSetup {
+export function balancedSetup(script: ScriptRef, count: number, rng: Rng, sentinelDelta = 0): RandomSetup {
   const z = (x: RandomSetup) => Math.abs(setupZ(x.roles, count, script, x.demonChar));
-  const anchor = pick(SCRIPTS[script].roles, rng);
+  const anchor = pick(defOf(script).roles, rng);
   const has = (x: RandomSetup) => x.roles.includes(anchor) || x.demonChar === anchor;
   let best: RandomSetup | null = null;
   let bestZ = Infinity;
@@ -194,6 +204,15 @@ export function setupReasons(roles: RoleId[]): string[] {
   if (has('mastermind')) out.push('有主谋：恶魔被处决后还要再玩一天');
   if (has('sailor') && has('innkeeper')) out.push('水手 + 旅店老板：好人很难被杀，偏善良');
   if (has('goon')) out.push('有莽夫：谁先用能力选他，谁就醉酒，他还会变成那人的阵营');
+  if (has('nodashii')) out.push('诺-达鲺：恶魔左右最近的两个镇民一直中毒');
+  if (has('vigormortis')) out.push('亡骨魔：少一个外来者；被他杀死的爪牙照样有能力');
+  if (has('fanggu')) out.push('方古：多一个外来者；第一次杀外来者时，外来者变成新恶魔');
+  if (has('eviltwin')) out.push('有镜像双子：双子都活着时好人赢不了，处决了善良的双子邪恶直接赢');
+  if (has('pithag')) out.push('有麻脸巫婆：每晚给人换角色，可能造出新恶魔');
+  if (has('witch')) out.push('有女巫：被诅咒的人提名就会死');
+  if (has('mathematician')) out.push('有数学家：每晚知道有几个能力没正常生效，中毒醉酒容易被发现，偏善良');
+  for (const j of jinxesIn(roles))
+    if (!j.handled) out.push(`${jinxLabel(j)} 相克，网页没做这条规则：${j.text}建议换掉其中一个，或者你自己处理。`);
   const f4 = roles.filter((r) => F4.includes(r)).length;
   if (f4 > MAX_F4) out.push(`首夜信息位（洗衣妇/图书管理员/调查员/厨师）有 ${f4} 个：第一晚过后这几个人没事做，邪恶也少了可以假跳的身份`);
   return out;
@@ -260,6 +279,16 @@ export function newGame(): GameState {
     moonchildPick: null,
     moonchildResolved: false,
     mastermindDay: 0,
+    abnormal: [],
+    minionNominatedDay: 0,
+    juggler: null,
+    witchCurse: null,
+    cereMad: null,
+    twin: null,
+    snakePoisoned: [],
+    philoDrunk: null,
+    fangguJumped: false,
+    vigor: [],
     bluffs: [],
     redHerring: null,
     setupZ: 0,
@@ -285,8 +314,18 @@ function seatsFrom(roles: RoleId[]): Seat[] {
   return roles.map((r, i) => ({ n: i + 1, role: r, startRole: r, alive: true }));
 }
 
+/** 自由配板：用说书人挑的角色表开局 */
+export function setCustomScript(s: GameState, def: ScriptDef) {
+  s.script = 'custom';
+  s.custom = def;
+  s.fabled = [];
+  s.sentinelDelta = 0;
+  s.setupStep = 'count';
+}
+
 export function setScript(s: GameState, script: ScriptId) {
   s.script = script;
+  delete s.custom;
   s.fabled = [];
   s.sentinelDelta = 0;
   s.setupStep = 'count';
@@ -317,7 +356,7 @@ export function setAlchemistAbility(s: GameState, r: RoleId, rng: Rng) {
 
 export function alchemistChoices(s: GameState): Choice<RoleId>[] {
   const roles = s.seats.map((x) => x.role);
-  const auto = alchemistAbilityFor(s.script, roles.includes('alchemist') ? roles : [...roles, 'alchemist']);
+  const auto = alchemistAbilityFor(scriptOf(s), roles.includes('alchemist') ? roles : [...roles, 'alchemist']);
   return scriptRolesOf(s, 'minion').map((r): Choice<RoleId> =>
     r === auto
       ? { key: r, label: roleName(r), value: r, lean: 0, truth: true, standard: true, reason: `标准做法：剧本里不在场的爪牙。${ROLES[r].ability}` }
@@ -329,11 +368,11 @@ export function alchemistChoices(s: GameState): Choice<RoleId>[] {
 export function setCount(s: GameState, count: number, rng: Rng) {
   s.count = count;
   s.setupStep = 'roles';
-  applySetup(s, balancedSetup(s.script, count, rng, s.sentinelDelta), rng);
+  applySetup(s, balancedSetup(scriptOf(s), count, rng, s.sentinelDelta), rng);
 }
 
 export function rerollRoles(s: GameState, rng: Rng) {
-  applySetup(s, balancedSetup(s.script, s.count, rng, s.sentinelDelta), rng);
+  applySetup(s, balancedSetup(scriptOf(s), s.count, rng, s.sentinelDelta), rng);
 }
 
 /** 把某个座位换成同阵营的另一个角色；人数修正（男爵、气球驾驶员）自动调整 */
@@ -371,7 +410,7 @@ function normalize(s: GameState, rng: Rng, keep?: number) {
   // 本来没有外来者时教父只能 +1
   if (o === 0) s.godfatherDelta = 1;
   const alch = s.alchemistPicked ? s.alchemistAbility : undefined;
-  const target = Math.max(0, Math.min(scriptRolesOf(s, 'outsider').length, o + outsiderDelta(roles, s.sentinelDelta, s.script, s.godfatherDelta, alch)));
+  const target = Math.max(0, Math.min(scriptRolesOf(s, 'outsider').length, o + outsiderDelta([...roles, ...(s.demonChar ? [s.demonChar] : [])], s.sentinelDelta, scriptOf(s), s.godfatherDelta, alch)));
   const team = (x: Seat) => ROLES[x.role].team;
   for (let guard = 0; guard < 6; guard++) {
     const outs = s.seats.filter((x) => team(x) === 'outsider');
@@ -449,17 +488,44 @@ export function fixMarionette(s: GameState) {
   next.startRole = next.role;
 }
 
-/** 座位变了：提线木偶归位、重选邪恶镇民和占卜干扰项 */
+/** 座位变了：提线木偶归位、重选邪恶镇民、占卜干扰项和镜像双子的双子 */
 function refreshSeating(s: GameState, rng: Rng) {
   fixMarionette(s);
   refreshEvilTownsfolk(s, rng);
   refreshRedHerring(s, rng);
+  refreshTwin(s, rng);
+}
+
+/** 镜像双子在场：选一名善良玩家当他的双子 */
+function refreshTwin(s: GameState, rng: Rng) {
+  const cs = twinChoices(s, rng);
+  s.twin = cs.length ? cs[recommend(cs, balance(s).score, rng)].value : null;
+}
+
+export function twinChoices(s: GameState, rng: Rng): Choice<number>[] {
+  if (!s.seats.some((x) => x.role === 'eviltwin')) return [];
+  const good = s.seats.filter((x) => !x.traveller && !isEvil(x));
+  if (!good.length) return [];
+  const lbl = (x: Seat) => `${seatName(x.n)}（${roleName(x.role)}）`;
+  const strong = [...good].sort((a, b) => ROLES[b.role].weight - ROLES[a.role].weight)[0];
+  const mid = good.length > 1 ? pick(good.filter((x) => x.n !== strong.n), rng) : strong;
+  const out: Choice<number>[] = [{ key: 'mid', label: lbl(mid), value: mid.n, lean: 0, truth: true, standard: true, reason: '随便一名善良玩家，标准做法。' }];
+  if (strong.n !== mid.n)
+    out.push({ key: 'strong', label: lbl(strong), value: strong.n, lean: -1, truth: true, reason: `${roleName(strong.role)}能力强：两人都说自己是${roleName(strong.role)}时，好人不敢轻易处决，帮邪恶。` });
+  const outsider = good.find((x) => ROLES[x.role].team === 'outsider' && x.n !== mid.n && x.n !== strong.n);
+  if (outsider)
+    out.push({ key: 'out', label: lbl(outsider), value: outsider.n, lean: 1, truth: true, reason: '外来者当双子：他能说的信息少，容易分辨谁是镜像双子，帮善良。' });
+  return out;
+}
+
+export function setTwin(s: GameState, n: number) {
+  s.twin = n;
 }
 
 /** 角色变了以后重新算配板强度和各项推荐 */
 export function refreshSetup(s: GameState, rng: Rng) {
   fixMarionette(s);
-  s.setupZ = setupZ(s.seats.map((x) => x.role), s.count, s.script, s.demonChar ?? 'imp');
+  s.setupZ = setupZ(s.seats.map((x) => x.role), s.count, scriptOf(s), s.demonChar ?? 'imp');
   const score = balance(s).score;
   const df = drunkFakeChoices(s);
   s.drunkFake = df.length ? df[recommend(df, score, rng)].value : null;
@@ -471,7 +537,7 @@ export function refreshSetup(s: GameState, rng: Rng) {
   const hasAlch = roles.includes('alchemist') || s.drunkFake === 'alchemist';
   if (!s.alchemistPicked || !hasAlch) {
     s.alchemistPicked = false;
-    s.alchemistAbility = alchemistAbilityFor(s.script, s.drunkFake === 'alchemist' ? [...roles, 'alchemist'] : roles);
+    s.alchemistAbility = alchemistAbilityFor(scriptOf(s), s.drunkFake === 'alchemist' ? [...roles, 'alchemist'] : roles);
   }
   // 疯子看到在场的恶魔；小怪宝时给他看涡流
   s.lunaticFake = inPlay(s, 'lunatic') ? (lilMonsta(s) ? 'vortox' : s.demonChar) : null;
@@ -482,6 +548,7 @@ export function refreshSetup(s: GameState, rng: Rng) {
   s.bluffs = bl.length ? bl[recommend(bl, score, rng)].value : [];
   refreshEvilTownsfolk(s, rng);
   refreshRedHerring(s, rng);
+  refreshTwin(s, rng);
 }
 
 /** 赏金猎人在场：选一名镇民变成邪恶 */
@@ -657,6 +724,7 @@ export function startDeal(s: GameState) {
   if (s.amnesiacAbility) lines.push(`失忆者的能力：像${roleName(s.amnesiacAbility)}一样`);
   if (s.bluffs.length) lines.push(`恶魔伪装：${s.bluffs.map(roleName).join('、')}`);
   if (s.redHerring) lines.push(`占卜干扰项：${seatName(s.redHerring)}`);
+  if (s.twin) lines.push(`镜像双子的善良双子：${seatName(s.twin)}${roleName(s.seats[s.twin - 1].role)}`);
   if (s.fabled.includes('sentinel')) lines.push(`传奇角色哨兵：外来者 ${s.sentinelDelta > 0 ? '+1' : s.sentinelDelta < 0 ? '−1' : '不变'}`);
   if (s.fabled.includes('duchess')) lines.push('传奇角色：公爵夫人');
   for (const text of lines) s.log.push({ night: 0, phase: 'setup', text });

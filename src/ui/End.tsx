@@ -1,7 +1,7 @@
-import { isEvil, seatName } from '../engine/core';
+import { isEvil, scriptOf, seatName } from '../engine/core';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { ROLES, TEAM_NAME, TRAVELLER_ROLES, isEvilTeam, roleName, type Team } from '../engine/roles';
-import { SCRIPTS, SCRIPT_LIST, type ScriptId } from '../engine/editions';
+import { SCRIPT_LIST, type ScriptDef } from '../engine/editions';
 import { endLines } from '../engine/scripts';
 import { balance } from '../engine/balance';
 import { rulesFor } from '../engine/rulesSpeech';
@@ -11,7 +11,7 @@ import { BottomBar, ConfirmButton, SayBox, useEscape } from './common';
 import { GrimoireCircle } from './Grimoire';
 import { Icon } from './icons';
 import { Emblem } from './Emblem';
-import { drawResult, endWhen, keyMoments } from './result';
+import { drawResult, drawScriptSheet, endWhen, keyMoments } from './result';
 
 /** 按"开局 / 第N夜 / 第N天"分组的时间线 */
 export function Timeline({ log }: { log: LogEntry[] }) {
@@ -53,11 +53,11 @@ function exportGame(s: GameState, hist: GameState[]) {
   }
   const date = new Date(s.endedAt ?? Date.now());
   const day = `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`;
-  const data = { app: '钟楼说书人', version: 1, exportedAt: new Date().toISOString(), script: SCRIPTS[s.script].name, count: s.count, winner: s.winner, winReason: s.winReason, timeline, game: s };
+  const data = { app: '钟楼说书人', version: 1, exportedAt: new Date().toISOString(), script: scriptOf(s).name, count: s.count, winner: s.winner, winReason: s.winReason, timeline, game: s };
   const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 1)], { type: 'application/json' }));
   const a = document.createElement('a');
   a.href = url;
-  a.download = `钟楼说书人-${SCRIPTS[s.script].name}-${day}.json`;
+  a.download = `钟楼说书人-${scriptOf(s).name}-${day}.json`;
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 5000);
 }
@@ -166,7 +166,7 @@ function ResultImage({ s, onClose }: { s: GameState; onClose: () => void }) {
   useEffect(() => {
     drawResult(s).then(setImg, () => setMsg('生成失败，请关掉再试一次。'));
   }, [s]);
-  const name = `钟楼说书人-${SCRIPTS[s.script].name}-${s.winner === 'evil' ? '邪恶' : '善良'}获胜.png`;
+  const name = `钟楼说书人-${scriptOf(s).name}-${s.winner === 'evil' ? '邪恶' : '善良'}获胜.png`;
   const share = async () => {
     if (!img) return;
     setMsg('');
@@ -216,14 +216,14 @@ export function Overlay({ title, onClose, children }: { title: string; onClose: 
   );
 }
 
-export function RolesRef({ script, onClose }: { script: ScriptId; onClose: () => void }) {
+export function RolesRef({ sc, onClose }: { sc: ScriptDef; onClose: () => void }) {
   const teams: Team[] = ['townsfolk', 'outsider', 'minion', 'demon'];
   return (
-    <Overlay title={`角色速查 · ${SCRIPTS[script].name}`} onClose={onClose}>
+    <Overlay title={`角色速查 · ${sc.name}`} onClose={onClose}>
       {teams.map((t) => (
         <div key={t} style={{ marginBottom: 18 }}>
           <h3 style={{ fontSize: 18, color: isEvilTeam(t) ? 'var(--evil)' : 'var(--good)', margin: '8px 0 0' }}>{TEAM_NAME[t]}</h3>
-          {SCRIPTS[script].roles.map((id) => ROLES[id]).filter((r) => r.team === t).map((r) => (
+          {sc.roles.map((id) => ROLES[id]).filter((r) => r.team === t).map((r) => (
             <div key={r.id} className="ref-role">
               <h3>{r.name}</h3>
               <p>{r.ability}</p>
@@ -254,17 +254,28 @@ export function RolesRef({ script, onClose }: { script: ScriptId; onClose: () =>
   );
 }
 
-/** 剧本图：给不熟这个剧本的人看，也可以发给玩家 */
-export function ScriptSheet({ script, onClose }: { script: ScriptId; onClose: () => void }) {
-  const [id, setId] = useState<ScriptId>(script);
+/** 剧本图：给不熟这个剧本的人看，也可以发给玩家。没有现成图片的（梦殒春宵、自由配板）由网页画一张 */
+export function ScriptSheet({ sc: start, onClose }: { sc: ScriptDef; onClose: () => void }) {
+  const [sc, setSc] = useState<ScriptDef>(start);
   const [msg, setMsg] = useState('');
-  const sc = SCRIPTS[id];
-  const src = `${import.meta.env.BASE_URL}scripts/${sc.image}`;
+  const [drawn, setDrawn] = useState<{ id: string; url: string; blob: Blob } | null>(null);
+  const tabs = start.id === 'custom' ? [start, ...SCRIPT_LIST] : SCRIPT_LIST;
+  useEffect(() => {
+    if (sc.image) return;
+    let live = true;
+    drawScriptSheet(sc).then((r) => live && setDrawn({ id: sc.name, ...r }));
+    return () => {
+      live = false;
+    };
+  }, [sc]);
+  const gen = !sc.image ? (drawn?.id === sc.name ? drawn : null) : null;
+  const src = sc.image ? `${import.meta.env.BASE_URL}scripts/${sc.image}` : (gen?.url ?? '');
+  const ext = sc.image ? 'jpg' : 'png';
   const share = async () => {
     setMsg('');
     try {
-      const blob = await (await fetch(src)).blob();
-      const file = new File([blob], `${sc.name}.jpg`, { type: 'image/jpeg' });
+      const blob = gen ? gen.blob : await (await fetch(src)).blob();
+      const file = new File([blob], `${sc.name}.${ext}`, { type: gen ? 'image/png' : 'image/jpeg' });
       if (navigator.canShare?.({ files: [file] })) await navigator.share({ files: [file], title: `血染钟楼剧本：${sc.name}` });
       else setMsg('这个浏览器不能直接分享图片：长按上面的图片，选"发送给朋友"或"保存图片"。');
     } catch (e) {
@@ -275,8 +286,8 @@ export function ScriptSheet({ script, onClose }: { script: ScriptId; onClose: ()
   return (
     <Overlay title={`剧本图 · ${sc.name}`} onClose={onClose}>
       <div className="row" style={{ gap: 6, marginBottom: 10 }}>
-        {SCRIPT_LIST.map((x) => (
-          <button key={x.id} className={`btn btn-sm ${x.id === id ? 'btn-primary' : 'btn-outline'}`} onClick={() => { setId(x.id); setMsg(''); }}>
+        {tabs.map((x) => (
+          <button key={x.id} className={`btn btn-sm ${x.id === sc.id ? 'btn-primary' : 'btn-outline'}`} onClick={() => { setSc(x); setMsg(''); }}>
             {x.name}
           </button>
         ))}
@@ -284,12 +295,16 @@ export function ScriptSheet({ script, onClose }: { script: ScriptId; onClose: ()
       <p className="dim" style={{ marginBottom: 8 }}>
         {sc.min}–{sc.max} 人 · {sc.roles.length} 个角色。双指可以放大看。
       </p>
-      <img src={src} alt={`${sc.name}剧本图`} style={{ width: '100%', borderRadius: 8, display: 'block' }} />
+      {src ? (
+        <img src={src} alt={`${sc.name}剧本图`} style={{ width: '100%', borderRadius: 8, display: 'block' }} />
+      ) : (
+        <p className="dim">正在画剧本图……</p>
+      )}
       <div className="row" style={{ marginTop: 12 }}>
         <button className="btn btn-primary grow" onClick={share}>
           分享给玩家
         </button>
-        <a className="btn btn-outline grow" href={src} download={`${sc.name}.jpg`}>
+        <a className="btn btn-outline grow" href={src} download={`${sc.name}.${ext}`}>
           保存图片
         </a>
       </div>
@@ -299,14 +314,14 @@ export function ScriptSheet({ script, onClose }: { script: ScriptId; onClose: ()
   );
 }
 
-export function RulesSpeech({ script, onClose }: { script: ScriptId; onClose: () => void }) {
+export function RulesSpeech({ sc, onClose }: { sc: ScriptDef; onClose: () => void }) {
   return (
     <Overlay title="规则讲稿（约 5 分钟）" onClose={onClose}>
       <p className="dim" style={{ marginBottom: 12 }}>
         开局前念给新玩家听。照着读就行。
       </p>
       <div className="stack">
-        {rulesFor(script).map((sec) => (
+        {rulesFor(sc).map((sec) => (
           <div key={sec.title} className="say">
             <div className="lbl">{sec.title}</div>
             {sec.lines.map((l) => (

@@ -2,7 +2,7 @@ import { ROLES, isEvilTeam, roleName, type RoleId, type Team } from './roles';
 import { SCRIPTS, type ScriptDef } from './editions';
 import type { GameState, LogEntry, Seat } from './types';
 
-export const scriptOf = (s: GameState): ScriptDef => SCRIPTS[s.script];
+export const scriptOf = (s: GameState): ScriptDef => (s.script === 'custom' ? s.custom! : SCRIPTS[s.script]);
 
 /** 旅行者的座位号从 101 开始，显示成"旅1、旅2"，原来的座位号不变 */
 export const TRAVELLER_BASE = 100;
@@ -71,8 +71,49 @@ export function isPoisoned(s: GameState, n: number): boolean {
   if (s.stPoison && s.stPoison.seat === n && s.stPoison.night === s.night) return true;
   // 普卡毒的人：一直中毒到下一次普卡行动（普卡死了就解除）
   if (s.pukkaPoison === n && s.seats.some((x) => x.role === 'pukka' && reallyAlive(s, x))) return true;
+  // 被舞蛇人换掉的前恶魔：一直中毒
+  if (s.snakePoisoned.includes(n)) return true;
+  // 诺-达鲺左右最近的镇民
+  const nd = s.seats.find((x) => x.role === 'nodashii' && x.alive);
+  if (nd && nd.n !== n && teamOf(seatOf(s, n).role) === 'townsfolk' && townsfolkNeighbors(s, nd.n).includes(n) && !malfunction(s, nd.n)) return true;
+  // 亡骨魔杀死的爪牙让一名镇民中毒
+  if (s.vigor.some((v) => v.poisoned === n && teamOf(seatOf(s, v.minion).role) === 'minion') && vigorActive(s, n)) return true;
   return false;
 }
+
+/** 左右两边各自最近的镇民（死人也算，中间的外来者、爪牙、旅行者跳过）：诺-达鲺、亡骨魔 */
+export function townsfolkNeighbors(s: GameState, n: number): number[] {
+  const order = circleOrder(s);
+  const N = order.length;
+  const i = order.indexOf(n);
+  const out: number[] = [];
+  if (i < 0) return out;
+  for (const dir of [-1, 1]) {
+    for (let k = 1; k < N; k++) {
+      const m = order[(i + dir * k + N * 2) % N];
+      if (m === n) break;
+      const x = seatOf(s, m);
+      if (!x.traveller && teamOf(x.role) === 'townsfolk') {
+        if (!out.includes(m)) out.push(m);
+        break;
+      }
+    }
+  }
+  return out;
+}
+
+/** 亡骨魔活着且健康（except = 正在判断的座位，免得互相递归） */
+export function vigorActive(s: GameState, except?: number): boolean {
+  const v = s.seats.find((x) => x.role === 'vigormortis' && x.alive);
+  return !!v && v.n !== except && !malfunction(s, v.n);
+}
+
+/** 这个爪牙死了但被亡骨魔杀死、保留能力 */
+export const keepsAbility = (s: GameState, n: number) =>
+  s.vigor.some((v) => v.minion === n) && teamOf(seatOf(s, n).role) === 'minion' && vigorActive(s, n);
+
+/** 能力还在：活着，或被亡骨魔杀死的爪牙 */
+export const abilityAlive = (s: GameState, x: Seat) => x.alive || keepsAbility(s, x.n);
 
 /** 醉酒到黄昏（水手、旅店老板、侍臣、吟游诗人、莽夫） */
 export const tempDrunk = (s: GameState, n: number) => s.tempDrunk.some((d) => d.seat === n && d.from <= s.night && s.night <= d.to);
@@ -80,7 +121,14 @@ export const tempDrunk = (s: GameState, n: number) => s.tempDrunk.some((d) => d.
 /** 能力失灵：酒鬼、提线木偶（以为自己是好人）、被心上人弄醉的人，或正在中毒 */
 export function malfunction(s: GameState, n: number): boolean {
   const r = seatOf(s, n).role;
-  return r === 'drunk' || r === 'marionette' || s.sweetheartDrunk === n || tempDrunk(s, n) || isPoisoned(s, n);
+  return r === 'drunk' || r === 'marionette' || s.sweetheartDrunk === n || philoDrunk(s, n) || tempDrunk(s, n) || isPoisoned(s, n);
+}
+
+/** 哲学家选了在场的角色：那个人醉酒，哲学家死了或失灵就恢复 */
+export function philoDrunk(s: GameState, n: number): boolean {
+  if (s.philoDrunk !== n) return false;
+  const p = s.seats.find((x) => x.role === 'philosopher' && s.gained[x.n]);
+  return !!p && p.alive && p.n !== n && !malfunction(s, p.n);
 }
 
 /** 涡流活着且没中毒：镇民能力只给假信息 */

@@ -1,11 +1,13 @@
 import type { FabledId, RoleId } from './roles';
 import type { SlotId } from './types';
+import { nightsFor } from './nightOrder';
 
-export type ScriptId = 'tb' | 'bmr' | 'alvsal' | 'spooky' | 'whispers' | 'sunset';
+export type ScriptId = 'tb' | 'bmr' | 'alvsal' | 'spooky' | 'whispers' | 'sunset' | 'sv';
 
 /** 一个剧本 = 角色表 + 夜晚顺序 */
 export interface ScriptDef {
-  id: ScriptId;
+  /** 自由配板的是 'custom' */
+  id: ScriptId | 'custom';
   name: string;
   min: number;
   max: number;
@@ -16,14 +18,20 @@ export interface ScriptDef {
   otherNights: SlotId[];
   /** 首夜信息位（F4）最多 2 个的限制只对暗流涌动有意义 */
   f4Cap?: boolean;
-  /** 剧本图（public/scripts 下的文件名） */
-  image: string;
+  /** 剧本图（public/scripts 下的文件名）；没有就由网页画一张 */
+  image?: string;
   /**
    * 邪恶补偿：实战里邪恶不容易赢的剧本，局势分多算给善良方这么多分，推荐更常帮邪恶。越大邪恶越强。
    * （不动一键配板：按角色强弱往偏邪恶挑会让男爵几乎每局都在、投毒者几乎消失）
    */
   evilBoost?: number;
 }
+
+const SV_ROLES: RoleId[] = [
+  'clockmaker', 'dreamer', 'snakecharmer', 'mathematician', 'flowergirl', 'towncrier', 'oracle', 'savant', 'seamstress', 'philosopher',
+  'artist', 'juggler', 'sage', 'mutant', 'sweetheart', 'barber', 'klutz', 'eviltwin', 'witch', 'cerenovus', 'pithag',
+  'fanggu', 'vigormortis', 'nodashii', 'vortox',
+];
 
 export const SCRIPTS: Record<ScriptId, ScriptDef> = {
   tb: {
@@ -111,7 +119,7 @@ export const SCRIPTS: Record<ScriptId, ScriptDef> = {
       'artist', 'balloonist', 'fisherman', 'savant', 'amnesiac', 'cannibal', 'lunatic', 'mutant', 'widow', 'goblin', 'leviathan',
     ],
     fabled: [],
-    firstNight: ['dusk', 'bureaucrat', 'thief', 'amnesiac', 'lunatic', 'widow', 'balloonist', 'dawn'],
+    firstNight: ['dusk', 'bureaucrat', 'thief', 'amnesiac', 'minionInfo', 'lunatic', 'demonInfo', 'widow', 'balloonist', 'dawn'],
     otherNights: ['dusk', 'bureaucrat', 'thief', 'amnesiac', 'lunatic', 'balloonist', 'dawn'],
     image: 'whispers.jpg',
   },
@@ -123,10 +131,20 @@ export const SCRIPTS: Record<ScriptId, ScriptDef> = {
     blurb: '恶魔僵怖第一次死是假死，只在白天没人死的晚上杀人；茶艺师、弄臣让好人很难死。',
     roles: ['alchemist', 'undertaker', 'flowergirl', 'exorcist', 'tealady', 'fool', 'recluse', 'drunk', 'devilsadvocate', 'godfather', 'zombuul'],
     fabled: [],
-    firstNight: ['dusk', 'bureaucrat', 'thief', 'alchemist', 'godfather', 'devilsadvocate', 'dawn'],
+    firstNight: ['dusk', 'bureaucrat', 'thief', 'alchemist', 'minionInfo', 'demonInfo', 'godfather', 'devilsadvocate', 'dawn'],
     otherNights: ['dusk', 'bureaucrat', 'thief', 'devilsadvocate', 'exorcist', 'zombuul', 'godfather', 'undertaker', 'flowergirl', 'dawn'],
     image: 'sunset.jpg',
   },
+  sv: {
+    id: 'sv',
+    name: '梦殒春宵',
+    min: 5,
+    max: 15,
+    blurb: '角色会变来变去：麻脸巫婆给人换角色，舞蛇人可能变成恶魔。疯狂、醉酒和中毒到处都是，信息要靠数学家来校准。',
+    roles: SV_ROLES,
+    fabled: [],
+    ...nightsFor(SV_ROLES),
+  },
 };
 
-export const SCRIPT_LIST: ScriptDef[] = [SCRIPTS.tb, SCRIPTS.bmr, SCRIPTS.alvsal, SCRIPTS.spooky, SCRIPTS.whispers, SCRIPTS.sunset];
+export const SCRIPT_LIST: ScriptDef[] = [SCRIPTS.tb, SCRIPTS.bmr, SCRIPTS.sv, SCRIPTS.alvsal, SCRIPTS.spooky, SCRIPTS.whispers, SCRIPTS.sunset];
