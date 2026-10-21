@@ -205,6 +205,7 @@ function win(s: GameState, who: 'good' | 'evil', reason: string, phase: 'night' 
   if (s.winner) return;
   s.winner = who;
   s.winReason = reason;
+  s.endedAt = Date.now();
   addLog(s, phase, `${who === 'good' ? '善良' : '邪恶'}阵营获胜：${reason}`);
 }
 

@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
+import { createContext, useCallback, useContext, useEffect, useId, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { ROLES, TEAM_NAME, isEvilTeam, roleName, type Team } from '../engine/roles';
 import { balance, leanTag, whyPrefix, type Choice } from '../engine/balance';
@@ -6,6 +6,49 @@ import { believedRole, isEvil, isPoisoned, seatOf, seatName } from '../engine/co
 import type { GameState } from '../engine/types';
 import { Icon } from './icons';
 import { Emblem } from './Emblem';
+
+/* ---------------- 桌面：圆桌上要标出的人、当前的选人格子 ---------------- */
+
+/** 当前步骤的选人格子，让 iPad 左边的圆桌也能直接点人 */
+export interface PickerBridge {
+  selected: number[];
+  disabled: number[];
+  tap: (n: number) => void;
+}
+
+export interface TableState {
+  /** 这一步要说书人用手指向的人 */
+  point: number[];
+  setPoint: (seats: number[]) => void;
+  picker: PickerBridge | null;
+  register: (id: string, b: PickerBridge | null) => void;
+}
+
+export const TableCtx = createContext<TableState>({ point: [], setPoint: () => {}, picker: null, register: () => {} });
+/** 弹出面板里的选人格子不接到圆桌上（圆桌被面板盖住了） */
+export const InSheetCtx = createContext(false);
+
+export function useTableState(): TableState {
+  const [point, setPoint] = useState<number[]>([]);
+  const [pickers, setPickers] = useState<{ id: string; b: PickerBridge }[]>([]);
+  const register = useCallback((id: string, b: PickerBridge | null) => {
+    setPickers((ps) => {
+      const rest = ps.filter((p) => p.id !== id);
+      return b ? [...rest, { id, b }] : rest;
+    });
+  }, []);
+  return { point, setPoint, picker: pickers.length ? pickers[pickers.length - 1].b : null, register };
+}
+
+/** 步骤里要说书人指向的人：圆桌和迷你魔典上标出来，离开这一步自动清掉 */
+export function usePoint(seats: number[]) {
+  const { setPoint } = useContext(TableCtx);
+  const key = seats.join(',');
+  useEffect(() => {
+    setPoint(key ? key.split(',').map(Number) : []);
+    return () => setPoint([]);
+  }, [key, setPoint]);
+}
 
 /* ---------------- 全局浮层控制 ---------------- */
 
@@ -53,17 +96,13 @@ export function BottomBar({ children, wide }: { children: ReactNode; wide?: bool
   );
 }
 
-export function SayBox({ lines, title = '你要说', s, onStyle }: { lines: string[]; title?: string; s?: GameState; onStyle?: () => void }) {
+/** 台词风格（简洁/氛围）只在菜单里切换一次，不在每张台词卡上重复 */
+export function SayBox({ lines, title = '你要说' }: { lines: string[]; title?: string }) {
   if (!lines.length) return null;
   return (
     <div className="say">
       <div className="lbl">
         <span>{title}</span>
-        {s && onStyle && (
-          <button className="btn-sm" style={{ background: 'none', border: 0, color: 'var(--text-3)', cursor: 'pointer', minHeight: 44 }} onClick={onStyle}>
-            {s.style === 'simple' ? '换成氛围台词' : '换成简洁台词'}
-          </button>
-        )}
       </div>
       {lines.map((l, i) => (
         <p key={i}>{l}</p>
@@ -128,7 +167,7 @@ export function Sheet({ title, onClose, children }: { title: string; onClose: ()
             <Icon name="x" />
           </button>
         </div>
-        {children}
+        <InSheetCtx.Provider value={true}>{children}</InSheetCtx.Provider>
       </div>
     </div>,
     document.body,
@@ -193,6 +232,19 @@ export function SeatPicker({
     else if (max === 1) pick([n]);
     else if (selected.length < max) pick([...selected, n]);
   };
+  // 接到圆桌上：iPad 左边的圆桌点人等于点这里的格子
+  const { register } = useContext(TableCtx);
+  const inSheet = useContext(InSheetCtx);
+  const id = useId();
+  const tapRef = useRef(tap);
+  tapRef.current = tap;
+  const selKey = selected.join(',');
+  const disKey = disabled.join(',');
+  useEffect(() => {
+    if (inSheet) return;
+    register(id, { selected: selKey ? selKey.split(',').map(Number) : [], disabled: disKey ? disKey.split(',').map(Number) : [], tap: (n) => tapRef.current(n) });
+    return () => register(id, null);
+  }, [inSheet, register, id, selKey, disKey]);
   if (collapse && max > 0 && selected.length === max && !editing)
     return (
       <div className="picked">

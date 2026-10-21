@@ -3,7 +3,7 @@ import { FABLED, ROLES, roleName } from '../engine/roles';
 import { aliveCount, seatOf, seatName, circleOrder, isEvil } from '../engine/core';
 import { nomResults, voteNeed } from '../engine/flow';
 import type { GameState } from '../engine/types';
-import { BalanceMeter, Sheet, TeamChip, seatMarks } from './common';
+import { BalanceMeter, Sheet, TeamChip, seatMarks, type PickerBridge } from './common';
 import { Icon } from './icons';
 
 export function phaseText(s: GameState): string {
@@ -15,13 +15,17 @@ export function phaseText(s: GameState): string {
 }
 
 export function GrimoireCircle({
-  s, onSeat, selected = [], awake = [], hub, readOnly = false,
+  s, onSeat, selected = [], awake = [], point = [], off = [], hub, readOnly = false,
 }: {
   s: GameState;
   onSeat?: (n: number) => void;
   selected?: number[];
   /** 这一步要叫醒的人：圆桌上亮一圈 */
   awake?: number[];
+  /** 这一步要说书人指向的人：圆桌上加虚线圈 */
+  point?: number[];
+  /** 这一步不能选的人 */
+  off?: number[];
   hub?: ReactNode;
   readOnly?: boolean;
 }) {
@@ -39,7 +43,7 @@ export function GrimoireCircle({
         return (
           <button
             key={x.n}
-            className={`token${evil ? ' evil-t' : ''}${x.alive ? '' : ' dead'}${selected.includes(x.n) ? ' sel' : ''}${awake.includes(x.n) ? ' awake' : ''}`}
+            className={`token${evil ? ' evil-t' : ''}${x.alive ? '' : ' dead'}${selected.includes(x.n) ? ' sel' : ''}${awake.includes(x.n) ? ' awake' : ''}${point.includes(x.n) ? ' pt' : ''}${off.includes(x.n) ? ' off' : ''}`}
             style={{ left: `${50 + R * Math.cos(a)}%`, top: `${50 + R * Math.sin(a)}%`, width: `${size}%`, height: `${size}%`, cursor: readOnly ? 'default' : 'pointer' }}
             onClick={() => !readOnly && onSeat?.(x.n)}
             tabIndex={readOnly ? -1 : 0}
@@ -122,7 +126,8 @@ export function SeatDetail({ s, n, onClose }: { s: GameState; n: number; onClose
 }
 
 export function GrimoireHub({ s }: { s: GameState }) {
-  if (s.phase === 'day') {
+  // 处决之后（或游戏已经分出胜负）就不再显示票数和"待处决"
+  if (s.phase === 'day' && s.executed === undefined && !s.winner) {
     const { block, top } = nomResults(s);
     return (
       <>
@@ -146,9 +151,13 @@ export function GrimoireHub({ s }: { s: GameState }) {
 }
 
 /** 平板侧栏 & 魔典浮层共用 */
-export function GrimoirePanel({ s, detail = false, awake = [] }: { s: GameState; detail?: boolean; awake?: number[] }) {
+export function GrimoirePanel({
+  s, detail = false, awake = [], point = [], picker = null,
+}: { s: GameState; detail?: boolean; awake?: number[]; point?: number[]; picker?: PickerBridge | null }) {
   const [view, setView] = useState<'circle' | 'list'>('circle');
   const [seat, setSeat] = useState<number | null>(null);
+  // 这一步要选人时，点圆桌就是选人；看详情去"列表"
+  const picking = !!picker;
   return (
     <div className="stack">
       <div className="row" style={{ justifyContent: 'space-between' }}>
@@ -160,11 +169,23 @@ export function GrimoirePanel({ s, detail = false, awake = [] }: { s: GameState;
             <Icon name="list" size={16} /> 列表
           </button>
         </div>
-        <span className="dim">点座位看详情</span>
+        <span className={picking ? 'pick-hint' : 'dim'}>{picking ? '点圆桌选人 · 详情看列表' : '点座位看详情'}</span>
       </div>
-      {view === 'circle' ? <GrimoireCircle s={s} onSeat={setSeat} awake={awake} hub={<GrimoireHub s={s} />} /> : <GrimoireList s={s} onSeat={setSeat} />}
+      {view === 'circle' ? (
+        <GrimoireCircle
+          s={s}
+          onSeat={picking ? (n) => !picker.disabled.includes(n) && picker.tap(n) : setSeat}
+          selected={picking ? picker.selected : seat !== null ? [seat] : []}
+          awake={awake}
+          point={point}
+          off={picking ? picker.disabled : []}
+          hub={<GrimoireHub s={s} />}
+        />
+      ) : (
+        <GrimoireList s={s} onSeat={setSeat} />
+      )}
       <SetupFacts s={s} />
-      <BalanceMeter s={s} detail={detail} expandable />
+      {!s.winner && <BalanceMeter s={s} detail={detail} expandable />}
       <MarkLegend s={s} />
       {seat !== null && <SeatDetail s={s} n={seat} onClose={() => setSeat(null)} />}
     </div>

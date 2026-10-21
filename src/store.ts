@@ -78,7 +78,7 @@ export function useGame() {
     setData((d) => ({ cur: { ...newGame(), style: d.cur.style }, hist: [] }));
   }, []);
 
-  return { s: data.cur, prev: data.hist[data.hist.length - 1] ?? null, canUndo: data.hist.length > 0, commit, tweak, undo, reset };
+  return { s: data.cur, hist: data.hist, prev: data.hist[data.hist.length - 1] ?? null, canUndo: data.hist.length > 0, commit, tweak, undo, reset };
 }
 
 export type Game = ReturnType<typeof useGame>;

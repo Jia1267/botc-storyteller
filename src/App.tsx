@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { currentSlot } from './engine/flow';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { currentSlot, slotActor } from './engine/flow';
 import { SLOT_TITLE } from './engine/scripts';
 import { useGame } from './store';
 import type { GameState } from './engine/types';
-import { ConfirmButton, Sheet, ShowCard, UiCtx, type CardContent, type Ui } from './ui/common';
+import { ConfirmButton, Sheet, ShowCard, TableCtx, UiCtx, useTableState, type CardContent, type Ui } from './ui/common';
 import { DayScreen } from './ui/Day';
 import { DealScreen } from './ui/Deal';
 import { EndScreen, LogView, Overlay, RolesRef, RulesSpeech, ScriptSheet } from './ui/End';
@@ -24,6 +24,17 @@ export default function App() {
   const [spy, setSpy] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const lastUndo = useRef(0);
+  const table = useTableState();
+
+  // 翻到新的一步（夜里换步骤、天亮、处决之后、发下一张身份……）就回到页面顶部，标题和关键提醒一打开就在眼前
+  const screenKey = [
+    s.phase, s.setupStep, s.dealIndex, s.night, s.ns?.slot ?? '',
+    s.phase === 'night' && s.ns ? slotActor(s, currentSlot(s))?.n ?? '' : '',
+    s.executed === undefined ? '' : 'x', s.winner ?? '',
+  ].join('|');
+  useLayoutEffect(() => {
+    window.scrollTo(0, 0);
+  }, [screenKey]);
 
   useEffect(() => {
     if (!toast) return;
@@ -56,6 +67,8 @@ export default function App() {
   // 手机上夜晚的步数写在顶栏（页面里那一行让给迷你魔典）
   const prog = s.phase === 'night' && s.ns ? nightProgress(s) : null;
   const hasSeats = s.seats.length > 0 && !(s.phase === 'setup' && s.setupStep === 'count');
+  // 首页（选剧本）没有可撤销、可计时的东西
+  const home = s.phase === 'setup' && s.setupStep === 'script';
 
   let screen;
   if (s.phase === 'setup') screen = <SetupScreen g={g} onRules={() => setPanel('rules')} onRoles={() => setPanel('roles')} onSheet={() => setPanel('sheet')} />;
@@ -66,6 +79,7 @@ export default function App() {
 
   return (
     <UiCtx.Provider value={ui}>
+      <TableCtx.Provider value={table}>
       <TimerCtx.Provider value={timer}>
         <div className="app">
           <header className="topbar">
@@ -76,7 +90,7 @@ export default function App() {
                 {prog && <span className="phone-only">{` · 第 ${prog.pos} 步 / 共约 ${prog.visible.length} 步`}</span>}
               </small>
             </div>
-            <button
+            {!home && <button
               className="icon-btn"
               aria-label="撤销上一步"
               title="撤销上一步"
@@ -92,15 +106,17 @@ export default function App() {
               }}
             >
               <Icon name="undo" />
-            </button>
+            </button>}
             {hasSeats && (
               <button className="icon-btn" aria-label="魔典" title="魔典" onClick={() => setPanel('grimoire')}>
                 <Icon name="book" />
               </button>
             )}
-            <button className="icon-btn" aria-label="一键盖屏，只显示计时器" title="一键盖屏，只显示计时器" onClick={() => setPanel('cover')}>
-              <Icon name="timer" />
-            </button>
+            {!home && (
+              <button className="icon-btn" aria-label="一键盖屏，只显示计时器" title="一键盖屏，只显示计时器" onClick={() => setPanel('cover')}>
+                <Icon name="timer" />
+              </button>
+            )}
             <button className="icon-btn" aria-label="菜单" title="菜单" onClick={() => setPanel('menu')}>
               <Icon name="menu" />
             </button>
@@ -169,6 +185,7 @@ export default function App() {
         )}
         {toast && <div className="toast" role="status">{toast}</div>}
       </TimerCtx.Provider>
+      </TableCtx.Provider>
     </UiCtx.Provider>
   );
 }

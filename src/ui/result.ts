@@ -238,7 +238,7 @@ export async function drawResult(s: GameState): Promise<{ url: string; blob: Blo
   g.fillStyle = C.text;
   g.font = `900 30px ${SERIF}`;
   g.fillText('钟楼说书人', 138, 87);
-  const now = new Date();
+  const now = new Date(s.endedAt ?? Date.now());
   g.textAlign = 'right';
   g.fillStyle = C.text2;
   g.font = `24px ${SANS}`;

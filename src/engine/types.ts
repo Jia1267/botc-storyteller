@@ -205,6 +205,8 @@ export interface GameState {
   lastExecution: { night: number; seat: number } | null;
   winner: 'good' | 'evil' | null;
   winReason: string;
+  /** 分出胜负的时间（毫秒时间戳），结果图上的日期用它 */
+  endedAt?: number;
   /** 真实信息指向某个座位的次数（平衡用） */
   exposure: Record<number, number>;
   infoTrue: number;

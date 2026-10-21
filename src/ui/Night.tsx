@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ROLES, TEAM_NAME, roleName, type RoleId } from '../engine/roles';
 import { balance, recommend } from '../engine/balance';
 import {
@@ -19,7 +19,7 @@ import {
 import { SLOT_TITLE, dawnLines, librarianZeroLines, slotLines } from '../engine/scripts';
 import type { GameState, Seat, SlotId } from '../engine/types';
 import { stepRng, type Game } from '../store';
-import { BottomBar, ChoicePanel, ConfirmButton, DoBox, SayBox, SeatPicker, Sheet, TwoChoice, drunkWhy, roleCard, seatMarks, useUi } from './common';
+import { BottomBar, ChoicePanel, ConfirmButton, DoBox, SayBox, SeatPicker, Sheet, TableCtx, TwoChoice, drunkWhy, roleCard, seatMarks, usePoint, useUi } from './common';
 import { shuffle } from '../engine/rng';
 import { GrimoirePanel } from './Grimoire';
 import { Icon } from './icons';
@@ -37,11 +37,12 @@ export function NightScreen({ g }: { g: Game }) {
   const actor = slotActor(s, slot);
   const { cur, visible, pos } = nightProgress(s);
   const eff = effectiveSlot(s, slot);
+  const table = useContext(TableCtx);
 
   return (
     <main className="main split night">
       <div className="side">
-        <GrimoirePanel s={s} awake={actor ? [actor.n] : []} />
+        <GrimoirePanel s={s} awake={awakeSeats(s)} point={table.point} picker={table.picker} />
       </div>
       <div className="stack" key={`${s.night}-${cur}-${actor?.n ?? 0}`}>
         <div className="step-head">
@@ -66,6 +67,18 @@ export function NightScreen({ g }: { g: Game }) {
   );
 }
 
+/** 这一步要叫醒的人：爪牙互认叫所有爪牙，恶魔得知爪牙叫恶魔，其余是本步的角色 */
+export function awakeSeats(s: GameState): number[] {
+  const slot = currentSlot(s);
+  if (slot === 'minionInfo' || slot === 'lilmonsta') return minionSeats(s).filter((x) => x.alive).map((x) => x.n);
+  if (slot === 'demonInfo') {
+    const d = demonSeat(s);
+    return d ? [d.n] : [];
+  }
+  const a = slotActor(s, slot);
+  return a ? [a.n] : [];
+}
+
 /** 今晚第几步、一共大约几步（跳过不用醒的步骤） */
 export function nightProgress(s: GameState) {
   const order = slotsFor(s);
@@ -77,7 +90,8 @@ export function nightProgress(s: GameState) {
 
 /** 手机夜里顶栏下面的一排小座位：谁邪恶、谁死了、谁醉/毒，点一下打开完整魔典 */
 export function MiniGrimoire({ s, onOpen }: { s: GameState; onOpen: () => void }) {
-  const actor = slotActor(s, currentSlot(s));
+  const awake = awakeSeats(s);
+  const { point } = useContext(TableCtx);
   const { cur, visible } = nightProgress(s);
   const seats = circleOrder(s).map((n) => seatOf(s, n)).filter((x) => !x.left);
   const N = seats.length;
@@ -96,7 +110,7 @@ export function MiniGrimoire({ s, onOpen }: { s: GameState; onOpen: () => void }
                   ? ['扰', 'rh']
                   : ['', ''];
           return (
-            <span key={x.n} className={`c${isEvil(x) ? ' evil' : ''}${x.alive ? '' : ' dead'}${actor?.n === x.n ? ' actor' : ''}`}>
+            <span key={x.n} className={`c${isEvil(x) ? ' evil' : ''}${x.alive ? '' : ' dead'}${awake.includes(x.n) ? ' actor' : ''}${point.includes(x.n) ? ' pt' : ''}`}>
               <i>{x.n}</i>
               <em className={cls}>{st}</em>
             </span>
@@ -176,7 +190,6 @@ function Reveal({ children, enabled = true }: { children: ReactNode; enabled?: b
     </div>
   );
 }
-const toggleStyle = (g: Game) => () => g.tweak((st) => (st.style = st.style === 'simple' ? 'atmo' : 'simple'));
 
 function Tips({ role, drunk }: { role: RoleId; drunk?: boolean }) {
   return (
@@ -349,7 +362,7 @@ function DuskStep({ g, s }: { g: Game; s: GameState }) {
   const sleepers = notWakingTonight(s);
   return (
     <>
-      <SayBox lines={slotLines('dusk', s.style)} title="对所有人说" s={s} onStyle={toggleStyle(g)} />
+      <SayBox lines={slotLines('dusk', s.style)} title="对所有人说" />
       <DoBox
         items={[
           '等所有人都闭上眼睛、低下头。',
@@ -380,6 +393,7 @@ function MinionInfoStep({ g, s }: { g: Game; s: GameState }) {
   const ms = seatsText(minions.map((x) => x.n));
   const one = minions.length === 1;
   const d = demonSeat(s)!;
+  usePoint([d.n]);
   return (
     <>
       <DoBox
@@ -393,7 +407,7 @@ function MinionInfoStep({ g, s }: { g: Game; s: GameState }) {
           one ? '等他看清，再让他闭眼。' : '等他们互相看清彼此，再让他们闭眼。',
         ]}
       />
-      <SayBox lines={slotLines('minionInfo', s.style)} title="小声说" s={s} onStyle={toggleStyle(g)} />
+      <SayBox lines={slotLines('minionInfo', s.style)} title="小声说" />
       <p className="dim">7 人及以上才有这一步。恶魔这时还闭着眼。</p>
       <BottomBar wide>
         <button className="btn btn-primary btn-block" onClick={() => done({ kind: 'none' })}>
@@ -409,6 +423,7 @@ function DemonInfoStep({ g, s }: { g: Game; s: GameState }) {
   const ui = useUi();
   const ms = seatsText(minionSeats(s).map((x) => x.n));
   const d = demonSeat(s)!;
+  usePoint(minionSeats(s).map((x) => x.n));
   return (
     <>
       <DoBox
@@ -425,7 +440,7 @@ function DemonInfoStep({ g, s }: { g: Game; s: GameState }) {
       />
       {!ms && <p className="dim">唯一的爪牙是提线木偶，下一步再单独告诉恶魔，这一步不用指爪牙。</p>}
       {/* 没有爪牙时只念伪装那一句 */}
-      <SayBox lines={slotLines('demonInfo', s.style).slice(ms ? 0 : 1)} title="小声说" s={s} onStyle={toggleStyle(g)} />
+      <SayBox lines={slotLines('demonInfo', s.style).slice(ms ? 0 : 1)} title="小声说" />
       <p className="muted">伪装角色：{s.bluffs.map(roleName).join('、')}</p>
       <BottomBar wide>
         <CardButton label="给他看伪装" onClick={() => ui.showCard({ title: '这三个角色不在场，你可以伪装成他们', big: s.bluffs.map(roleName) })} />
@@ -449,8 +464,6 @@ function DawnStep({ g, s }: { g: Game; s: GameState }) {
       <SayBox
         lines={dawnLines(deaths, s.style, { fear: s.fearAnnounce, leviathanDay: lev ? s.night : undefined, hadikhia: s.ns!.hadikhia, banshee, revived: s.ns!.revived })}
         title="对所有人说"
-        s={s}
-        onStyle={toggleStyle(g)}
       />
       <DoBox
         items={[
@@ -519,7 +532,7 @@ function TargetStep({
   return (
     <>
       <DoBox items={[wake(actor.n), `让他用手指向一名玩家${notSelf ? '（不能指自己）' : ''}，你在下面点出同一个人。`, sleep]} />
-      <SayBox lines={slotLines(slot, s.style)} title="小声说" s={s} onStyle={toggleStyle(g)} />
+      <SayBox lines={slotLines(slot, s.style)} title="小声说" />
       <SeatPicker s={s} selected={t} max={1} onChange={setT} disabled={blocked} label="他指了谁？" />
       <GoonNote s={s} actor={actor} picks={t} slot={slot} />
       <p className="dim">{note}</p>
@@ -571,6 +584,7 @@ function PairStep({ g, s, actor, kind }: StepProps & { kind: PairKind }) {
   const value = sel >= 0 ? choices[sel]?.value : manualInfo;
   const truth = sel >= 0 ? choices[sel].truth : verdict !== 'false';
   const twist = sel >= 0 ? !!choices[sel].twist : verdict === 'twist';
+  usePoint(value?.seats ? [...value.seats] : []);
 
   const teamRoles = scriptOf(s).roles.filter((r) => ROLES[r].team === KIND_TEAM[kind]);
   const manual = (
@@ -610,7 +624,7 @@ function PairStep({ g, s, actor, kind }: StepProps & { kind: PairKind }) {
     <>
       <ChoicePanel s={s} choices={choices} sel={sel} rec={rec} onSel={setSel} manual={manual} />
       <DoBox items={items} />
-      <SayBox lines={value && value.role === null ? librarianZeroLines(s.style) : slotLines(kind, s.style)} title="小声说" s={s} onStyle={toggleStyle(g)} />
+      <SayBox lines={value && value.role === null ? librarianZeroLines(s.style) : slotLines(kind, s.style)} title="小声说" />
       <Tips role={kind} drunk={actor.role === 'drunk'} />
       <BottomBar wide>
         {value?.role && <CardButton onClick={() => ui.showCard(roleCard(value.role!, '这两人中有一人是'))} />}
@@ -673,7 +687,7 @@ function NumberStep({ g, s, actor, kind }: StepProps & { kind: 'chef' | 'empath'
           sleep,
         ]}
       />
-      <SayBox lines={slotLines(kind, s.style)} title="小声说" s={s} onStyle={toggleStyle(g)} />
+      <SayBox lines={slotLines(kind, s.style)} title="小声说" />
       <Tips role={kind} drunk={actor.role === 'drunk'} />
       <BottomBar wide>
         <button className="btn btn-primary btn-block" disabled={value === null || value === undefined} onClick={() => done({ kind: 'number', num: value!, truth, twist })}>
@@ -691,7 +705,7 @@ function FortuneStep({ g, s, actor }: StepProps) {
   return (
     <>
       <DoBox items={[wake(actor.n), '让他用手指向两名玩家，你在下面点出这两个人。']} />
-      <SayBox lines={slotLines('fortuneteller', s.style)} title="小声说" s={s} onStyle={toggleStyle(g)} />
+      <SayBox lines={slotLines('fortuneteller', s.style)} title="小声说" />
       <SeatPicker s={s} selected={picks} max={2} onChange={setPicks} label="他指了哪两个人？" />
       {picks.length === 2 ? (
         <Reveal key={[...picks].sort().join()}>
@@ -734,8 +748,8 @@ function SpyStep({ g, s, actor }: StepProps) {
   const ui = useUi();
   return (
     <>
-      <DoBox items={[wake(actor.n), '点「给间谍看」，把手机交给他。', '他看完会点「看完了」，收回手机。', sleep]} />
-      <SayBox lines={slotLines('spy', s.style)} title="小声说" s={s} onStyle={toggleStyle(g)} />
+      <DoBox items={[wake(actor.n), '点「给间谍看」，把屏幕交给他。', '他看完会点「看完了」，收回屏幕。', sleep]} />
+      <SayBox lines={slotLines('spy', s.style)} title="小声说" />
       <p className="dim">间谍看到的是只读魔典：只有座位、角色和状态，没有你的提示，也碰不到任何操作。</p>
       <Tips role="spy" />
       <BottomBar wide>
@@ -755,7 +769,7 @@ function NewDemonStep({ g, s, actor }: StepProps) {
   return (
     <>
       <DoBox items={[wake(actor.n), `点「给他看」：你现在是${roleName(r)}。`, '马上进入恶魔这一步（他今晚就可以杀人）。']} />
-      <SayBox lines={slotLines('scarletwoman', s.style)} title="小声说" s={s} onStyle={toggleStyle(g)} />
+      <SayBox lines={slotLines('scarletwoman', s.style)} title="小声说" />
       <BottomBar wide>
         <CardButton onClick={() => ui.showCard(roleCard(r, '你现在是', true))} />
         <button className="btn btn-primary grow" onClick={() => done({ kind: 'none' })}>
@@ -773,7 +787,7 @@ function ImpStep({ g, s, actor, slot }: StepProps & { slot: 'imp' | 'vortox' }) 
   return (
     <>
       <DoBox items={[wake(actor.n), '让他用手指向一名玩家（可以指自己），你在下面点出来。']} />
-      <SayBox lines={slotLines(slot, s.style)} title="小声说" s={s} onStyle={toggleStyle(g)} />
+      <SayBox lines={slotLines(slot, s.style)} title="小声说" />
       <SeatPicker s={s} selected={t} max={1} onChange={setT} label="他要杀谁？" />
       {t.length ? (
         <Reveal key={t[0]}>
@@ -849,7 +863,7 @@ function RevealStep({ g, s, actor, kind }: StepProps & { kind: 'ravenkeeper' | '
       {kind === 'ravenkeeper' ? (
         <>
           <DoBox items={[wake(actor.n), '让他用手指向一名玩家，你在下面点出来。']} />
-          <SayBox lines={slotLines(kind, s.style)} title="小声说" s={s} onStyle={toggleStyle(g)} />
+          <SayBox lines={slotLines(kind, s.style)} title="小声说" />
           <SeatPicker s={s} selected={pick} max={1} onChange={setPick} label="他想看谁的角色？" />
         </>
       ) : (
@@ -907,7 +921,7 @@ function RevealAnswer({ g, s, actor, kind, subject }: StepProps & { kind: 'raven
     <>
       <ChoicePanel s={s} choices={choices} sel={sel} rec={rec} onSel={setSel} manual={manual} />
       <DoBox items={[kind === 'undertaker' ? wake(actor.n) : null, '点「给他看」展示角色。', sleep]} />
-      {kind === 'undertaker' && <SayBox lines={slotLines(kind, s.style)} title="小声说" s={s} onStyle={toggleStyle(g)} />}
+      {kind === 'undertaker' && <SayBox lines={slotLines(kind, s.style)} title="小声说" />}
       <Tips role={kind} drunk={actor.role === 'drunk'} />
       <BottomBar wide>
         {value && <CardButton onClick={() => ui.showCard(roleCard(value, kind === 'undertaker' ? '今天被处决的玩家是' : '这名玩家的角色是'))} />}
@@ -974,7 +988,7 @@ function LunaticStep({ g, s, actor }: StepProps) {
     <>
       <DoBox items={[wake(actor.n), `他以为自己是${fake}：让他指一名玩家，你在下面点出来（这个人不会死）。`, sleep]} />
       {/* 按他以为的恶魔念台词（例如普卡是下毒，不是杀人） */}
-      <SayBox lines={(s.lunaticFake && slotLines(s.lunaticFake as SlotId, s.style).length ? slotLines(s.lunaticFake as SlotId, s.style) : slotLines('lunatic', s.style))} title="小声说" s={s} onStyle={toggleStyle(g)} />
+      <SayBox lines={(s.lunaticFake && slotLines(s.lunaticFake as SlotId, s.style).length ? slotLines(s.lunaticFake as SlotId, s.style) : slotLines('lunatic', s.style))} title="小声说" />
       <SeatPicker s={s} selected={t} max={1} onChange={setT} label="疯子指了谁？" />
       {informed.length > 0 && (
         <Reveal key={t[0]}>
@@ -1026,7 +1040,7 @@ function LunaticFirstNight({ g, s, actor }: StepProps) {
           sleep,
         ]}
       />
-      <SayBox lines={slotLines('demonInfo', s.style)} title="小声说" s={s} onStyle={toggleStyle(g)} />
+      <SayBox lines={slotLines('demonInfo', s.style)} title="小声说" />
       <button className="btn btn-ghost btn-block" onClick={() => ui.showCard({ title: '这三个角色不在场，你可以伪装成他们', big: fakeBluffs.map(roleName) })}>
         <Icon name="eye" /> 给疯子看伪装（{fakeBluffs.map(roleName).join('、')}）
       </button>
@@ -1089,7 +1103,7 @@ function LilMonstaStep({ g, s }: { g: Game; s: GameState }) {
           '让他们闭眼。',
         ]}
       />
-      <SayBox lines={slotLines('lilmonsta', s.style)} title="小声说" s={s} onStyle={toggleStyle(g)} />
+      <SayBox lines={slotLines('lilmonsta', s.style)} title="小声说" />
       {!locked && <SeatPicker s={s} selected={bs} max={1} onChange={setBs} disabled={nonMinions} label="谁照看小怪宝？" />}
       {s.night > 1 && bs.length > 0 ? (
         <LilKill key={bs[0]} g={g} s={s} babysitter={bs[0]} />
@@ -1168,7 +1182,7 @@ function WidowStep({ g, s, actor }: StepProps) {
           </>,
         ]}
       />
-      <SayBox lines={slotLines('widow', s.style)} title="小声说" s={s} onStyle={toggleStyle(g)} />
+      <SayBox lines={slotLines('widow', s.style)} title="小声说" />
       <button className="btn btn-ghost btn-block" onClick={ui.openSpy}>
         <Icon name="eye" /> 给寡妇看魔典
       </button>
@@ -1245,7 +1259,7 @@ function PixieStep({ g, s, actor }: StepProps) {
     <>
       <ChoicePanel s={s} choices={choices} sel={sel} rec={rec} onSel={(i) => i >= 0 && setSel(i)} />
       <DoBox items={[wake(actor.n), c ? <>点「给他看」：<b>【{roleName(c.value)}】</b>在场。</> : null, sleep]} />
-      <SayBox lines={slotLines('pixie', s.style)} title="小声说" s={s} onStyle={toggleStyle(g)} />
+      <SayBox lines={slotLines('pixie', s.style)} title="小声说" />
       <Tips role="pixie" />
       <BottomBar wide>
         {c && <CardButton onClick={() => ui.showCard(roleCard(c.value, '这个镇民角色在场'))} />}
@@ -1265,7 +1279,7 @@ function ChambermaidStep({ g, s, actor }: StepProps) {
   return (
     <>
       <DoBox items={[wake(actor.n), '让她指两名存活玩家（不能指自己），你在下面点出来。']} />
-      <SayBox lines={slotLines('chambermaid', s.style)} title="小声说" s={s} onStyle={toggleStyle(g)} />
+      <SayBox lines={slotLines('chambermaid', s.style)} title="小声说" />
       <p className="dim">今晚因为自己的能力醒来过的人：{s.ns?.woke.length ? seatsText(s.ns.woke) : '还没有'}</p>
       <SeatPicker s={s} selected={picks} max={2} onChange={setPicks} disabled={blocked} label="她指了哪两个人？" collapse="她指了" />
       <GoonNote s={s} actor={actor} picks={picks} slot="chambermaid" />
@@ -1327,7 +1341,7 @@ function DuchessStep({ g, s }: { g: Game; s: GameState }) {
           </>,
         ])}
       />
-      <SayBox lines={slotLines('duchess', s.style)} title="小声说" s={s} onStyle={toggleStyle(g)} />
+      <SayBox lines={slotLines('duchess', s.style)} title="小声说" />
       <BottomBar wide>
         <button className="btn btn-primary btn-block" onClick={() => done(c ? { kind: 'duchess', falseFor: c.value.falseFor, falseNum: c.value.falseNum } : { kind: 'none' })}>
           完成，下一步
@@ -1345,6 +1359,7 @@ function BalloonStep({ g, s, actor }: StepProps) {
   const rec = useMemo(() => recommend(choices, balance(s).score, stepRng(s, 1)), [choices, s]);
   const [sel, setSel] = useState(rec);
   const c = choices[sel];
+  usePoint(c ? [c.value.seat] : []);
   return (
     <>
       <p className="dim">
@@ -1352,7 +1367,7 @@ function BalloonStep({ g, s, actor }: StepProps) {
       </p>
       <ChoicePanel s={s} choices={choices} sel={sel} rec={rec} onSel={(i) => i >= 0 && setSel(i)} />
       <DoBox items={[wake(actor.n), c ? <>用手指向 <b>{seatName(c.value.seat)}</b>。</> : null, sleep]} />
-      <SayBox lines={slotLines('balloonist', s.style)} title="小声说" s={s} onStyle={toggleStyle(g)} />
+      <SayBox lines={slotLines('balloonist', s.style)} title="小声说" />
       <Tips role="balloonist" />
       <BottomBar wide>
         <button className="btn btn-primary btn-block" disabled={!c} onClick={() => c && done({ kind: 'balloon', seat: c.value.seat, team: c.value.team, truth: c.truth })}>
@@ -1384,7 +1399,7 @@ function AlchemistStep({ g, s, actor }: StepProps) {
           sleep,
         ]}
       />
-      <SayBox lines={slotLines('alchemist', s.style)} title="小声说" s={s} onStyle={toggleStyle(g)} />
+      <SayBox lines={slotLines('alchemist', s.style)} title="小声说" />
       <Tips role="alchemist" drunk={actor.role === 'drunk'} />
       <BottomBar wide>
         {ab && <CardButton onClick={() => ui.showCard({ title: '你拥有这个爪牙的能力（你仍然是善良的）', big: [roleName(ab)], ability: ROLES[ab].ability })} />}
@@ -1416,7 +1431,7 @@ function GodfatherStep({ g, s, actor }: StepProps) {
           sleep,
         ]}
       />
-      <SayBox lines={outs.length ? slotLines('godfather', s.style) : ['场上没有外来者。']} title="小声说" s={s} onStyle={toggleStyle(g)} />
+      <SayBox lines={outs.length ? slotLines('godfather', s.style) : ['场上没有外来者。']} title="小声说" />
       {malfunction(s, actor.n) && <p className="dim">他其实是酒鬼/中毒：可以给假的。</p>}
       <Tips role="godfather" drunk={actor.role === 'drunk'} />
       <BottomBar wide>
@@ -1444,7 +1459,7 @@ function KillStep({ g, s, actor, slot }: StepProps & { slot: 'zombuul' | 'godfat
           : '今天白天没有人死，僵怖醒来杀人。'}
       </p>
       <DoBox items={[wake(actor.n), '让他用手指向一名玩家，你在下面点出来。', sleep]} />
-      <SayBox lines={slot === 'godfather' ? ['今天有外来者死了。请选择一名玩家，他会死亡。'] : slotLines('zombuul', s.style)} title="小声说" s={s} onStyle={toggleStyle(g)} />
+      <SayBox lines={slot === 'godfather' ? ['今天有外来者死了。请选择一名玩家，他会死亡。'] : slotLines('zombuul', s.style)} title="小声说" />
       <SeatPicker s={s} selected={t} max={1} onChange={setT} label="他要杀谁？" />
       <GoonNote s={s} actor={actor} picks={t} slot={slot} />
       {pv && (
@@ -1482,7 +1497,7 @@ function FlowergirlStep({ g, s, actor }: StepProps) {
       </div>
       <ChoicePanel s={s} choices={choices} sel={sel} rec={rec} onSel={(i) => i >= 0 && setSel(i)} />
       <DoBox items={[wake(actor.n), c.value ? <><b>点头</b>：恶魔今天投过票。</> : <><b>摇头</b>：恶魔今天没投票。</>, sleep]} />
-      <SayBox lines={slotLines('flowergirl', s.style)} title="小声说" s={s} onStyle={toggleStyle(g)} />
+      <SayBox lines={slotLines('flowergirl', s.style)} title="小声说" />
       <Tips role="flowergirl" drunk={actor.role === 'drunk'} />
       <BottomBar wide>
         <button className="btn btn-primary btn-block" onClick={() => done({ kind: 'yesno', yes: c.value, truth: c.truth })}>
@@ -1499,6 +1514,7 @@ function MarionetteStep({ g, s, actor }: StepProps) {
   const done = useDone(g);
   const ui = useUi();
   const m = s.seats.find((x) => x.role === 'marionette')!;
+  usePoint([m.n]);
   return (
     <>
       <p className="muted">
@@ -1513,7 +1529,7 @@ function MarionetteStep({ g, s, actor }: StepProps) {
           sleep,
         ]}
       />
-      <SayBox lines={slotLines('marionette', s.style)} title="小声说" s={s} onStyle={toggleStyle(g)} />
+      <SayBox lines={slotLines('marionette', s.style)} title="小声说" />
       <Tips role="marionette" />
       <BottomBar wide>
         <CardButton onClick={() => ui.showCard({ title: '这名玩家是你的', big: ['提线木偶'] })} />
@@ -1527,6 +1543,7 @@ function MarionetteStep({ g, s, actor }: StepProps) {
 
 /** 告诉被鹰身女妖选中的第一个人 */
 function HarpyInform({ mad, second }: { mad: number; second: number }) {
+  usePoint([second]);
   return (
     <DoBox
       title="然后告诉第一个人"
@@ -1552,7 +1569,7 @@ function HarpyStep({ g, s, actor }: StepProps) {
   return (
     <>
       <DoBox items={[wake(actor.n), '让她先指第一个人，再指第二个人。你按顺序点出来。', sleep]} />
-      <SayBox lines={slotLines('harpy', s.style)} title="小声说" s={s} onStyle={toggleStyle(g)} />
+      <SayBox lines={slotLines('harpy', s.style)} title="小声说" />
       <SeatPicker s={s} selected={t} max={2} onChange={setT} label="先点第一个人（要疯狂的人），再点第二个人" />
       {t.length === 2 && (
         <Reveal key={t.join()}>
@@ -1640,7 +1657,7 @@ function DreamerStep({ g, s, actor }: StepProps) {
   return (
     <>
       <DoBox items={[wake(actor.n), '让他指一名玩家（不能指自己或旅行者），你在下面点出来。']} />
-      <SayBox lines={slotLines('dreamer', s.style)} title="小声说" s={s} onStyle={toggleStyle(g)} />
+      <SayBox lines={slotLines('dreamer', s.style)} title="小声说" />
       <SeatPicker s={s} selected={t} max={1} onChange={setT} disabled={blocked} label="他指了谁？" collapse="他指了" />
       {t.length ? (
         <Reveal key={t[0]}>
@@ -1695,7 +1712,7 @@ function SeamstressStep({ g, s, actor }: StepProps) {
   return (
     <>
       <DoBox items={[wake(actor.n), '问她今晚要不要用能力（整局只能用一次）。不用就让她闭眼。']} />
-      <SayBox lines={slotLines('seamstress', s.style)} title="小声说" s={s} onStyle={toggleStyle(g)} />
+      <SayBox lines={slotLines('seamstress', s.style)} title="小声说" />
       <TwoChoice value={use} onChange={setUse} yes="她要用" no="她不用（摇头）" />
       {use && <SeatPicker s={s} selected={picks} max={2} onChange={setPicks} disabled={[actor.n]} label="她指了哪两个人？" collapse="她指了" />}
       {use && picks.length === 2 ? (
@@ -1748,6 +1765,7 @@ function BountyStep({ g, s, actor }: StepProps) {
   const [sel, setSel] = useState(rec);
   const c = choices[sel];
   const last = s.bountyKnown[s.bountyKnown.length - 1];
+  usePoint(c ? [c.value] : []);
   return (
     <>
       {last !== undefined && <p className="muted">他之前得知的 {seatName(last)} 死了，今晚得知另一名邪恶玩家。</p>}
@@ -1763,7 +1781,7 @@ function BountyStep({ g, s, actor }: StepProps) {
           sleep,
         ]}
       />
-      <SayBox lines={slotLines('bountyhunter', s.style)} title="小声说" s={s} onStyle={toggleStyle(g)} />
+      <SayBox lines={slotLines('bountyhunter', s.style)} title="小声说" />
       <Tips role="bountyhunter" drunk={actor.role === 'drunk'} />
       <BottomBar wide>
         {c && <CardButton onClick={() => ui.showCard({ title: '这名玩家是', big: ['邪恶的'] })} />}
@@ -1785,7 +1803,7 @@ function GeneralStep({ g, s, actor }: StepProps) {
     <>
       <ChoicePanel s={s} choices={choices} sel={sel} rec={rec} onSel={(i) => i >= 0 && setSel(i)} />
       <DoBox items={[wake(actor.n), <b key="a">{c.label}</b>, sleep]} />
-      <SayBox lines={slotLines('general', s.style)} title="小声说" s={s} onStyle={toggleStyle(g)} />
+      <SayBox lines={slotLines('general', s.style)} title="小声说" />
       <Tips role="general" drunk={actor.role === 'drunk'} />
       <BottomBar wide>
         <button className="btn btn-primary btn-block" onClick={() => done({ kind: 'general', answer: c.value, truth: c.truth })}>
@@ -1808,7 +1826,7 @@ function HadikhiaStep({ g, s, actor }: StepProps) {
   return (
     <>
       <DoBox items={[wake(actor.n), '让他依次指三名玩家（死人也可以），你按顺序点出来。他也可以不选。', sleep]} />
-      <SayBox lines={slotLines('alhadikhia', s.style)} title="小声说" s={s} onStyle={toggleStyle(g)} />
+      <SayBox lines={slotLines('alhadikhia', s.style)} title="小声说" />
       <SeatPicker
         s={s}
         selected={picks}
@@ -1905,7 +1923,7 @@ function BarberStep({ g, s, actor }: StepProps) {
     <>
       <p className="muted">理发师（{seatName(barber.n)}）死了：今晚恶魔可以选两个人交换角色（可以选他自己），阵营不变。</p>
       <DoBox items={[wake(actor.n), '点「给恶魔看」：理发师。问他要不要换；要换就让他指两个人。']} />
-      <SayBox lines={slotLines('barber', s.style)} title="小声说" s={s} onStyle={toggleStyle(g)} />
+      <SayBox lines={slotLines('barber', s.style)} title="小声说" />
       <SeatPicker s={s} selected={t} max={2} onChange={setT} disabled={others} label="他指了哪两个人？（不换就直接点下面的按钮）" />
       {t.length === 2 && (
         <Reveal key={t.join()}>
@@ -1959,6 +1977,7 @@ function PlagueStep({ g, s }: { g: Game; s: GameState }) {
   const [sel, setSel] = useState(rec);
   const c = choices[sel] ?? choices[0];
   const { to, baron, marionette } = c.value;
+  usePoint(marionette ? [marionette] : []);
   const d = demonSeat(s);
   const items: ReactNode[] = to
     ? [wake(to), '点「给他看」：你获得了间谍的能力，每晚可以看魔典。', sleep]
@@ -2055,7 +2074,7 @@ function SailorStep({ g, s, actor }: StepProps) {
   return (
     <>
       <DoBox items={[wake(actor.n), '让他指一名存活玩家，你在下面点出来。', sleep]} />
-      <SayBox lines={slotLines('sailor', s.style)} title="小声说" s={s} onStyle={toggleStyle(g)} />
+      <SayBox lines={slotLines('sailor', s.style)} title="小声说" />
       <SeatPicker s={s} selected={t} max={1} onChange={setT} disabled={blocked} label="他指了谁？" />
       <GoonNote s={s} actor={actor} picks={t} slot="sailor" />
       {t.length ? (
@@ -2104,7 +2123,7 @@ function InnkeeperStep({ g, s, actor }: StepProps) {
   return (
     <>
       <DoBox items={[wake(actor.n), '让他指两名玩家，你在下面点出来。', sleep]} />
-      <SayBox lines={slotLines('innkeeper', s.style)} title="小声说" s={s} onStyle={toggleStyle(g)} />
+      <SayBox lines={slotLines('innkeeper', s.style)} title="小声说" />
       <SeatPicker s={s} selected={t} max={2} onChange={setT} label="他指了哪两个人？" />
       <GoonNote s={s} actor={actor} picks={t} slot="innkeeper" />
       {t.length === 2 ? (
@@ -2172,7 +2191,7 @@ function CourtierStep({ g, s, actor }: StepProps) {
   return (
     <>
       <DoBox items={[wake(actor.n), '问他今晚要不要用能力（整局一次）。要用就让他在角色表上指一个角色。', sleep]} />
-      <SayBox lines={slotLines('courtier', s.style)} title="小声说" s={s} onStyle={toggleStyle(g)} />
+      <SayBox lines={slotLines('courtier', s.style)} title="小声说" />
       <TwoChoice value={use} onChange={setUse} yes="他要用" no="他不用（摇头）" />
       {use && <RolePick s={s} value={role} onPick={setRole} compact />}
       {use && role && (
@@ -2209,7 +2228,7 @@ function GamblerStep({ g, s, actor }: StepProps) {
   return (
     <>
       <DoBox items={[wake(actor.n), '让他指一名玩家，再在角色表上指一个角色。你在下面点出来。', sleep]} />
-      <SayBox lines={slotLines('gambler', s.style)} title="小声说" s={s} onStyle={toggleStyle(g)} />
+      <SayBox lines={slotLines('gambler', s.style)} title="小声说" />
       <SeatPicker s={s} selected={t} max={1} onChange={setT} disabled={[actor.n]} label="他指了谁？" collapse="他指了" />
       <GoonNote s={s} actor={actor} picks={t} slot="gambler" />
       {t.length > 0 && (
@@ -2248,6 +2267,7 @@ function GrandmotherStep({ g, s, actor }: StepProps) {
   const rec = useMemo(() => recommend(choices, balance(s).score, stepRng(s, 1)), [choices, s]);
   const [sel, setSel] = useState(rec);
   const c = choices[sel] ?? choices[0];
+  usePoint(c ? [c.value.seat] : []);
   return (
     <>
       <ChoicePanel s={s} choices={choices} sel={sel} rec={rec} onSel={(i) => i >= 0 && setSel(i)} />
@@ -2262,7 +2282,7 @@ function GrandmotherStep({ g, s, actor }: StepProps) {
           sleep,
         ]}
       />
-      <SayBox lines={slotLines('grandmother', s.style)} title="小声说" s={s} onStyle={toggleStyle(g)} />
+      <SayBox lines={slotLines('grandmother', s.style)} title="小声说" />
       <Tips role="grandmother" drunk={actor.role === 'drunk'} />
       <BottomBar wide>
         {c && <CardButton onClick={() => ui.showCard(roleCard(c.value.role, '你的孙子是这个角色'))} />}
@@ -2289,7 +2309,7 @@ function PukkaStep({ g, s, actor }: StepProps) {
         </div>
       )}
       <DoBox items={[wake(actor.n), '让他指一名玩家（这个人中毒，下一晚死）。你在下面点出来。', sleep]} />
-      <SayBox lines={slotLines('pukka', s.style)} title="小声说" s={s} onStyle={toggleStyle(g)} />
+      <SayBox lines={slotLines('pukka', s.style)} title="小声说" />
       <SeatPicker s={s} selected={t} max={1} onChange={setT} label="他指了谁？" />
       <GoonNote s={s} actor={actor} picks={t} slot="pukka" />
       {s.night === 1 && <p className="dim">第一晚只下毒，没有人会死。</p>}
@@ -2314,7 +2334,7 @@ function ShabalothStep({ g, s, actor }: StepProps) {
   return (
     <>
       <DoBox items={[wake(actor.n), '让他指两名玩家，你在下面点出来。', sleep]} />
-      <SayBox lines={slotLines('shabaloth', s.style)} title="小声说" s={s} onStyle={toggleStyle(g)} />
+      <SayBox lines={slotLines('shabaloth', s.style)} title="小声说" />
       <SeatPicker s={s} selected={t} max={2} onChange={setT} label="他要杀哪两个人？" />
       <GoonNote s={s} actor={actor} picks={t} slot="shabaloth" />
       {t.length === 2 && (
@@ -2356,8 +2376,6 @@ function PoStep({ g, s, actor }: StepProps) {
       <SayBox
         lines={s.poCharged ? (s.style === 'simple' ? ['请选择三名玩家，他们会死亡。'] : ['珀积蓄了一整晚的力量……选出三个人吧。']) : slotLines('po', s.style)}
         title="小声说"
-        s={s}
-        onStyle={toggleStyle(g)}
       />
       <SeatPicker s={s} selected={t} max={need} onChange={setT} label={s.poCharged ? '他要杀哪三个人？' : '他要杀谁？'} />
       <GoonNote s={s} actor={actor} picks={t} slot="po" />
@@ -2402,7 +2420,7 @@ function OnceTargetStep({ g, s, actor, slot }: StepProps & { slot: 'assassin' | 
   return (
     <>
       <DoBox items={[wake(actor.n), `问他今晚要不要用能力（整局一次）。要用就让他指${prof ? '一名死去的玩家' : '一名玩家'}。`, sleep]} />
-      <SayBox lines={slotLines(slot, s.style)} title="小声说" s={s} onStyle={toggleStyle(g)} />
+      <SayBox lines={slotLines(slot, s.style)} title="小声说" />
       <TwoChoice value={use} onChange={setUse} yes="他要用" no="他不用（摇头）" />
       {use && <SeatPicker s={s} selected={t} max={1} onChange={setT} disabled={blocked} label={prof ? '他指了哪个死人？' : '他指了谁？'} />}
       {use && <GoonNote s={s} actor={actor} picks={t} slot={slot} />}

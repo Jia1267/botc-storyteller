@@ -11,19 +11,19 @@ import {
   slayerShoot, markUsed, nomResults, voteNeed, type NomResult, type NomRow,
 } from '../engine/flow';
 import { activeTravellers, beggarLearns, exile, gunslingerPreview, gunslingerShoot, leave } from '../engine/travellers';
+import { clone } from '../engine/core';
 import { harpyPunishChoices, killPreview, pacifistChoices, scarletCanTakeOver } from '../engine/info';
 import { AMNESIAC_ANSWERS, artistMode, fishermanChoices, savantChoices } from '../engine/daytime';
 import type { GameState, Seat } from '../engine/types';
 import { dayStartLines, endLines, executionLines, nominationLines } from '../engine/scripts';
 import { stepRng, type Game } from '../store';
-import { BottomBar, ChoicePanel, DoBox, SayBox, SeatPicker, Sheet, TwoChoice, drunkWhy, useUi } from './common';
+import { BottomBar, ChoicePanel, ConfirmButton, DoBox, SayBox, SeatPicker, Sheet, TwoChoice, drunkWhy, useUi } from './common';
 import { GrimoireCircle, GrimoirePanel } from './Grimoire';
 import { KlutzPrompt, MoonchildPrompt, PixiePrompt, promptPending } from './Prompts';
 import { TimerDisplay } from './Timer';
 import { Icon } from './icons';
 import { AddTravellerSheet, ExileSheet } from './Travellers';
 
-const toggleStyle = (g: Game) => () => g.tweak((st) => (st.style = st.style === 'simple' ? 'atmo' : 'simple'));
 
 /** 红唇女郎白天接任后，一直挂在白天页面最上面 */
 function SwNotice({ s }: { s: GameState }) {
@@ -72,6 +72,8 @@ type Panel = 'nom' | 'virgin' | 'slayer' | 'exec' | 'artist' | 'fisherman' | 'sa
 export function DayScreen({ g }: { g: Game }) {
   const s = g.s;
   const [panel, setPanel] = useState<Panel>(null);
+  // 贞洁者被提名、能力没触发时，接着记这次投票：提名面板里预先选好他
+  const [nomFor, setNomFor] = useState<number | undefined>(undefined);
   if (s.executed !== undefined || s.winner) return <DayResult g={g} />;
 
   const alive = aliveVoters(s);
@@ -115,13 +117,10 @@ export function DayScreen({ g }: { g: Game }) {
           </div>
         )}
         {fm && s.fearTarget && <p className="dim">恐惧之灵（{seatName(fm.n)}）现在的目标：{seatName(s.fearTarget)}。只有你知道。</p>}
-        <SayBox lines={dayStartLines(s.night, s.style)} title="对所有人说" s={s} onStyle={toggleStyle(g)} />
+        <SayBox lines={dayStartLines(s.night, s.style)} title="对所有人说" />
         <div className="card">
           <h3>讨论计时</h3>
           <TimerDisplay />
-          <p className="dim center" style={{ marginTop: 6 }}>
-            右上角的计时器按钮可以一键盖屏，只显示计时器。
-          </p>
         </div>
         <DayAbilities s={s} open={setPanel} />
         <TravellerDay g={g} />
@@ -136,12 +135,7 @@ export function DayScreen({ g }: { g: Game }) {
           </div>
         )}
         <div className="card stack" style={{ gap: 10 }}>
-          <div className="row" style={{ justifyContent: 'space-between' }}>
-            <h3>投票（你来数票）</h3>
-            <button className="btn btn-ghost btn-sm" onClick={() => setPanel('nom')}>
-              <Icon name="plus" size={16} /> 记一次提名
-            </button>
-          </div>
+          <h3>投票（你来数票）</h3>
           <p>
             现在存活 <b>{alive}</b> 人{tAlive > 0 && `（含旅行者 ${tAlive} 人）`} → 处决至少需要 <b className="answer" style={{ fontSize: 22 }}>{need}</b> 票
           </p>
@@ -160,10 +154,24 @@ export function DayScreen({ g }: { g: Game }) {
             {tAlive > 0 && <li>旅行者可以提名、投票，但不能被提名处决，只能放逐（见上面"旅行者"）。</li>}
           </ul>
           </details>
+          {/* 结束今天放在投票卡最后，不和底部的"记一次提名"挨着 */}
+          <button className="btn btn-outline btn-block" onClick={() => setPanel('exec')}>
+            提名都结束了，录入今天的处决结果
+          </button>
         </div>
         <FlowergirlCard g={g} />
       </div>
-      {panel === 'virgin' && virgin && <VirginSheet g={g} virginN={virgin.n} onClose={close} />}
+      {panel === 'virgin' && virgin && (
+        <VirginSheet
+          g={g}
+          virginN={virgin.n}
+          onClose={close}
+          onVote={() => {
+            setNomFor(virgin.n);
+            setPanel('nom');
+          }}
+        />
+      )}
       {panel === 'slayer' && <SlayerSheet g={g} onClose={close} />}
       {panel === 'exec' && <ExecSheet g={g} onClose={close} />}
       {panel === 'artist' && <ArtistSheet g={g} onClose={close} />}
@@ -176,10 +184,19 @@ export function DayScreen({ g }: { g: Game }) {
       {panel === 'alsaahir' && <AlsaahirSheet g={g} onClose={close} />}
       {panel === 'gossip' && <GossipSheet g={g} onClose={close} />}
       {panel === 'tinker' && <TinkerSheet g={g} onClose={close} />}
-      {panel === 'nom' && <NomSheet g={g} onClose={close} />}
+      {panel === 'nom' && (
+        <NomSheet
+          g={g}
+          initial={nomFor}
+          onClose={() => {
+            setNomFor(undefined);
+            close();
+          }}
+        />
+      )}
       <BottomBar wide>
-        <button className="btn btn-primary btn-block" onClick={() => setPanel('exec')}>
-          所有提名结束，录入处决结果
+        <button className="btn btn-primary btn-block" onClick={() => setPanel('nom')}>
+          <Icon name="plus" size={18} /> 记一次提名
         </button>
       </BottomBar>
     </main>
@@ -265,6 +282,18 @@ function ExecSheet({ g, onClose }: { g: Game; onClose: () => void }) {
   const pcRec = useMemo(() => (pcChoices ? recommend(pcChoices, balance(s).score, stepRng(s, 91)) : 0), [pcChoices, s]);
   const pacifist = pcChoices ? pcChoices[pcSel ?? pcRec].value : false;
   const mmDay = !!s.mastermindDay && s.night === s.mastermindDay;
+  // 先在副本上试一下：这一下会不会直接结束游戏
+  const ending = useMemo(() => {
+    if (!n) return null;
+    const c = clone(s);
+    execute(c, n, '被处决', { fearmongerNominated: c.fearNominated === e || fear, goblinClaimed: goblin, scapegoat: subst, pacifist });
+    return c.winner ? `${c.winner === 'good' ? '善良' : '邪恶'}立即获胜` : null;
+  }, [s, n, e, fear, goblin, subst, pacifist]);
+  const noneEnding = useMemo(() => {
+    const c = clone(s);
+    execute(c, null);
+    return c.winner ? `${c.winner === 'good' ? '善良' : '邪恶'}立即获胜` : null;
+  }, [s]);
   return (
     <Sheet title="今天的处决结果" onClose={onClose}>
       <div className="stack">
@@ -327,15 +356,15 @@ function ExecSheet({ g, onClose }: { g: Game; onClose: () => void }) {
           <Toggle on={goblin} set={setGoblin} label={`${seatName(e)} 是哥布林：他被提名时公开说了自己是哥布林吗？`} hint="说了的话，邪恶直接获胜。" />
         )}
         <button
-          className="btn btn-primary btn-block"
+          className={`btn btn-block ${ending ? 'btn-danger' : 'btn-primary'}`}
           disabled={!n}
           onClick={() => g.commit((x) => execute(x, n, '被处决', { fearmongerNominated: x.fearNominated === e || fear, goblinClaimed: goblin, scapegoat: subst, pacifist }))}
         >
-          {n ? `处决 ${seatName(e)}` : '先点出被处决的人'}
+          {!n ? '先点出被处决的人' : ending ? `处决 ${seatName(e)}（${roleName(seatOf(s, e).role)}）→ ${ending}` : `处决 ${seatName(e)}`}
         </button>
         {vortoxActive(s) && <p className="evil">涡流在场：今天没人被处决的话，邪恶直接获胜。</p>}
-        <button className="btn btn-outline btn-block" onClick={() => g.commit((x) => execute(x, null))}>
-          今天没人被处决
+        <button className={`btn btn-block ${noneEnding ? 'btn-danger' : 'btn-outline'}`} onClick={() => g.commit((x) => execute(x, null))}>
+          {noneEnding ? `今天没人被处决 → ${noneEnding}` : '今天没人被处决'}
         </button>
       </div>
     </Sheet>
@@ -366,7 +395,7 @@ function DayResult({ g }: { g: Game }) {
         </div>
         <SwNotice s={s} />
         {s.executed !== undefined && (
-          <SayBox lines={executionLines(s.executed, s.style, s.executed !== null && seatOf(s, s.executed).alive)} title="对所有人说" s={s} onStyle={toggleStyle(g)} />
+          <SayBox lines={executionLines(s.executed, s.style, s.executed !== null && seatOf(s, s.executed).alive)} title="对所有人说" />
         )}
         {s.tempDrunk.some((d) => d.why === '吟游诗人' && d.from === s.night) && (
           <div className="card card-warn">
@@ -665,7 +694,7 @@ function TwistPick({ g, kind, onValue }: { g: Game; kind: 'spyTownsfolk' | 'recl
   );
 }
 
-function VirginSheet({ g, virginN, onClose }: { g: Game; virginN: number; onClose: () => void }) {
+function VirginSheet({ g, virginN, onClose, onVote }: { g: Game; virginN: number; onClose: () => void; onVote?: () => void }) {
   const s = g.s;
   const ui = useUi();
   const [t, setT] = useState<number[]>([]);
@@ -686,10 +715,11 @@ function VirginSheet({ g, virginN, onClose }: { g: Game; virginN: number; onClos
           onClick={() => {
             g.commit((st) => nominateVirgin(st, virginN, t[0], twistVal));
             ui.toast(fires ? `${seatName(t[0])} 被立刻处决` : '贞洁者能力未触发，继续投票');
-            onClose();
+            if (!fires && onVote) onVote();
+            else onClose();
           }}
         >
-          确认
+          {pv && !fires && onVote ? '确认，接着记这次投票的票数' : '确认'}
         </button>
       </div>
     </Sheet>
@@ -1135,7 +1165,7 @@ function NomList({ g }: { g: Game }) {
 /** 记一次提名：选被提名的人，填数好的票数 */
 const PICKER_KEY = 'botc-nom-picker';
 
-function NomSheet({ g, onClose }: { g: Game; onClose: () => void }) {
+function NomSheet({ g, onClose, initial }: { g: Game; onClose: () => void; initial?: number }) {
   const s = g.s;
   const ui = useUi();
   const [mode, setMode] = useState<'circle' | 'grid'>(() => {
@@ -1154,16 +1184,22 @@ function NomSheet({ g, onClose }: { g: Game; onClose: () => void }) {
     }
   };
   const need = voteNeed(s);
-  const [t, setT] = useState<number[]>([]);
+  const [t, setT] = useState<number[]>(initial ? [initial] : []);
   const [votes, setVotes] = useState<number | null>(null);
   const { top, block } = nomResults(s);
   const n = t[0];
   const again = n !== undefined && s.noms.some((x) => x.day === s.night && x.seat === n);
-  const step = (d: number) => setVotes((v) => Math.max(0, (v ?? need) + d));
+  // 从空开始按"＋"就是 1 票
+  const step = (d: number) => setVotes((v) => Math.max(0, (v ?? 0) + d));
+  // 最多能有多少票：所有玩家（死人和旅行者也能投）+ 算 3 票的人多出来的
+  const maxVotes = s.seats.filter((x) => !x.left).length + Object.values(s.voteMods).reduce((a, v) => a + Math.max(0, v - 1), 0);
+  const tooMany = votes !== null && votes > maxVotes;
   const verdict =
     votes === null
       ? null
-      : votes < need
+      : tooMany
+        ? `${votes} 票比能投票的人（最多 ${maxVotes} 票）还多：是不是多打了一位？`
+        : votes < need
         ? `${votes} 票，不够 ${need} 票：不上处决台。`
         : votes > top
           ? `${votes} 票 → 成为待处决${block && block !== n ? `（换下 ${seatName(block)}）` : ''}。`
@@ -1194,7 +1230,6 @@ function NomSheet({ g, onClose }: { g: Game; onClose: () => void }) {
         ) : (
           <SeatPicker s={s} selected={t} max={1} onChange={setT} disabled={s.seats.filter(isTraveller).map((x) => x.n)} />
         )}
-        {again && <p className="dim">{seatName(n)} 今天已经被提名过（每人每天只能被提名一次）。</p>}
         <div className="dim">举手的票数（数完填进来；算 3 票、负票的人按实际算）</div>
         <div className="stepper">
           <button className="btn btn-ghost" aria-label="少一票" onClick={() => step(-1)}>
@@ -1205,7 +1240,7 @@ function NomSheet({ g, onClose }: { g: Game; onClose: () => void }) {
             inputMode="numeric"
             min={0}
             value={votes ?? ''}
-            placeholder={String(need)}
+            placeholder="票数"
             aria-label="票数"
             onChange={(e) => setVotes(e.target.value === '' ? null : Math.max(0, Math.floor(+e.target.value || 0)))}
           />
@@ -1213,21 +1248,33 @@ function NomSheet({ g, onClose }: { g: Game; onClose: () => void }) {
             <Icon name="plus" />
           </button>
         </div>
-        {verdict && (
-          <div className={`card${votes !== null && votes >= need && votes > top ? ' card-warn' : ''}`}>
-            <p>{verdict}</p>
-          </div>
+        {/* 判定区一开始就占好位置：出现结果时上面的"＋/−"不会被顶走 */}
+        <div className={`card nom-verdict${tooMany ? ' card-evil' : votes !== null && votes >= need && votes > top ? ' card-warn' : ''}`}>
+          {again && <p className="dim">{seatName(n)} 今天已经被提名过（每人每天只能被提名一次）。</p>}
+          <p className={verdict ? '' : 'dim'}>{verdict ?? '填好票数后，这里显示这次提名的结果。'}</p>
+        </div>
+        {tooMany ? (
+          <ConfirmButton
+            className="btn btn-primary btn-block"
+            label={`记下 ${votes} 票`}
+            confirmLabel="票数比人还多，再点一次确认"
+            onConfirm={() => {
+              g.commit((x) => void x.noms.push({ day: x.night, seat: n, votes: votes!, need }));
+              onClose();
+            }}
+          />
+        ) : (
+          <button
+            className="btn btn-primary btn-block"
+            disabled={n === undefined || votes === null}
+            onClick={() => {
+              g.commit((x) => void x.noms.push({ day: x.night, seat: n, votes: votes!, need }));
+              onClose();
+            }}
+          >
+            {n === undefined ? '先点出被提名的人' : votes === null ? '再填票数' : '记下'}
+          </button>
         )}
-        <button
-          className="btn btn-primary btn-block"
-          disabled={n === undefined || votes === null}
-          onClick={() => {
-            g.commit((x) => void x.noms.push({ day: x.night, seat: n, votes: votes!, need }));
-            onClose();
-          }}
-        >
-          {n === undefined ? '先点出被提名的人' : votes === null ? '再填票数' : '记下'}
-        </button>
       </div>
     </Sheet>
   );

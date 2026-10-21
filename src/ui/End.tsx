@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { ROLES, TEAM_NAME, TRAVELLER_ROLES, isEvilTeam, roleName, type Team } from '../engine/roles';
 import { SCRIPTS, SCRIPT_LIST, type ScriptId } from '../engine/editions';
 import { endLines } from '../engine/scripts';
+import { balance } from '../engine/balance';
 import { rulesFor } from '../engine/rulesSpeech';
 import type { GameState, LogEntry } from '../engine/types';
 import type { Game } from '../store';
@@ -40,6 +41,27 @@ export function Timeline({ log }: { log: LogEntry[] }) {
   );
 }
 
+/** 导出本局数据（JSON）：新开一局会清掉这一局，留着复盘或者校准平衡用 */
+function exportGame(s: GameState, hist: GameState[]) {
+  const timeline: { night: number; phase: string; score: number }[] = [];
+  for (const h of [...hist, s]) {
+    if (h.phase !== 'night' && h.phase !== 'day') continue;
+    const item = { night: h.night, phase: h.phase, score: Math.round(balance(h).score) };
+    const last = timeline[timeline.length - 1];
+    if (last && last.night === item.night && last.phase === item.phase) timeline[timeline.length - 1] = item;
+    else timeline.push(item);
+  }
+  const date = new Date(s.endedAt ?? Date.now());
+  const day = `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`;
+  const data = { app: '钟楼说书人', version: 1, exportedAt: new Date().toISOString(), script: SCRIPTS[s.script].name, count: s.count, winner: s.winner, winReason: s.winReason, timeline, game: s };
+  const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 1)], { type: 'application/json' }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `钟楼说书人-${SCRIPTS[s.script].name}-${day}.json`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+
 export function EndScreen({ g }: { g: Game }) {
   const s = g.s;
   const win = s.winner ?? 'good';
@@ -51,7 +73,6 @@ export function EndScreen({ g }: { g: Game }) {
       <div className="stack">
         <div className="hero">
           <Emblem team={win} size={96} />
-          <span className="kick">游戏结束</span>
           <div className="winner">{win === 'good' ? '善良阵营获胜' : '邪恶阵营获胜'}</div>
           <p className="why">{s.winReason}</p>
           <div className="facts">
@@ -73,7 +94,7 @@ export function EndScreen({ g }: { g: Game }) {
         <div className="card">
           <h3>复盘：完整魔典</h3>
           <p className="dim" style={{ marginBottom: 8 }}>
-            可以把手机给大家传着看。
+            可以把屏幕给大家传着看。
           </p>
           <GrimoireCircle s={s} readOnly hub={<b>{s.count} 人局{s.seats.length > s.count && <small><br />+{s.seats.length - s.count} 旅行者</small>}</b>} />
           <div className="rlegend">
@@ -118,6 +139,13 @@ export function EndScreen({ g }: { g: Game }) {
           </p>
           <Timeline log={s.log} />
         </div>
+        <div className="card stack" style={{ gap: 8 }}>
+          <h3>本局数据</h3>
+          <p className="dim">新开一局会清掉这一局。想留着复盘，或者以后用来校准局势分，先导出一份。</p>
+          <button className="btn btn-outline btn-block" onClick={() => exportGame(s, g.hist)}>
+            导出本局数据（JSON 文件）
+          </button>
+        </div>
         <p className="legal">钟楼说书人 · 非官方桌游辅助工具，与任何桌游发行方无关</p>
       </div>
       <BottomBar>
@@ -152,8 +180,9 @@ function ResultImage({ s, onClose }: { s: GameState; onClose: () => void }) {
   };
   return (
     <Overlay title="结果图" onClose={onClose}>
-      {img ? <img src={img.url} alt="这一局的结果图" style={{ width: '100%', borderRadius: 8, display: 'block' }} /> : <p className="dim">正在生成……</p>}
-      <div className="row" style={{ marginTop: 12 }}>
+      {img ? <img className="result-img" src={img.url} alt="这一局的结果图" /> : <p className="dim">正在生成……</p>}
+      {/* 图比屏幕高时，分享和保存也一直在底部看得见 */}
+      <div className="row sticky-actions">
         <button className="btn btn-primary grow" disabled={!img} onClick={share}>
           分享到群里
         </button>
