@@ -93,9 +93,39 @@ export const SLOT_TITLE: Record<SlotId, string> = {
   acrobat: '杂技演员',
   preacher: '传教士',
   poppygrower: '罂粟种植者死了：邪恶互认',
+  huntsman: '巡山人',
+  damsel: '爪牙得知落难少女在场',
+  snitch: '告密者：爪牙得到伪装',
+  ogre: '食人魔',
+  hatter: '帽匠死了：邪恶换角色',
+  qutler: 'Q宝',
 };
 
 const SLOT_LINES: Partial<Record<SlotId, Lines>> = {
+  huntsman: {
+    simple: ['你要用能力吗？要用就指一名活着的玩家。'],
+    atmo: ['猎人背起弓，走进山林……', '你要去找谁？不用就摇头。'],
+  },
+  damsel: {
+    simple: ['落难少女在场。'],
+    atmo: ['城堡里关着一位少女……', '找到她。'],
+  },
+  snitch: {
+    simple: ['这三个角色不在场，你可以伪装成他们。'],
+    atmo: ['有人把秘密说漏了嘴……', '这三个身份，没人在用。'],
+  },
+  ogre: {
+    simple: ['请选择一名其他玩家。'],
+    atmo: ['食人魔摸着肚子……', '你想和谁做朋友？'],
+  },
+  hatter: {
+    simple: ['帽匠死了。你可以换成另一个同类型的角色，不换就摇头。'],
+    atmo: ['疯帽匠的茶会开始了……', '要不要换一顶新帽子？'],
+  },
+  qutler: {
+    simple: ['请选择一名玩家当你的主人。'],
+    atmo: ['你要跟着谁投票？'],
+  },
   steward: {
     simple: ['这名玩家是善良的。'],
     atmo: ['管家的账本上，有一个可靠的名字……', '这个人是善良的。'],

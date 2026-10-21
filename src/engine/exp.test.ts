@@ -2,10 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { ROLES, type RoleId } from './roles';
 import { seeded } from './rng';
 import { newGame, randomSetup, refreshSetup, startDeal } from './setup';
-import { completeSlot, currentSlot, dealNext, execute, finishDay, shouldRun, slotActor, type SlotPayload } from './flow';
+import { completeSlot, currentSlot, damselGuess, dealNext, execute, finishDay, golemNominates, shouldRun, slotActor, type SlotPayload } from './flow';
 import { makeCustom } from './custom';
 import { shugenjaChoices, shugenjaSteps } from './info';
-import { isPoisoned, malfunction, seatOf } from './core';
+import { isEvil, isPoisoned, malfunction, seatOf } from './core';
 import type { GameState, SlotId } from './types';
 
 /** 自由配板：按给定角色坐好并发完身份，停在第 1 夜开头 */
@@ -162,5 +162,72 @@ describe('魔术师与罂粟种植者', () => {
     night(s);
     expect(s.log.some((x) => x.text.includes('魔术师 1号 也被指为恶魔'))).toBe(true);
     expect(slotActor).toBeTruthy();
+  });
+});
+
+describe('实验性外来者', () => {
+  it('魔像提名非恶魔：被提名的人死；提名恶魔什么都不发生', () => {
+    const s = game(['golem', 'chef', 'empath', 'poisoner', 'imp', 'monk', 'soldier']);
+    night(s);
+    golemNominates(s, 1, 2);
+    expect(seatOf(s, 2).alive).toBe(false);
+    const t = game(['golem', 'chef', 'empath', 'poisoner', 'imp', 'monk', 'soldier']);
+    night(t);
+    golemNominates(t, 1, 5);
+    expect(seatOf(t, 5).alive).toBe(true);
+    expect(seatOf(t, 1).used).toBe(true);
+  });
+
+  it('落难少女：第一晚爪牙得知；爪牙公开猜中邪恶获胜，猜错就用掉', () => {
+    const s = game(['damsel', 'chef', 'empath', 'poisoner', 'imp', 'monk', 'soldier']);
+    expect(night(s)).toContain('damsel');
+    damselGuess(s, 4, 2);
+    expect(s.winner).toBeNull();
+    damselGuess(s, 4, 1);
+    expect(s.winner).toBeNull();
+    const t = game(['damsel', 'chef', 'empath', 'poisoner', 'imp', 'monk', 'soldier']);
+    night(t);
+    damselGuess(t, 4, 1);
+    expect(t.winner).toBe('evil');
+  });
+
+  it('巡山人选中落难少女：她变成选定的镇民；板子上有巡山人时落难少女一定在场', () => {
+    const s = game(['huntsman', 'damsel', 'empath', 'poisoner', 'imp', 'monk', 'soldier'], ['huntsman', 'damsel', 'empath', 'poisoner', 'imp', 'monk', 'soldier', 'chef']);
+    night(s, { huntsman: { kind: 'huntsman', target: 2, become: 'chef' } });
+    expect(seatOf(s, 2).role).toBe('chef');
+    const def = makeCustom('巡山', ['huntsman', 'damsel', 'chef', 'empath', 'monk', 'soldier', 'undertaker', 'washerwoman', 'butler', 'recluse', 'poisoner', 'spy', 'imp']);
+    for (let i = 0; i < 40; i++) {
+      const x = randomSetup(def, 8, seeded(i));
+      if (x.roles.includes('huntsman')) expect(x.roles).toContain('damsel');
+    }
+  });
+
+  it('告密者：第一晚爪牙得到伪装；解谜大师：开局有一人整局醉酒', () => {
+    const s = game(['snitch', 'puzzlemaster', 'empath', 'poisoner', 'imp', 'monk', 'chef']);
+    expect(night(s)).toContain('snitch');
+    expect(s.puzzleDrunk).not.toBeNull();
+    expect(malfunction(s, s.puzzleDrunk!)).toBe(true);
+  });
+
+  it('食人魔选了邪恶玩家：他变成邪恶', () => {
+    const s = game(['ogre', 'chef', 'empath', 'poisoner', 'imp', 'monk', 'soldier']);
+    night(s, { ogre: { kind: 'target', target: 4 } });
+    expect(isEvil(seatOf(s, 1))).toBe(true);
+  });
+
+  it('帽匠被处决：当晚邪恶可以换角色', () => {
+    const s = game(['hatter', 'chef', 'empath', 'poisoner', 'imp', 'monk', 'soldier'], ['hatter', 'chef', 'empath', 'poisoner', 'spy', 'imp', 'zombuul', 'monk', 'soldier']);
+    night(s);
+    day(s, 1);
+    const seen = night(s, { hatter: { kind: 'hatter', changes: [{ seat: 4, role: 'spy' }] }, imp: { kind: 'imp', target: 2 } });
+    expect(seen).toContain('hatter');
+    expect(seatOf(s, 4).role).toBe('spy');
+  });
+
+  it('异端分子在场：恶魔被处决，邪恶获胜', () => {
+    const s = game(['heretic', 'chef', 'empath', 'poisoner', 'imp', 'monk', 'soldier']);
+    night(s);
+    execute(s, 5);
+    expect(s.winner).toBe('evil');
   });
 });

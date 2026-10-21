@@ -113,7 +113,7 @@ export function randomSetup(script: ScriptRef, count: number, rng: Rng, sentinel
 export const randomRoles = (count: number, rng: Rng) => randomSetup('tb', count, rng).roles;
 
 /** 一定要一起上场的角色：唱诗男孩 → 国王（换掉一个普通镇民） */
-const REQUIRES: Partial<Record<RoleId, RoleId>> = { choirboy: 'king' };
+const REQUIRES: Partial<Record<RoleId, RoleId>> = { choirboy: 'king', huntsman: 'damsel' };
 
 export function withRequired(roles: RoleId[], rng: Rng): RoleId[] {
   const out = [...roles];
@@ -306,6 +306,11 @@ export function newGame(): GameState {
     preached: [],
     princessNight: 0,
     poppyResolved: false,
+    damselGuessed: false,
+    puzzleDrunk: null,
+    puzzleGuessed: false,
+    qutlerMaster: null,
+    hatterResolved: false,
     bluffs: [],
     redHerring: null,
     setupZ: 0,
@@ -571,6 +576,23 @@ export function refreshSetup(s: GameState, rng: Rng) {
   refreshEvilTownsfolk(s, rng);
   refreshRedHerring(s, rng);
   refreshTwin(s, rng);
+  const pz = puzzleDrunkChoices(s, rng);
+  s.puzzleDrunk = pz.length ? pz[recommend(pz, balance(s).score, rng)].value : null;
+}
+
+/** 解谜大师：哪个玩家整局醉酒（一般是镇民） */
+export function puzzleDrunkChoices(s: GameState, rng: Rng): Choice<number>[] {
+  if (!s.seats.some((x) => x.role === 'puzzlemaster')) return [];
+  const towns = s.seats.filter((x) => !x.traveller && ROLES[x.role].team === 'townsfolk' && !isEvil(x));
+  if (!towns.length) return [];
+  const lbl = (x: Seat) => `${seatName(x.n)}（${roleName(x.role)}）`;
+  const strong = [...towns].sort((a, b) => ROLES[b.role].weight - ROLES[a.role].weight)[0];
+  const weak = [...towns].sort((a, b) => ROLES[a.role].weight - ROLES[b.role].weight)[0];
+  const mid = towns.length > 2 ? pick(towns.filter((x) => x.n !== strong.n && x.n !== weak.n), rng) : strong;
+  const out: Choice<number>[] = [{ key: 'mid', label: lbl(mid), value: mid.n, lean: 0, truth: true, standard: true, reason: '随便一名镇民整局醉酒，标准做法。' }];
+  if (strong.n !== mid.n) out.push({ key: 'strong', label: lbl(strong), value: strong.n, lean: -1, truth: true, reason: `${roleName(strong.role)}能力强，他醉酒整局，帮邪恶。` });
+  if (weak.n !== mid.n && weak.n !== strong.n) out.push({ key: 'weak', label: lbl(weak), value: weak.n, lean: 1, truth: true, reason: `${roleName(weak.role)}能力弱，他醉酒影响小，帮善良。` });
+  return out;
 }
 
 /** 赏金猎人在场：选一名镇民变成邪恶 */
@@ -747,6 +769,7 @@ export function startDeal(s: GameState) {
   if (s.bluffs.length) lines.push(`恶魔伪装：${s.bluffs.map(roleName).join('、')}`);
   if (s.redHerring) lines.push(`占卜干扰项：${seatName(s.redHerring)}`);
   if (s.twin) lines.push(`镜像双子的善良双子：${seatName(s.twin)}${roleName(s.seats[s.twin - 1].role)}`);
+  if (s.puzzleDrunk) lines.push(`解谜大师：${seatName(s.puzzleDrunk)}${roleName(s.seats[s.puzzleDrunk - 1].role)}整局醉酒`);
   if (s.fabled.includes('sentinel')) lines.push(`传奇角色哨兵：外来者 ${s.sentinelDelta > 0 ? '+1' : s.sentinelDelta < 0 ? '−1' : '不变'}`);
   if (s.fabled.includes('duchess')) lines.push('传奇角色：公爵夫人');
   for (const text of lines) s.log.push({ night: 0, phase: 'setup', text });

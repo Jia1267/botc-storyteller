@@ -121,7 +121,7 @@ export const tempDrunk = (s: GameState, n: number) => s.tempDrunk.some((d) => d.
 /** 能力失灵：酒鬼、提线木偶（以为自己是好人）、被心上人弄醉的人，或正在中毒 */
 export function malfunction(s: GameState, n: number): boolean {
   const r = seatOf(s, n).role;
-  return r === 'drunk' || r === 'marionette' || s.sweetheartDrunk === n || philoDrunk(s, n) || tempDrunk(s, n) || isPoisoned(s, n) || preachedNow(s, n);
+  return r === 'drunk' || r === 'marionette' || s.sweetheartDrunk === n || philoDrunk(s, n) || tempDrunk(s, n) || isPoisoned(s, n) || preachedNow(s, n) || puzzleDrunkNow(s, n);
 }
 
 /** 被传教士选中的爪牙：传教士活着且健康时没有能力 */
@@ -131,9 +131,12 @@ export function preachedNow(s: GameState, n: number): boolean {
   return !!p && p.n !== n && !malfunction(s, p.n);
 }
 
+/** 解谜大师在场：他定下的那个人整局醉酒（解谜大师死了也一样） */
+export const puzzleDrunkNow = (s: GameState, n: number) => s.puzzleDrunk === n && s.seats.some((x) => x.role === 'puzzlemaster');
+
 /** 醉酒或中毒（杂技演员看这个；提线木偶、被传教士选中不算） */
 export const drunkOrPoisoned = (s: GameState, n: number) =>
-  seatOf(s, n).role === 'drunk' || s.sweetheartDrunk === n || philoDrunk(s, n) || tempDrunk(s, n) || isPoisoned(s, n);
+  seatOf(s, n).role === 'drunk' || s.sweetheartDrunk === n || philoDrunk(s, n) || tempDrunk(s, n) || isPoisoned(s, n) || puzzleDrunkNow(s, n);
 
 /** 被恶魔杀死（贤者、唱诗男孩、公主用） */
 export const demonCause = (cause: string) => cause.startsWith('被恶魔杀死') || cause === '被普卡的毒杀死' || cause === '被小怪宝杀死';

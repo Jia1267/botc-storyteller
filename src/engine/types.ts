@@ -40,7 +40,7 @@ export type SlotId =
   | 'eviltwin' | 'witch' | 'cerenovus' | 'pithag' | 'fanggu' | 'nodashii' | 'vigormortis'
   // 实验性角色
   | 'steward' | 'knight' | 'noble' | 'shugenja' | 'highpriestess' | 'king' | 'choirboy' | 'nightwatchman' | 'farmer' | 'acrobat'
-  | 'preacher' | 'poppygrower';
+  | 'preacher' | 'poppygrower' | 'huntsman' | 'damsel' | 'snitch' | 'ogre' | 'hatter' | 'qutler';
 
 export interface NightState {
   /** 当前所在的夜晚顺序位置 */
@@ -229,6 +229,15 @@ export interface GameState {
   princessNight: number;
   /** 罂粟种植者死后，邪恶已经互认过 */
   poppyResolved: boolean;
+  /** 爪牙已经公开猜过落难少女 */
+  damselGuessed: boolean;
+  /** 解谜大师：整局醉酒的那个人；他猜过了 */
+  puzzleDrunk: number | null;
+  puzzleGuessed: boolean;
+  /** Q宝的主人 */
+  qutlerMaster: number | null;
+  /** 帽匠死后邪恶已经换过角色 */
+  hatterResolved: boolean;
   /** 恶魔的 3 个伪装 */
   bluffs: RoleId[];
   /** 占卜师干扰项 */

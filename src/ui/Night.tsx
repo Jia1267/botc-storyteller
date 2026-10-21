@@ -19,7 +19,7 @@ import {
   widowInformChoices, type PairInfo, type PairKind,
   clockmakerChoices, clockmakerCount, jugglerChoices, mathChoices, oracleChoices, pithagNightChoices, sageChoices, towncrierChoices, vigorPoisonChoices,
   SEATS_COUNT, choirboyChoices, farmerChoices, kingChoices, knightChoices, nobleChoices, priestessChoices, seatsVerdict, shugenjaChoices, shugenjaSteps,
-  stewardChoices, type SeatsKind,
+  stewardChoices, type SeatsKind, huntsmanBecomeChoices,
 } from '../engine/info';
 import { SLOT_TITLE, dawnLines, librarianZeroLines, slotLines } from '../engine/scripts';
 import type { GameState, Seat, SlotId } from '../engine/types';
@@ -394,6 +394,16 @@ function SlotBody({ g, s, slot, actor }: { g: Game; s: GameState; slot: SlotId; 
       return <TargetStep g={g} s={s} actor={actor!} slot={slot} />;
     case 'poppygrower':
       return <PoppyStep g={g} s={s} />;
+    case 'huntsman':
+      return <HuntsmanStep g={g} s={s} actor={actor!} />;
+    case 'damsel':
+    case 'snitch':
+      return <MinionsLearnStep g={g} s={s} kind={slot} />;
+    case 'ogre':
+    case 'qutler':
+      return <TargetStep g={g} s={s} actor={actor!} slot={slot} />;
+    case 'hatter':
+      return <HatterStep g={g} s={s} />;
     default:
       return <SkipStep g={g} />;
   }
@@ -571,11 +581,11 @@ function DawnStep({ g, s }: { g: Game; s: GameState }) {
 
 function TargetStep({
   g, s, actor, slot,
-}: StepProps & { slot: 'poisoner' | 'monk' | 'butler' | 'fearmonger' | 'bureaucrat' | 'thief' | 'devilsadvocate' | 'exorcist' | 'witch' | 'acrobat' | 'preacher' }) {
+}: StepProps & { slot: 'poisoner' | 'monk' | 'butler' | 'fearmonger' | 'bureaucrat' | 'thief' | 'devilsadvocate' | 'exorcist' | 'witch' | 'acrobat' | 'preacher' | 'ogre' | 'qutler' }) {
   const done = useDone(g);
   const ui = useUi();
   const [t, setT] = useState<number[]>([]);
-  const notSelf = slot === 'monk' || slot === 'butler' || slot === 'bureaucrat' || slot === 'thief';
+  const notSelf = slot === 'monk' || slot === 'butler' || slot === 'bureaucrat' || slot === 'thief' || slot === 'ogre' || slot === 'qutler';
   const bad = malfunction(s, actor.n) || !!goonTriggered(s, actor, t, slot);
   // 魔鬼代言人、驱魔人：不能和上一晚选同一个人
   const last =
@@ -589,7 +599,11 @@ function TargetStep({
   const exorcisedDemon = slot === 'exorcist' && t.length > 0 && !bad && isDemonSeat(s, t[0]) ? t[0] : null;
   const preachedMinion = slot === 'preacher' && t.length > 0 && !bad && teamOf(seatOf(s, t[0]).role) === 'minion' ? t[0] : null;
   const note =
-    slot === 'acrobat'
+    slot === 'ogre'
+      ? '他选的人是邪恶的，食人魔就变成邪恶（不告诉他）；选的是善良的就还是善良。醉酒中毒也照样生效。'
+      : slot === 'qutler'
+      ? '明天只有这个"主人"投票时，Q宝才能投票（是他自己要遵守）。'
+      : slot === 'acrobat'
       ? `他选的人今晚任何时候醉酒或中毒，天亮前杂技演员就死（网页会自动算）。${bad ? '（他中毒/醉酒：不会因此死亡）' : ''}`
       : slot === 'preacher'
       ? `他选中爪牙的话，那个爪牙从此没有能力。${bad ? '（他中毒/醉酒：照常让他选，但无效）' : ''}`
@@ -3358,6 +3372,120 @@ function PoppyStep({ g, s }: { g: Game; s: GameState }) {
       <BottomBar wide>
         <button className="btn btn-primary btn-block" onClick={() => done({ kind: 'none' })}>
           完成，下一步
+        </button>
+      </BottomBar>
+    </>
+  );
+}
+
+function HuntsmanStep({ g, s, actor }: StepProps) {
+  const done = useDone(g);
+  const ui = useUi();
+  const [use, setUse] = useState<boolean | null>(null);
+  const [t, setT] = useState<number[]>([]);
+  const x = t.length ? seatOf(s, t[0]) : null;
+  const bad = malfunction(s, actor.n) || !!goonTriggered(s, actor, t, 'huntsman');
+  const hit = !!x && !bad && x.role === 'damsel';
+  const choices = useMemo(() => (hit ? huntsmanBecomeChoices(s, stepRng(s)) : []), [s, hit]);
+  const rec = useMemo(() => recommend(choices, balance(s).score, stepRng(s, 1)), [choices, s]);
+  const [sel, setSel] = useState<number | null>(null);
+  const become = choices[sel ?? rec]?.value;
+  const dead = s.seats.filter((y) => !y.alive).map((y) => y.n);
+  return (
+    <>
+      <DoBox items={[wake(actor.n), '问他今晚要不要用能力（整局一次）。要用就让他指一名活着的玩家。', sleep]} />
+      <SayBox lines={slotLines('huntsman', s.style)} title="小声说" />
+      <TwoChoice value={use} onChange={setUse} yes="他要用" no="他不用（摇头）" />
+      {use && <SeatPicker s={s} selected={t} max={1} onChange={(v) => { setT(v); setSel(null); }} disabled={[actor.n, ...dead]} label="他指了谁？" />}
+      {use && x && (
+        <Reveal key={x.n}>
+          <div className={`card${hit ? ' card-warn' : ''}`}>
+            <p>{hit ? `${seatName(x.n)} 是落难少女：她变成一个不在场的镇民。` : bad && x.role === 'damsel' ? '他选中了落难少女，但巡山人中毒/醉酒：什么都不会发生。' : `${seatName(x.n)} 不是落难少女：什么都不会发生。`}</p>
+          </div>
+          {hit && (
+            <>
+              <ChoicePanel s={s} choices={choices} sel={sel ?? rec} rec={rec} onSel={(i) => i >= 0 && setSel(i)} moreLabel="换一个角色" />
+              {become && <DoBox title="然后叫醒她" items={[wake(x.n), <>点「给她看」：你现在是<b>【{roleName(become)}】</b>。</>, sleep]} />}
+            </>
+          )}
+        </Reveal>
+      )}
+      <Tips role="huntsman" drunk={actor.role === 'drunk'} />
+      <BottomBar wide>
+        {hit && become && <CardButton label="给她看" onClick={() => ui.showCard(roleCard(become, '你现在是', true))} />}
+        <button
+          className="btn btn-primary grow"
+          disabled={use === null || (use && !t.length)}
+          onClick={() => done({ kind: 'huntsman', target: use ? t[0] : null, become: hit ? become : undefined })}
+        >
+          {use === false ? '他不用，下一步' : use && t.length ? '完成，下一步' : use ? '先点出他指的人' : '先问他用不用'}
+        </button>
+      </BottomBar>
+    </>
+  );
+}
+
+/** 第一晚叫醒爪牙：落难少女在场 / 告密者给的伪装 */
+function MinionsLearnStep({ g, s, kind }: { g: Game; s: GameState; kind: 'damsel' | 'snitch' }) {
+  const done = useDone(g);
+  const ui = useUi();
+  const minions = minionSeats(s).filter((x) => x.alive);
+  const ms = seatsText(minions.map((x) => x.n));
+  return (
+    <>
+      <DoBox
+        items={[
+          <>轻拍爪牙 <b>{ms}</b>{minions.length > 1 ? '，一个一个来' : ''}，让他睁眼。</>,
+          kind === 'damsel' ? '点「给爪牙看」：落难少女在场。' : <>点「给爪牙看」：三个不在场的角色 <b>{s.bluffs.map(roleName).join('、') || '（没有）'}</b>。</>,
+          sleep,
+        ]}
+      />
+      <SayBox lines={slotLines(kind, s.style)} title="小声说" />
+      {kind === 'snitch' && <p className="dim">网页给的是和恶魔一样的伪装（规则允许每个爪牙不同，你也可以换着给）。</p>}
+      <Tips role={kind} />
+      <BottomBar wide>
+        <CardButton
+          label="给爪牙看"
+          onClick={() => ui.showCard(kind === 'damsel' ? { title: '这个角色在场', big: ['落难少女'], team: 'outsider' } : { title: '这三个角色不在场，你可以伪装成他们', big: s.bluffs.map(roleName) })}
+        />
+        <button className="btn btn-primary grow" onClick={() => done({ kind: 'none' })}>
+          完成，下一步
+        </button>
+      </BottomBar>
+    </>
+  );
+}
+
+/** 帽匠死后：每个爪牙和恶魔可以换成同类型的角色 */
+function HatterStep({ g, s }: { g: Game; s: GameState }) {
+  const done = useDone(g);
+  const ui = useUi();
+  const evil = s.seats.filter((x) => x.alive && isEvil(x) && (teamOf(x.role) === 'minion' || teamOf(x.role) === 'demon'));
+  const [ch, setCh] = useState<Record<number, RoleId | null>>({});
+  const taken = (r: RoleId, n: number) => s.seats.some((x) => x.role === r && x.n !== n && ch[x.n] === undefined) || Object.entries(ch).some(([k, v]) => v === r && +k !== n);
+  const changes = Object.entries(ch).filter(([, v]) => v).map(([k, v]) => ({ seat: +k, role: v as RoleId }));
+  return (
+    <>
+      <p className="muted">帽匠死了：叫醒所有爪牙和恶魔（给他们看"帽匠"）。每人可以摇头不换，或在角色表上指一个同类型、没人在用的角色。</p>
+      <SayBox lines={slotLines('hatter', s.style)} title="小声说" />
+      {evil.map((x) => (
+        <div key={x.n} className="card stack" style={{ gap: 6 }}>
+          <b>
+            {seatName(x.n)}（{roleName(x.role)}）{ch[x.n] ? ` → ${roleName(ch[x.n]!)}` : '：不换'}
+          </b>
+          <RoleGrid
+            roles={scriptOf(s).roles.filter((r) => teamOf(r) === teamOf(x.role) && r !== x.role)}
+            value={ch[x.n] ?? null}
+            onPick={(r) => !taken(r, x.n) && setCh({ ...ch, [x.n]: ch[x.n] === r ? null : r })}
+            why={(r) => (taken(r, x.n) ? '已经有人是这个角色' : null)}
+          />
+        </div>
+      ))}
+      <Tips role="hatter" />
+      <BottomBar wide>
+        <CardButton label="给他们看" onClick={() => ui.showCard({ title: '这个角色选中了你们', big: ['帽匠'] })} />
+        <button className="btn btn-primary grow" onClick={() => done({ kind: 'hatter', changes })}>
+          {changes.length ? `完成：${changes.length} 人换角色` : '都不换，下一步'}
         </button>
       </BottomBar>
     </>

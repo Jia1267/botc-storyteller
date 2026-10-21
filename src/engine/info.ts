@@ -1180,3 +1180,32 @@ export function seatsVerdict(s: GameState, kind: SeatsKind, seats: number[]): Ve
       return 'true';
   }
 }
+
+/* ---------------- 实验性角色：外来者 ---------------- */
+
+/** 巡山人找到落难少女：她变成哪个不在场的镇民 */
+export function huntsmanBecomeChoices(s: GameState, rng: Rng): Choice<RoleId>[] {
+  const pool = notInPlay(s, 'townsfolk', ['huntsman']);
+  const mk = (key: string, r: RoleId, lean: number, reason: string, standard = false): Choice<RoleId> => ({ key, label: `变成【${roleName(r)}】`, value: r, lean, reason, truth: true, standard });
+  const out: Choice<RoleId>[] = [];
+  const info = pickOr(pool.filter((r) => ROLES[r].info), rng);
+  if (info) out.push(mk('info', info, 1, `${roleName(info)}有信息，好人多一个帮手，帮善良。`));
+  const plain = pickOr(pool.filter((r) => !ROLES[r].info), rng);
+  if (plain) out.push(mk('plain', plain, 0, '一个普通镇民，标准做法。', true));
+  if (!out.some((c) => c.standard) && out.length) out[0] = { ...out[0], standard: true };
+  return out;
+}
+
+/** 解谜大师猜完：告诉他谁（猜对 = 恶魔；猜错 = 别人，假信息） */
+export function puzzleShowChoices(s: GameState, puzzleN: number, guess: number, rng: Rng): Choice<number>[] {
+  const d = demonSeat(s);
+  const right = guess === s.puzzleDrunk && !malfunction(s, puzzleN);
+  const lbl = (n: number) => `告诉他 ${seatName(n)}`;
+  if (right && d) return [{ key: 'demon', label: lbl(d.n), value: d.n, lean: 0, truth: true, standard: true, reason: '他猜对了：告诉他恶魔是谁。' }];
+  const out: Choice<number>[] = [];
+  const g = pickOr(s.seats.filter((x) => x.alive && !isEvil(x) && x.n !== puzzleN && x.n !== guess), rng);
+  if (g) out.push({ key: 'good', label: lbl(g.n), value: g.n, lean: -1, truth: false, standard: true, reason: '猜错了：指一名好人，他会以为那是恶魔，帮邪恶。' });
+  const m = pickOr(s.seats.filter((x) => x.alive && isEvil(x) && !isDemonSeat(s, x.n)), rng);
+  if (m) out.push({ key: 'minion', label: lbl(m.n), value: m.n, lean: 1, truth: false, reason: '猜错了：指一个爪牙，好人追过去也不亏，帮善良。' });
+  return out;
+}

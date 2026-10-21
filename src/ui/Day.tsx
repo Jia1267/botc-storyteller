@@ -3,17 +3,18 @@ import { FABLED, ROLES, roleName, type RoleId } from '../engine/roles';
 import { balance, recommend, type Choice } from '../engine/balance';
 import {
   actorFor, aliveCount, aliveVoters, demonSeat, hasAbility, isDemonSeat, isEvil, isTraveller, lilMonsta, malfunction, scriptOf, seatOf, teamOf,
-  vortoxActive, seatName, townsfolkNeighbors, philoDrunk,
+  vortoxActive, seatName, seatLabel, townsfolkNeighbors, philoDrunk,
 } from '../engine/core';
 import {
   LEVIATHAN_DAYS, advocateSaves, alsaahirCorrect, alsaahirGuess, execute, pacifistCanSave, setGossip, tinkerDies, fearPreview, fearmongerAsk, fearmongerNominates, finishDay, goblinAsk,
   harpyPunish, nominateVirgin, previewSlayer, previewVirgin, setCannibalFake, setDemonVoted, savantVisit, scapegoatFor, setDuchessVisitors,
   slayerShoot, markUsed, nomResults, voteNeed, type NomResult, type NomRow,
   cereVerdict, jugglerCanGuess, jugglerCount, jugglerGuess, setMinionNominated, twinsBlock, witchActive, witchStrikes,
+  damselGuess, golemNominates, puzzleGuess,
 } from '../engine/flow';
 import { activeTravellers, beggarLearns, exile, gunslingerPreview, gunslingerShoot, leave } from '../engine/travellers';
 import { clone } from '../engine/core';
-import { harpyPunishChoices, killPreview, pacifistChoices, scarletCanTakeOver } from '../engine/info';
+import { harpyPunishChoices, killPreview, pacifistChoices, puzzleShowChoices, scarletCanTakeOver } from '../engine/info';
 import { AMNESIAC_ANSWERS, artistMode, fishermanChoices, savantChoices } from '../engine/daytime';
 import type { GameState, Seat } from '../engine/types';
 import { dayStartLines, endLines, executionLines, nominationLines } from '../engine/scripts';
@@ -68,7 +69,7 @@ function demonDeathWarning(s: GameState, n: number, verb: '被处决了' | '死�
   );
 }
 
-type Panel = 'nom' | 'virgin' | 'slayer' | 'exec' | 'artist' | 'fisherman' | 'savant' | 'amnesiac' | 'mutant' | 'duchess' | 'fear' | 'alsaahir' | 'gossip' | 'tinker' | 'juggler' | null;
+type Panel = 'nom' | 'virgin' | 'slayer' | 'exec' | 'artist' | 'fisherman' | 'savant' | 'amnesiac' | 'mutant' | 'duchess' | 'fear' | 'alsaahir' | 'gossip' | 'tinker' | 'juggler' | 'golem' | 'damsel' | 'puzzle' | null;
 
 export function DayScreen({ g }: { g: Game }) {
   const s = g.s;
@@ -190,6 +191,9 @@ export function DayScreen({ g }: { g: Game }) {
       {panel === 'gossip' && <GossipSheet g={g} onClose={close} />}
       {panel === 'tinker' && <TinkerSheet g={g} onClose={close} />}
       {panel === 'juggler' && <JugglerSheet g={g} onClose={close} />}
+      {panel === 'golem' && <GolemSheet g={g} onClose={close} />}
+      {panel === 'damsel' && <DamselSheet g={g} onClose={close} />}
+      {panel === 'puzzle' && <PuzzleSheet g={g} onClose={close} />}
       {panel === 'nom' && (
         <NomSheet
           g={g}
@@ -234,6 +238,12 @@ function DayAbilities({ s, open }: { s: GameState; open: (p: Panel) => void }) {
   const jug = holder('juggler');
   if (jug && (jugglerCanGuess(s, jug.n) || (s.juggler?.seat === jug.n && s.juggler.day === s.night)))
     items.push(btn('juggler', s.juggler?.day === s.night ? `杂耍艺人（${seatName(jug.n)}）今天猜对 ${s.juggler.correct} 个（改）` : `杂耍艺人（${seatName(jug.n)}）要公开猜角色`));
+  const golem = holder('golem');
+  if (golem && !golem.used) items.push(btn('golem', `魔像（${seatName(golem.n)}）提名了一个人`));
+  const damsel = s.seats.find((x) => x.role === 'damsel');
+  if (damsel && !s.damselGuessed) items.push(btn('damsel', '有爪牙公开猜谁是落难少女'));
+  const puzzle = holder('puzzlemaster');
+  if (puzzle && !s.puzzleGuessed && s.puzzleDrunk) items.push(btn('puzzle', `解谜大师（${seatName(puzzle.n)}）来猜谁醉酒`));
   const als = holder('alsaahir');
   if (als && s.alsaahirDay !== s.night) items.push(btn('alsaahir', `戏法师（${seatName(als.n)}）要公开猜谁是爪牙和恶魔`));
   const gossip = s.seats.find((x) => x.alive && x.role === 'gossip');
@@ -950,6 +960,11 @@ function SecretNotices({ s }: { s: GameState }) {
   const vg = s.vigor.filter((v) => !seatOf(s, v.minion).alive && teamOf(seatOf(s, v.minion).role) === 'minion');
   if (vg.length && s.seats.some((x) => x.role === 'vigormortis' && x.alive))
     out.push(<p key="vg">被亡骨魔杀死的爪牙 {vg.map((v) => seatName(v.minion)).join('、')} 能力还在{vg.some((v) => v.poisoned) ? `；${vg.filter((v) => v.poisoned).map((v) => seatName(v.poisoned)).join('、')} 因此中毒` : ''}。</p>);
+  const zealot = s.seats.find((x) => x.alive && x.role === 'zealot');
+  if (zealot && aliveVoters(s) >= 5) out.push(<p key="ze">狂热者（{seatName(zealot.n)}）：存活 5 人以上，每次投票他都必须举手。</p>);
+  const qt = s.seats.find((x) => x.alive && x.role === 'qutler');
+  if (qt && s.qutlerMaster) out.push(<p key="qt">Q宝（{seatName(qt.n)}）只有主人 {seatName(s.qutlerMaster)} 投票时才能投票。</p>);
+  if (s.puzzleDrunk && s.seats.some((x) => x.role === 'puzzlemaster')) out.push(<p key="pz">{seatName(s.puzzleDrunk)} 整局醉酒（解谜大师）。</p>);
   const preached = s.preached.filter((n) => malfunction(s, n) && seatOf(s, n).alive);
   if (preached.length) out.push(<p key="pr">被传教士选中的爪牙 {preached.map((n) => seatName(n)).join('、')} 没有能力。</p>);
   if (s.snakePoisoned.length) out.push(<p key="sn">{s.snakePoisoned.map((n) => seatName(n)).join('、')} 被舞蛇人换下来，一直中毒。</p>);
@@ -1463,5 +1478,110 @@ function PrincessCard({ g }: { g: Game }) {
         {on ? '已记下（点一下取消）' : '她提名的人被处决了：记一下'}
       </button>
     </div>
+  );
+}
+
+/** 魔像提名：不是恶魔就当场死 */
+function GolemSheet({ g, onClose }: { g: Game; onClose: () => void }) {
+  const s = g.s;
+  const gm = holderOf(s, 'golem')!;
+  const [t, setT] = useState<number[]>([]);
+  const [rec, setRec] = useState(false);
+  const x = t.length ? seatOf(s, t[0]) : null;
+  const bad = malfunction(s, gm.n);
+  const demon = !!x && (isDemonSeat(s, x.n) || (x.role === 'recluse' && rec));
+  return (
+    <Sheet title={`魔像（${seatName(gm.n)}）提名`} onClose={onClose}>
+      <div className="stack">
+        <p className="dim">魔像整局只能提名一次。被提名的不是恶魔就当场死亡，投票照常进行。</p>
+        <SeatPicker s={s} selected={t} max={1} onChange={setT} disabled={[gm.n]} label="他提名了谁？" />
+        {x?.role === 'recluse' && !bad && <TwoChoice value={rec} onChange={setRec} yes="陌客算恶魔（不死）" no="陌客不算恶魔（死）" />}
+        {x && (
+          <div className={`card${!bad && !demon ? ' card-evil' : ''}`}>
+            <p>{bad ? '魔像中毒/醉酒：什么都不会发生（他的提名用掉了）。' : demon ? `${seatName(x.n)} 是恶魔：什么都不说，照常投票。` : `${seatLabel(s, x.n)} 不是恶魔：当场死亡。`}</p>
+          </div>
+        )}
+        {x && <SayBox title="公开宣布" lines={!bad && !demon ? [`${seatName(x.n)} 死了。`, '投票照常进行。'] : ['开始投票。']} />}
+        {x && !bad && !demon && isDemonSeat(s, x.n) && demonDeathWarning(s, x.n, '死了')}
+        <button className="btn btn-primary btn-block" disabled={!x} onClick={() => { g.commit((st) => golemNominates(st, gm.n, t[0], rec)); onClose(); }}>
+          确认
+        </button>
+      </div>
+    </Sheet>
+  );
+}
+
+/** 爪牙公开猜落难少女 */
+function DamselSheet({ g, onClose }: { g: Game; onClose: () => void }) {
+  const s = g.s;
+  const [m, setM] = useState<number[]>([]);
+  const [t, setT] = useState<number[]>([]);
+  const d = s.seats.find((x) => x.role === 'damsel');
+  const minion = m.length ? teamOf(seatOf(s, m[0]).role) === 'minion' : false;
+  const right = !!d && t[0] === d.n && d.alive && !malfunction(s, d.n) && minion;
+  return (
+    <Sheet title="爪牙公开猜落难少女" onClose={onClose}>
+      <div className="stack">
+        <p className="dim">整局只算一次：爪牙猜中，邪恶直接获胜；猜错就用掉了，之后谁猜都没用。不是爪牙的人猜不算。</p>
+        <SeatPicker s={s} selected={m} max={1} onChange={setM} label="谁在猜？" />
+        <SeatPicker s={s} selected={t} max={1} onChange={setT} label="他说谁是落难少女？" />
+        {m.length > 0 && t.length > 0 && (
+          <>
+            <div className={`card${right ? ' card-evil' : ''}`}>
+              <p>
+                {right
+                  ? `猜中了：${seatName(t[0])} 就是落难少女，邪恶获胜。`
+                  : !minion
+                    ? `${seatName(m[0])} 不是爪牙：什么都不会发生（不算用掉）。`
+                    : '没猜中（或落难少女已死/中毒）：什么都不会发生，猜测机会用掉了。'}
+              </p>
+            </div>
+            <SayBox title="公开宣布" lines={right ? ['猜中了！邪恶阵营获胜！'] : ['什么都没有发生。']} />
+          </>
+        )}
+        <button
+          className="btn btn-primary btn-block"
+          disabled={!m.length || !t.length}
+          onClick={() => {
+            if (minion) g.commit((st) => damselGuess(st, m[0], t[0]));
+            onClose();
+          }}
+        >
+          确认
+        </button>
+      </div>
+    </Sheet>
+  );
+}
+
+/** 解谜大师猜谁醉酒 */
+function PuzzleSheet({ g, onClose }: { g: Game; onClose: () => void }) {
+  const s = g.s;
+  const pz = holderOf(s, 'puzzlemaster')!;
+  const [t, setT] = useState<number[]>([]);
+  const choices = useMemo(() => (t.length ? puzzleShowChoices(s, pz.n, t[0], stepRng(s, 61)) : []), [s, pz.n, t]);
+  const rec = useMemo(() => recommend(choices, balance(s).score, stepRng(s, 62)), [choices, s]);
+  const [sel, setSel] = useState<number | null>(null);
+  const c = choices[sel ?? rec];
+  const right = t[0] === s.puzzleDrunk;
+  return (
+    <Sheet title={`解谜大师（${seatName(pz.n)}）猜谁醉酒`} onClose={onClose}>
+      <div className="stack">
+        <p className="dim">整局一次。醉酒的是 {seatName(s.puzzleDrunk)}（只有你知道）。他猜对了，你私下告诉他恶魔是谁；猜错了，告诉他另一个人（假信息）。</p>
+        <SeatPicker s={s} selected={t} max={1} onChange={(v) => { setT(v); setSel(null); }} disabled={[pz.n]} label="他猜谁醉酒？" />
+        {t.length > 0 && (
+          <>
+            <div className="card">
+              <p>{right ? '他猜对了。' : '他猜错了。'}{malfunction(s, pz.n) ? '（他中毒/醉酒：给假信息）' : ''}</p>
+            </div>
+            <ChoicePanel s={s} choices={choices} sel={sel ?? rec} rec={rec} onSel={(i) => i >= 0 && setSel(i)} />
+            {c && <SayBox title="私下告诉他" lines={[`${seatName(c.value)}。`]} />}
+          </>
+        )}
+        <button className="btn btn-primary btn-block" disabled={!c} onClick={() => { if (c) g.commit((st) => puzzleGuess(st, pz.n, t[0], c.value)); onClose(); }}>
+          我告诉他了
+        </button>
+      </div>
+    </Sheet>
   );
 }

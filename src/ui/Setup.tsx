@@ -8,6 +8,7 @@ import {
   DISTRIBUTION, F4, MAX_F4, alchemistChoices, amnesiacChoices, bluffChoicesWith, bluffPool, drunkFakeChoices, evilTownsfolkChoices, godfatherChoices, godfatherModFor,
   marionetteFakeChoices, redHerringChoices, replaceDemon, replaceRole, rerollRoles, sentinelChoices, setAlchemistAbility, setCount, setEvilTownsfolk,
   setGodfatherDelta, setScript, setSentinelDelta, setupReasons, shuffleSeats, startDeal, swapSeats, toggleFabled, setTwin, twinChoices,
+  puzzleDrunkChoices,
 } from '../engine/setup';
 import { stepRng, type Game } from '../store';
 import { BottomBar, ChoicePanel, Sheet, SeatPicker } from './common';
@@ -307,7 +308,7 @@ function RolePicker({
   );
 }
 
-type Edit = 'drunk' | 'bluffs' | 'rh' | 'lunatic' | 'amnesiac' | 'traveller' | 'marionette' | 'etf' | 'alchemist' | 'twin' | null;
+type Edit = 'drunk' | 'bluffs' | 'rh' | 'lunatic' | 'amnesiac' | 'traveller' | 'marionette' | 'etf' | 'alchemist' | 'twin' | 'puzzle' | null;
 
 function SeatsStep({ g, onRules }: { g: Game; onRules: () => void }) {
   const s = g.s;
@@ -401,6 +402,17 @@ function SeatsStep({ g, onRules }: { g: Game; onRules: () => void }) {
             </button>
           </div>
         )}
+        {s.puzzleDrunk && s.seats.some((x) => x.role === 'puzzlemaster') && (
+          <div className="card">
+            <h3>解谜大师</h3>
+            <p>
+              <b className="good">{seatName(s.puzzleDrunk)}（{roleName(s.seats[s.puzzleDrunk - 1].role)}）</b>整局醉酒，他自己不知道。
+            </p>
+            <button className="btn btn-outline btn-sm" style={{ marginTop: 10 }} onClick={() => setEdit('puzzle')}>
+              看理由 / 更换
+            </button>
+          </div>
+        )}
         {evilTwin && s.twin && (
           <div className="card">
             <h3>镜像双子</h3>
@@ -478,6 +490,7 @@ function SeatsStep({ g, onRules }: { g: Game; onRules: () => void }) {
       {edit === 'etf' && <EvilTownsfolkEdit g={g} onClose={() => setEdit(null)} />}
       {edit === 'alchemist' && <AlchemistEdit g={g} onClose={() => setEdit(null)} />}
       {edit === 'twin' && <TwinEdit g={g} onClose={() => setEdit(null)} />}
+      {edit === 'puzzle' && <PuzzleEdit g={g} onClose={() => setEdit(null)} />}
       <BottomBar>
         <button className="btn btn-primary btn-block" onClick={() => g.commit((st) => startDeal(st))}>
           开始发身份
@@ -540,6 +553,22 @@ function AlchemistEdit({ g, onClose }: { g: Game; onClose: () => void }) {
       <div className="stack">
         <p className="dim">换成教父会让外来者 ±1，网页会自动调整人数。</p>
         <ChoicePanel s={s} choices={choices} sel={sel} rec={rec} defaultOpen moreLabel="可选的爪牙能力" onSel={(i) => i >= 0 && g.commit((st) => setAlchemistAbility(st, choices[i].value, defaultRng))} />
+      </div>
+    </Sheet>
+  );
+}
+
+/** 解谜大师：谁整局醉酒 */
+function PuzzleEdit({ g, onClose }: { g: Game; onClose: () => void }) {
+  const s = g.s;
+  const choices = useMemo(() => puzzleDrunkChoices(s, stepRng(s, 11)), [s]);
+  const rec = useMemo(() => recommend(choices, balance(s).score, stepRng(s, 12)), [choices, s]);
+  const sel = choices.findIndex((c) => c.value === s.puzzleDrunk);
+  return (
+    <Sheet title="解谜大师：谁整局醉酒" onClose={onClose}>
+      <div className="stack">
+        <ChoicePanel s={s} choices={choices} sel={sel} rec={rec} defaultOpen moreLabel="其他推荐" onSel={(i) => i >= 0 && g.commit((st) => (st.puzzleDrunk = choices[i].value))} />
+        <SeatPicker s={s} selected={s.puzzleDrunk ? [s.puzzleDrunk] : []} max={1} onChange={(v) => v.length && g.commit((st) => (st.puzzleDrunk = v[0]))} label="或者直接点一名玩家" />
       </div>
     </Sheet>
   );

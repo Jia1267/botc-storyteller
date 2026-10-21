@@ -91,6 +91,16 @@ export function EndScreen({ g }: { g: Game }) {
           </div>
         </div>
         <SayBox lines={endLines(win, s.style)} title="对所有人说" />
+        {(() => {
+          const pol = s.seats.find((x) => x.role === 'politician');
+          if (!pol || (isEvil(pol) ? 'evil' : 'good') === win) return null;
+          return (
+            <div className="card card-warn">
+              <b>政客（{seatName(pol.n)}）：他的阵营输了</b>
+              <p className="dim">如果你判断他是让自己阵营输掉的最大责任人（而且他没中毒醉酒），宣布他改换阵营，也算获胜。</p>
+            </div>
+          );
+        })()}
         <div className="card">
           <h3>复盘：完整魔典</h3>
           <p className="dim" style={{ marginBottom: 8 }}>

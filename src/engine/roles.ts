@@ -24,7 +24,8 @@ export type RoleId =
   | 'eviltwin' | 'witch' | 'cerenovus' | 'pithag' | 'fanggu' | 'nodashii' | 'vigormortis'
   // 实验性角色
   | 'steward' | 'knight' | 'noble' | 'shugenja' | 'highpriestess' | 'king' | 'choirboy' | 'nightwatchman' | 'princess' | 'farmer'
-  | 'acrobat' | 'preacher' | 'magician' | 'poppygrower'
+  | 'acrobat' | 'preacher' | 'magician' | 'poppygrower' | 'huntsman'
+  | 'golem' | 'zealot' | 'damsel' | 'snitch' | 'puzzlemaster' | 'ogre' | 'hatter' | 'politician' | 'heretic' | 'qutler'
   // 旅行者（暗流涌动）
   | 'scapegoat' | 'gunslinger' | 'beggar' | 'bureaucrat' | 'thief';
 
@@ -788,6 +789,64 @@ const R: RoleDef[] = [
     id: 'poppygrower', name: '罂粟种植者', short: '罂粟', team: 'townsfolk', weight: 1.5, bluff: 1.5,
     ability: '爪牙和恶魔互相不知道对方。你死亡的当晚，他们得知彼此。',
     tips: ['第一晚不做爪牙互认，恶魔只看三个伪装。', '他死了（死时没中毒醉酒）：当晚叫醒爪牙指恶魔，再叫醒恶魔指爪牙。'],
+  },
+
+  {
+    id: 'huntsman', name: '巡山人', short: '巡山', team: 'townsfolk', weight: 1, bluff: 1.5,
+    ability: '整局一次，在夜里，你可以选择一名活着的玩家：如果他是落难少女，她变成一个不在场的镇民。[落难少女一定在场]',
+    tips: ['开局落难少女一定在场（网页配板时会自动加上）。', '每晚问他要不要用。选中落难少女：你给她挑一个不在场的镇民，叫醒她告诉她新角色。'],
+  },
+
+  /* ---------- 实验性角色：外来者 ---------- */
+  {
+    id: 'golem', name: '魔像', short: '魔像', team: 'outsider', weight: -0.5, bluff: 1,
+    ability: '你整局只能提名一次。你提名时，如果被提名的人不是恶魔，他死亡。',
+    tips: ['他提名的人不是恶魔就当场死亡，投票照常进行。提名的是恶魔就什么都不说，照常投票。', '在"白天有人来找你"里点魔像。'],
+  },
+  {
+    id: 'zealot', name: '狂热者', short: '狂热', team: 'outsider', weight: -0.5, bluff: 1,
+    ability: '存活玩家有 5 人或更多时，你每次投票都必须举手。',
+    tips: ['不用你盯着：是他自己要遵守。他忘了举手就别算他的票。', '旅行者也算存活玩家。'],
+  },
+  {
+    id: 'damsel', name: '落难少女', short: '少女', team: 'outsider', weight: -1, bluff: 1,
+    ability: '所有爪牙都知道落难少女在场。如果有爪牙公开猜中你（只能猜一次），你的阵营输。',
+    tips: ['第一晚叫醒每个爪牙，告诉他们落难少女在场。', '爪牙公开猜时在"白天有人来找你"里点。猜中邪恶获胜；猜错就用掉了，之后谁猜都没用。', '她死了就不怕被猜了。'],
+  },
+  {
+    id: 'snitch', name: '告密者', short: '告密', team: 'outsider', weight: -1, bluff: 1,
+    ability: '每名爪牙都会得到三个伪装角色。',
+    tips: ['第一晚叫醒每个爪牙，给他看三个不在场的角色（可以和恶魔的一样）。'],
+  },
+  {
+    id: 'puzzlemaster', name: '解谜大师', short: '解谜', team: 'outsider', weight: -0.5, bluff: 1,
+    ability: '有一名玩家醉酒（你死了也一样）。你可以猜一次是谁：猜对你得知恶魔是谁，猜错你得到假信息。',
+    tips: ['开局由你选一名玩家整局醉酒，一般是镇民（配角色时在下面选）。', '他来猜时在"白天有人来找你"里点：猜对就指向恶魔，猜错就指向别人。'],
+  },
+  {
+    id: 'ogre', name: '食人魔', short: '食人魔', team: 'outsider', weight: -0.5, bluff: 1,
+    ability: '第一晚，你选择一名其他玩家：你变成他的阵营（你自己不知道是哪个）。醉酒中毒也照样生效。',
+    tips: ['第一晚让他指一个人：那人是邪恶的，食人魔就变成邪恶（不告诉他）。'],
+  },
+  {
+    id: 'hatter', name: '帽匠', short: '帽匠', team: 'outsider', weight: -1, bluff: 1,
+    ability: '如果你在今天白天或今晚死亡，爪牙和恶魔可以各自换成另一个同类型的角色。',
+    tips: ['他死了的那晚叫醒所有爪牙和恶魔：每人可以摇头不换，或在角色表上指一个同类型、没人在用的角色。', '换了之后旧能力没有了，新能力马上有（包括只在第一晚用的）。'],
+  },
+  {
+    id: 'politician', name: '政客', short: '政客', team: 'outsider', weight: -0.5, bluff: 1,
+    ability: '如果你是让自己阵营输掉的最大责任人，你改换阵营并获胜，即使你已经死亡。',
+    tips: ['游戏结束时由你判断：他的言行是不是好人输掉的主要原因。是的话宣布他也获胜。', '他中毒/醉酒时不会换阵营。'],
+  },
+  {
+    id: 'heretic', name: '异端分子', short: '异端', team: 'outsider', weight: 0, bluff: 1,
+    ability: '赢的一方输，输的一方赢，即使你已经死亡。',
+    tips: ['网页判胜负时会自动反过来（他中毒/醉酒时不反）。', '公开宣布结果时照反过来的说。'],
+  },
+  {
+    id: 'qutler', name: 'Q宝', short: 'Q宝', team: 'outsider', weight: -0.5, bluff: 1,
+    ability: '每晚，你选择一名其他玩家：明天只有他投票时，你才能投票。',
+    tips: ['和管家一样：每晚让他指一个"主人"。明天白天提醒自己。', '是他自己要遵守，不用你盯着；他违规举手也照算。'],
   },
 
   /* ---------- 旅行者：迟到/早退的人，阵营由说书人定 ---------- */
