@@ -20,7 +20,7 @@ import {
   widowInformChoices, type PairInfo, type PairKind,
   clockmakerChoices, clockmakerCount, jugglerChoices, mathChoices, oracleChoices, pithagNightChoices, sageChoices, towncrierChoices, vigorPoisonChoices,
   SEATS_COUNT, choirboyChoices, farmerChoices, kingChoices, knightChoices, nobleChoices, priestessChoices, seatsVerdict, shugenjaChoices, shugenjaSteps,
-  stewardChoices, type SeatsKind, huntsmanBecomeChoices,
+  stewardChoices, type SeatsKind, huntsmanBecomeChoices, legionChoices, viChoices,
 } from '../engine/info';
 import { SLOT_TITLE, dawnLines, librarianZeroLines, slotLines } from '../engine/scripts';
 import type { GameState, Seat, SlotId } from '../engine/types';
@@ -426,6 +426,18 @@ function SlotBody({ g, s, slot, actor }: { g: Game; s: GameState; slot: SlotId; 
       return <YaggaStep g={g} s={s} />;
     case 'riot':
       return <RiotNightStep g={g} s={s} />;
+    case 'villageidiot':
+      return <ViStep g={g} s={s} actor={actor!} />;
+    case 'engineer':
+      return <EngineerStep g={g} s={s} actor={actor!} />;
+    case 'lycanthrope':
+      return <TargetStep g={g} s={s} actor={actor!} slot="lycanthrope" />;
+    case 'cultleader':
+      return <CultStep g={g} s={s} actor={actor!} />;
+    case 'summoner':
+      return <SummonerStep g={g} s={s} actor={actor!} />;
+    case 'legion':
+      return <LegionStep g={g} s={s} />;
     default:
       return <SkipStep g={g} />;
   }
@@ -521,6 +533,8 @@ function MinionInfoStep({ g, s }: { g: Game; s: GameState }) {
 function DemonInfoStep({ g, s }: { g: Game; s: GameState }) {
   const done = useDone(g);
   const ui = useUi();
+  const legion = s.seats.filter((x) => x.role === 'legion');
+  if (legion.length) return <LegionInfoStep g={g} s={s} />;
   const mg = magicianSeat(s);
   const poppy = poppyActive(s);
   // 魔术师：恶魔以为他也是爪牙；罂粟种植者在场：不指爪牙
@@ -603,7 +617,9 @@ function DawnStep({ g, s }: { g: Game; s: GameState }) {
 
 function TargetStep({
   g, s, actor, slot,
-}: StepProps & { slot: 'poisoner' | 'monk' | 'butler' | 'fearmonger' | 'bureaucrat' | 'thief' | 'devilsadvocate' | 'exorcist' | 'witch' | 'acrobat' | 'preacher' | 'ogre' | 'qutler' }) {
+}: StepProps & {
+  slot: 'poisoner' | 'monk' | 'butler' | 'fearmonger' | 'bureaucrat' | 'thief' | 'devilsadvocate' | 'exorcist' | 'witch' | 'acrobat' | 'preacher' | 'ogre' | 'qutler' | 'lycanthrope';
+}) {
   const done = useDone(g);
   const ui = useUi();
   const [t, setT] = useState<number[]>([]);
@@ -615,13 +631,21 @@ function TargetStep({
   const blocked = [
     ...(notSelf ? [actor.n] : []),
     ...(last ? [last] : []),
-    ...(slot === 'devilsadvocate' ? s.seats.filter((x) => !x.alive).map((x) => x.n) : []),
+    ...(slot === 'devilsadvocate' || slot === 'lycanthrope' ? s.seats.filter((x) => !x.alive).map((x) => x.n) : []),
   ];
   const lastNote = last ? `不能再选昨晚的 ${seatName(last)}。` : '';
   const exorcisedDemon = slot === 'exorcist' && t.length > 0 && !bad && isDemonSeat(s, t[0]) ? t[0] : null;
   const preachedMinion = slot === 'preacher' && t.length > 0 && !bad && teamOf(seatOf(s, t[0]).role) === 'minion' ? t[0] : null;
   const note =
-    slot === 'ogre'
+    slot === 'lycanthrope'
+      ? t.length
+        ? bad
+          ? '他中毒/醉酒：什么都不会发生。'
+          : !isEvil(seatOf(s, t[0])) && s.fauxPaw !== t[0]
+            ? `${seatName(t[0])} 是好人：他死亡，恶魔今晚杀不了人。`
+            : `${seatName(t[0])} 是邪恶的${s.fauxPaw === t[0] ? '（被当成邪恶）' : ''}：不会死，恶魔照常杀人。`
+        : '他选的人是好人就死，恶魔今晚杀不了人；选的是邪恶的什么都不会发生。必须选活人。'
+      : slot === 'ogre'
       ? '他选的人是邪恶的，食人魔就变成邪恶（不告诉他）；选的是善良的就还是善良。醉酒中毒也照样生效。'
       : slot === 'qutler'
       ? '明天只有这个"主人"投票时，Q宝才能投票（是他自己要遵守）。'
@@ -3800,6 +3824,257 @@ function RiotNightStep({ g, s }: { g: Game; s: GameState }) {
       <BottomBar wide>
         <CardButton label="给他们看" onClick={() => ui.showCard(newRoleCard('riot', true))} />
         <button className="btn btn-primary grow" onClick={() => done({ kind: 'none' })}>
+          完成，下一步
+        </button>
+      </BottomBar>
+    </>
+  );
+}
+
+/* ---------------- 实验性角色：其他 ---------------- */
+
+function ViStep({ g, s, actor }: StepProps) {
+  const [t, setT] = useState<number[]>([]);
+  return (
+    <>
+      <DoBox items={[wake(actor.n), '让他用手指向一名玩家，你在下面点出来。']} />
+      <SayBox lines={slotLines('villageidiot', s.style)} title="小声说" />
+      {s.viDrunk === actor.n && <p className="dim">这是整局醉酒的那个村夫：可以给假的。</p>}
+      <SeatPicker s={s} selected={t} max={1} onChange={setT} disabled={[actor.n]} label="他指了谁？" />
+      {t.length ? (
+        <Reveal key={t[0]}>
+          <ViAnswer g={g} s={s} actor={actor} target={t[0]} />
+        </Reveal>
+      ) : (
+        <Pending text="先点出他指的人" />
+      )}
+    </>
+  );
+}
+
+function ViAnswer({ g, s, actor, target }: StepProps & { target: number }) {
+  const done = useDone(g);
+  const choices = useMemo(() => viChoices(s, actor.n, target), [s, actor.n, target]);
+  const rec = useMemo(() => recommend(choices, balance(s).score, stepRng(s, target)), [choices, s, target]);
+  const [sel, setSel] = useState(rec);
+  const c = choices[sel] ?? choices[0];
+  return (
+    <>
+      <ChoicePanel s={s} choices={choices} sel={sel} rec={rec} onSel={(i) => i >= 0 && setSel(i)} />
+      <DoBox items={[<><b>{c.value ? '拇指向下' : '拇指向上'}</b>：{seatName(target)} 是{c.value ? '邪恶' : '善良'}的。</>, sleep]} />
+      <Tips role="villageidiot" drunk={actor.role === 'drunk'} />
+      <BottomBar wide>
+        <button className="btn btn-primary btn-block" onClick={() => done({ kind: 'yesno', yes: c.value, truth: c.truth })}>
+          完成，下一步
+        </button>
+      </BottomBar>
+    </>
+  );
+}
+
+function EngineerStep({ g, s, actor }: StepProps) {
+  const done = useDone(g);
+  const ui = useUi();
+  const [use, setUse] = useState<boolean | null>(null);
+  const [mode, setMode] = useState<'demon' | 'minion' | null>(null);
+  const [demon, setDemon] = useState<RoleId | null>(null);
+  const evilMinions = s.seats.filter((x) => x.alive && teamOf(x.role) === 'minion');
+  const [mins, setMins] = useState<RoleId[]>([]);
+  const d = demonSeat(s);
+  // 选到的爪牙按座位顺序分给现在的爪牙：已经在场的角色留给原来那个人
+  const assign = useMemo(() => {
+    const keep = evilMinions.filter((x) => mins.includes(x.role));
+    const rest = evilMinions.filter((x) => !mins.includes(x.role));
+    const newRoles = mins.filter((r) => !keep.some((x) => x.role === r));
+    return rest.slice(0, newRoles.length).map((x, i) => ({ seat: x.n, role: newRoles[i] }));
+  }, [evilMinions, mins]);
+  const ready = use === false || (use && ((mode === 'demon' && demon) || (mode === 'minion' && mins.length === evilMinions.length)));
+  return (
+    <>
+      <DoBox items={[wake(actor.n), '问他今晚要不要用能力（整局一次）。要用就让他在角色表上指一个恶魔，或者指几个爪牙。', sleep]} />
+      <SayBox lines={slotLines('engineer', s.style)} title="小声说" />
+      <TwoChoice value={use} onChange={setUse} yes="他要用" no="他不用（摇头）" />
+      {use && <TwoChoice value={mode === null ? null : mode === 'demon'} onChange={(v) => setMode(v ? 'demon' : 'minion')} yes="他指恶魔" no="他指爪牙" />}
+      {use && mode === 'demon' && <RoleGrid roles={scriptOf(s).roles.filter((r) => teamOf(r) === 'demon')} value={demon} onPick={setDemon} />}
+      {use && mode === 'minion' && (
+        <>
+          <p className="dim">现在有 {evilMinions.length} 个爪牙：让他指 {evilMinions.length} 个爪牙角色（已选 {mins.length}）。</p>
+          <RoleGrid
+            roles={scriptOf(s).roles.filter((r) => teamOf(r) === 'minion')}
+            value={null}
+            onPick={(r) => setMins(mins.includes(r) ? mins.filter((x) => x !== r) : mins.length < evilMinions.length ? [...mins, r] : mins)}
+            why={(r) => (mins.includes(r) ? null : mins.length >= evilMinions.length ? '已经够了' : null)}
+          />
+          {mins.length > 0 && <p>他选了：{mins.map(roleName).join('、')}</p>}
+        </>
+      )}
+      {use && mode === 'demon' && demon && d && (
+        <Reveal key={demon}>
+          {d.role === demon ? (
+            <div className="card"><p>【{roleName(demon)}】已经在场：什么都不变（能力用掉了）。</p></div>
+          ) : (
+            <DoBox title="然后叫醒恶魔" items={[wake(d.n), <>点「给他看」：你现在是<b>【{roleName(demon)}】</b>。</>, sleep]} />
+          )}
+        </Reveal>
+      )}
+      {use && mode === 'minion' && mins.length === evilMinions.length && (
+        <Reveal>
+          {assign.length ? (
+            <DoBox
+              title="然后叫醒换了角色的爪牙"
+              items={assign.map((c) => <>轻拍 <b>{seatName(c.seat)}</b>，告诉他：你现在是<b>【{roleName(c.role)}】</b>。让他闭眼。</>)}
+            />
+          ) : (
+            <div className="card"><p>选的爪牙都已经在场：什么都不变（能力用掉了）。</p></div>
+          )}
+        </Reveal>
+      )}
+      {malfunction(s, actor.n) && use && <p className="dim">他中毒/醉酒：照常走流程，但什么都不会变（能力用掉了）。</p>}
+      <Tips role="engineer" drunk={actor.role === 'drunk'} />
+      <BottomBar wide>
+        {use && mode === 'demon' && demon && d && d.role !== demon && <CardButton onClick={() => ui.showCard(newRoleCard(demon, true))} />}
+        <button
+          className="btn btn-primary grow"
+          disabled={!ready}
+          onClick={() => done({ kind: 'engineer', demon: use && mode === 'demon' ? (demon ?? undefined) : undefined, minions: use && mode === 'minion' ? assign : undefined })}
+        >
+          {use === false ? '他不用，下一步' : ready ? '完成，下一步' : '先点出他选的角色'}
+        </button>
+      </BottomBar>
+    </>
+  );
+}
+
+/** 异教领袖：天亮前变成活着的邻座的阵营 */
+function CultStep({ g, s, actor }: StepProps) {
+  const done = useDone(g);
+  const nb = aliveNeighbors(s, actor.n).map((n) => seatOf(s, n));
+  const evilN = nb.filter((x) => isEvil(x)).length;
+  const forced = evilN === nb.length ? true : evilN === 0 ? false : null;
+  const [pick, setPick] = useState<boolean | null>(forced);
+  const now = isEvil(actor);
+  const next = pick ?? now;
+  const bad = malfunction(s, actor.n);
+  const changes = !bad && next !== now;
+  return (
+    <>
+      <p className="muted">
+        他两边最近的活人：{nb.map((x) => `${seatName(x.n)}（${isEvil(x) ? '邪恶' : '善良'}）`).join('、')}。他现在是{now ? '邪恶' : '善良'}的。
+      </p>
+      {forced === null && !bad && (
+        <>
+          <p className="dim">一好一坏：由你决定他变成哪边。</p>
+          <TwoChoice value={pick === null ? null : !pick} onChange={(v) => setPick(!v)} yes="善良" no="邪恶" />
+        </>
+      )}
+      {bad ? (
+        <div className="card"><p>他中毒/醉酒：阵营不变，不用叫醒他。</p></div>
+      ) : changes ? (
+        <DoBox items={[wake(actor.n), <>拇指{next ? '向下' : '向上'}：你现在是<b>{next ? '邪恶' : '善良'}</b>阵营。</>, sleep]} />
+      ) : (
+        <p className="dim">阵营没变：不用叫醒他。</p>
+      )}
+      <Tips role="cultleader" />
+      <BottomBar wide>
+        <button className="btn btn-primary btn-block" disabled={pick === null && !bad} onClick={() => done({ kind: 'cult', evil: next })}>
+          完成，下一步
+        </button>
+      </BottomBar>
+    </>
+  );
+}
+
+function SummonerStep({ g, s, actor }: StepProps) {
+  const done = useDone(g);
+  const ui = useUi();
+  const [t, setT] = useState<number[]>([]);
+  const [role, setRole] = useState<RoleId | null>(null);
+  if (s.night === 1)
+    return (
+      <>
+        <p className="muted">开局没有恶魔：召唤师第三晚会召唤一个。现在先给他三个伪装角色。</p>
+        <DoBox items={[wake(actor.n), <>点「给他看」：这三个角色不在场 <b>{s.bluffs.map(roleName).join('、')}</b>。</>, sleep]} />
+        <Tips role="summoner" />
+        <BottomBar wide>
+          <CardButton onClick={() => ui.showCard({ title: '这三个角色不在场，你可以伪装成他们', big: s.bluffs.map(roleName) })} />
+          <button className="btn btn-primary grow" onClick={() => done({ kind: 'none' })}>
+            完成，下一步
+          </button>
+        </BottomBar>
+      </>
+    );
+  const bad = malfunction(s, actor.n);
+  return (
+    <>
+      <p className="muted">第三晚：召唤师选一个人（可以是自己）、再在角色表上指一个恶魔，那人变成邪恶的这个恶魔，今晚就能杀人。</p>
+      <DoBox items={[wake(actor.n), '让他指人、再指恶魔，你在下面点出来。', sleep]} />
+      <SayBox lines={slotLines('summoner', s.style)} title="小声说" />
+      <SeatPicker s={s} selected={t} max={1} onChange={setT} disabled={s.seats.filter((x) => !x.alive).map((x) => x.n)} label="他指了谁？" collapse="他指了" />
+      {t.length > 0 && <RoleGrid roles={scriptOf(s).roles.filter((r) => teamOf(r) === 'demon')} value={role} onPick={setRole} />}
+      {t.length > 0 && role && (
+        <Reveal key={`${t[0]}-${role}`}>
+          {bad ? (
+            <div className="card card-warn"><p>召唤师中毒/醉酒：召唤失败，天亮时善良获胜。</p></div>
+          ) : (
+            <DoBox title="然后叫醒新恶魔" items={[wake(t[0]), <>点「给他看」：你现在是<b>【{roleName(role)}】</b>，邪恶阵营。</>, sleep, '新恶魔今晚就会醒来杀人（网页会叫你）。']} />
+          )}
+        </Reveal>
+      )}
+      <Tips role="summoner" />
+      <BottomBar wide>
+        {t.length > 0 && role && !bad && <CardButton onClick={() => ui.showCard(newRoleCard(role, true))} />}
+        <button className="btn btn-primary grow" disabled={!t.length || !role} onClick={() => role && done({ kind: 'summon', target: t[0], role })}>
+          {!t.length || !role ? '先点出他指的人和恶魔' : '完成，下一步'}
+        </button>
+      </BottomBar>
+    </>
+  );
+}
+
+/** 第一晚：所有军团互相认识 */
+function LegionInfoStep({ g, s }: { g: Game; s: GameState }) {
+  const done = useDone(g);
+  const ui = useUi();
+  const lg = s.seats.filter((x) => x.role === 'legion').map((x) => x.n);
+  const good = s.seats.filter((x) => !x.traveller && x.role !== 'legion').map((x) => x.n);
+  usePoint(good);
+  return (
+    <>
+      <DoBox
+        items={[
+          <>轻拍所有军团 <b>{seatsText(lg)}</b>，让他们睁眼互相看清。</>,
+          <>可以用手指向不是军团的人 <b>{seatsText(good)}</b>。</>,
+          s.bluffs.length ? '要给伪装的话点「给他们看伪装」（军团可以不给伪装）。' : null,
+          '让他们闭眼。',
+        ]}
+      />
+      <SayBox lines={['你们都是军团。']} title="小声说" />
+      <Tips role="legion" />
+      <BottomBar wide>
+        {s.bluffs.length > 0 && <CardButton label="给他们看伪装" onClick={() => ui.showCard({ title: '这三个角色不在场，你可以伪装成他们', big: s.bluffs.map(roleName) })} />}
+        <button className="btn btn-primary grow" onClick={() => done({ kind: 'none' })}>
+          完成，下一步
+        </button>
+      </BottomBar>
+    </>
+  );
+}
+
+/** 军团：今晚由你决定死不死人 */
+function LegionStep({ g, s }: { g: Game; s: GameState }) {
+  const done = useDone(g);
+  const choices = useMemo(() => legionChoices(s, stepRng(s)), [s]);
+  const rec = useMemo(() => recommend(choices, balance(s).score, stepRng(s, 1)), [choices, s]);
+  const [sel, setSel] = useState(rec);
+  const c = choices[sel] ?? choices[0];
+  usePoint(c?.value ? [c.value] : []);
+  return (
+    <>
+      <p className="muted">军团晚上不用醒：今晚死不死人、死谁由你决定。目标是最后剩三个人（两个好人和一个军团）。</p>
+      <ChoicePanel s={s} choices={choices} sel={sel} rec={rec} onSel={(i) => i >= 0 && setSel(i)} />
+      <Tips role="legion" />
+      <BottomBar wide>
+        <button className="btn btn-primary btn-block" onClick={() => done(c?.value ? { kind: 'target', target: c.value } : { kind: 'none' })}>
           完成，下一步
         </button>
       </BottomBar>

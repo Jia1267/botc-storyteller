@@ -1209,3 +1209,33 @@ export function puzzleShowChoices(s: GameState, puzzleN: number, guess: number, 
   if (m) out.push({ key: 'minion', label: lbl(m.n), value: m.n, lean: 1, truth: false, reason: '猜错了：指一个爪牙，好人追过去也不亏，帮善良。' });
   return out;
 }
+
+/* ---------------- 实验性角色：其他 ---------------- */
+
+/** 村夫：他选的人是善良还是邪恶（value = 邪恶） */
+export function viChoices(s: GameState, actorN: number, target: number): Choice<boolean>[] {
+  const x = seatOf(s, target);
+  const evil = isEvil(x) || s.fauxPaw === target;
+  const twistable = x.role === 'spy' || x.role === 'recluse';
+  const mk = (e: boolean, lean: number, reason: string, truth: boolean, extra: Partial<Choice<boolean>> = {}): Choice<boolean> => ({
+    key: e ? 'evil' : 'good', label: e ? '拇指向下：邪恶' : '拇指向上：善良', value: e, lean, reason, truth, ...extra,
+  });
+  if (!malfunction(s, actorN) && !mustLie(s, 'villageidiot')) {
+    const out = [mk(evil, twistable ? 1 : 0, s.fauxPaw === target ? '他被半兽人的能力当成邪恶。' : '真实答案。', true, { standard: !twistable })];
+    if (twistable) out.push(mk(!evil, -1, '间谍/陌客可以被当成另一阵营（规则允许），帮邪恶。', true, { twist: true }));
+    return out;
+  }
+  return vortoxOnly(s, 'villageidiot', [mk(evil, 1, '中毒/醉酒也可以给真答案。帮善良。', true), mk(!evil, evil ? -1 : 0, '假答案。中毒的标准用法。', false, { standard: true })]);
+}
+
+/** 军团：今晚死谁（说书人决定） */
+export function legionChoices(s: GameState, rng: Rng): Choice<number | null>[] {
+  const alive = s.seats.filter((x) => x.alive);
+  const out: Choice<number | null>[] = [];
+  const lg = pickOr(alive.filter((x) => x.role === 'legion'), rng);
+  if (lg) out.push({ key: 'legion', label: `${seatName(lg.n)}（军团）死亡`, value: lg.n, lean: 0, truth: true, standard: true, reason: '大多数晚上杀一个军团：好人的推理空间不变，标准做法。' });
+  out.push({ key: 'none', label: '今晚没人死', value: null, lean: 1, truth: true, reason: '平安夜：好人多一天时间，帮善良。' });
+  const g = pickOr(alive.filter((x) => !isEvil(x)), rng);
+  if (g) out.push({ key: 'good', label: `${seatName(g.n)}（${roleName(g.role)}）死亡`, value: g.n, lean: -2, truth: true, reason: '杀一个好人：好人本来就少，通常不公平，只在最后一晚用。' });
+  return out;
+}

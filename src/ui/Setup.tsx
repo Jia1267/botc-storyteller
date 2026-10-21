@@ -8,7 +8,7 @@ import {
   DISTRIBUTION, F4, MAX_F4, alchemistChoices, amnesiacChoices, bluffChoicesWith, bluffPool, drunkFakeChoices, evilTownsfolkChoices, godfatherChoices, godfatherModFor,
   marionetteFakeChoices, redHerringChoices, replaceDemon, replaceRole, rerollRoles, sentinelChoices, setAlchemistAbility, setCount, setEvilTownsfolk,
   setGodfatherDelta, setScript, setSentinelDelta, setupReasons, shuffleSeats, startDeal, swapSeats, toggleFabled, setTwin, twinChoices,
-  puzzleDrunkChoices, boffinChoices, MEZE_WORDS,
+  puzzleDrunkChoices, boffinChoices, MEZE_WORDS, normalizeOutsiders,
 } from '../engine/setup';
 import { stepRng, type Game } from '../store';
 import { BottomBar, ChoicePanel, Sheet, SeatPicker } from './common';
@@ -435,6 +435,38 @@ function SeatsStep({ g, onRules }: { g: Game; onRules: () => void }) {
             <p>{s.xaanNight ? `开局有 ${s.xaanNight} 个外来者：第 ${s.xaanNight} 夜到第 ${s.xaanNight} 天黄昏，所有镇民中毒（网页会自动标出）。` : '开局没有外来者：限永远不会下毒。'}</p>
           </div>
         )}
+        {s.seats.some((x) => x.role === 'hermit') && (
+          <div className="card">
+            <h3>隐士</h3>
+            <p>隐士在场：外来者 {s.hermitDelta < 0 ? '少一个（−1）' : '不变（−0）'}。他有剧本上所有外来者的能力。</p>
+            <button
+              className="btn btn-outline btn-sm"
+              style={{ marginTop: 10 }}
+              onClick={() => g.commit((st) => { st.hermitDelta = st.hermitDelta < 0 ? 0 : -1; normalizeOutsiders(st, defaultRng); })}
+            >
+              改成{s.hermitDelta < 0 ? '不变（−0）' : '少一个（−1）'}
+            </button>
+          </div>
+        )}
+        {s.fauxPaw && s.seats.some((x) => x.role === 'lycanthrope') && (
+          <div className="card">
+            <h3>半兽人</h3>
+            <p>
+              <b>{seatName(s.fauxPaw)}（{roleName(s.seats[s.fauxPaw - 1].role)}）</b>被当成邪恶：各种信息里算邪恶，半兽人也杀不死他。
+            </p>
+          </div>
+        )}
+        {s.viDrunk && (
+          <div className="card">
+            <h3>村夫</h3>
+            <p>
+              有 {s.seats.filter((x) => x.role === 'villageidiot').length} 个村夫，其中 <b>{seatName(s.viDrunk)}</b> 整局醉酒。
+            </p>
+          </div>
+        )}
+        {s.demonChar === 'summoner' && <p className="dim">召唤师在场：开局没有恶魔，多一个镇民。召唤师第三晚召唤恶魔。</p>}
+        {s.demonChar === 'atheist' && <p className="dim">无神论者在场：所有人都是善良的。你可以打破规则假装有邪恶；说书人被处决善良获胜。</p>}
+        {s.seats.some((x) => x.role === 'legion') && <p className="dim">军团：除了 {s.seats.filter((x) => !x.traveller && x.role !== 'legion').length} 个好人，其余都是军团。</p>}
         {s.puzzleDrunk && s.seats.some((x) => x.role === 'puzzlemaster') && (
           <div className="card">
             <h3>解谜大师</h3>

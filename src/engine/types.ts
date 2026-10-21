@@ -41,7 +41,8 @@ export type SlotId =
   // 实验性角色
   | 'steward' | 'knight' | 'noble' | 'shugenja' | 'highpriestess' | 'king' | 'choirboy' | 'nightwatchman' | 'farmer' | 'acrobat'
   | 'preacher' | 'poppygrower' | 'huntsman' | 'damsel' | 'snitch' | 'ogre' | 'hatter' | 'qutler'
-  | 'boffin' | 'wizard' | 'organgrinder' | 'mezepheles' | 'ojo' | 'lleech' | 'yaggababble' | 'lordoftyphon' | 'kazali' | 'riot';
+  | 'boffin' | 'wizard' | 'organgrinder' | 'mezepheles' | 'ojo' | 'lleech' | 'yaggababble' | 'lordoftyphon' | 'kazali' | 'riot'
+  | 'legion' | 'summoner' | 'villageidiot' | 'engineer' | 'lycanthrope' | 'cultleader';
 
 export interface NightState {
   /** 当前所在的夜晚顺序位置 */
@@ -256,6 +257,14 @@ export interface GameState {
   /** 牙噶巴卜的秘密短语；某一天说了几次 */
   yaggaPhrase: string;
   yaggaSaid: { day: number; count: number };
+  /** 多出来的村夫里整局醉酒的那个 */
+  viDrunk: number | null;
+  /** 半兽人在场：被当成邪恶的那名善良玩家 */
+  fauxPaw: number | null;
+  /** 召唤师第三晚已经召唤过（或没召唤成） */
+  summonDone: boolean;
+  /** 隐士：外来者 0 / −1 */
+  hermitDelta: number;
   /** 恶魔的 3 个伪装 */
   bluffs: RoleId[];
   /** 占卜师干扰项 */

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { ROLES, type RoleId } from './roles';
 import { seeded } from './rng';
 import { newGame, randomSetup, refreshSetup, setCount, startDeal } from './setup';
-import { boomResolve, completeSlot, currentSlot, damselGuess, dealNext, execute, finishDay, golemNominates, mezeSaid, psychoKill, riotNominate, shouldRun, slotActor, yaggaSay, type SlotPayload } from './flow';
+import { boomResolve, completeSlot, cultVote, currentSlot, damselGuess, dealNext, execute, executeStoryteller, finishDay, golemNominates, mezeSaid, psychoKill, riotNominate, shouldRun, slotActor, yaggaSay, type SlotPayload } from './flow';
 import { makeCustom } from './custom';
 import { shugenjaChoices, shugenjaSteps } from './info';
 import { isEvil, isPoisoned, malfunction, seatOf } from './core';
@@ -367,5 +367,105 @@ describe('实验性恶魔（一）', () => {
     expect(s.winner).toBeNull();
     riotNominate(s, 5);
     expect(s.winner).toBe('good');
+  });
+});
+
+describe('实验性角色（二）：军团、召唤师、无神论者、村夫、工程师、半兽人、异教领袖、隐士', () => {
+  const towns: RoleId[] = ['chef', 'empath', 'monk', 'soldier', 'undertaker', 'washerwoman', 'fortuneteller', 'investigator', 'librarian'];
+
+  it('军团：好人只有爪牙数 + 1 个，其余都是军团', () => {
+    const def = makeCustom('军团', [...towns, 'butler', 'poisoner', 'spy', 'legion']);
+    const x = randomSetup(def, 10, seeded(2));
+    expect(x.roles.filter((r) => r === 'legion')).toHaveLength(7);
+    expect(x.demonChar).toBe('legion');
+  });
+
+  it('军团：每晚由说书人决定死谁；军团都死了善良赢', () => {
+    const s = game(['chef', 'empath', 'legion', 'legion', 'legion', 'legion', 'legion']);
+    expect(night(s)).toContain('demonInfo');
+    day(s);
+    const seen = night(s, { legion: { kind: 'target', target: 3 } });
+    expect(seen).toContain('legion');
+    expect(seatOf(s, 3).alive).toBe(false);
+    for (const n of [4, 5, 6]) seatOf(s, n).alive = false;
+    execute(s, 7);
+    expect(s.winner).toBe('good');
+  });
+
+  it('召唤师：开局没有恶魔，游戏不结束；第三晚造出恶魔', () => {
+    const def = makeCustom('召唤', [...towns, 'summoner', 'imp']);
+    const x = randomSetup(def, 7, seeded(5));
+    expect(x.roles.some((r) => ROLES[r].team === 'demon')).toBe(false);
+    expect(x.demonChar).toBe('summoner');
+    const s = game(['chef', 'empath', 'summoner', 'monk', 'soldier', 'undertaker', 'washerwoman'], [...towns, 'summoner', 'imp'], { demonChar: 'summoner' });
+    night(s);
+    expect(s.winner).toBeNull();
+    day(s);
+    night(s);
+    day(s);
+    expect(s.winner).toBeNull();
+    const seen = night(s, { summoner: { kind: 'summon', target: 2, role: 'imp' } });
+    expect(seen).toContain('summoner');
+    expect(seen).toContain('imp');
+    expect(seatOf(s, 2).role).toBe('imp');
+    expect(isEvil(seatOf(s, 2))).toBe(true);
+  });
+
+  it('召唤师死了：没有恶魔，善良获胜', () => {
+    const s = game(['chef', 'empath', 'summoner', 'monk', 'soldier', 'undertaker', 'washerwoman'], [...towns, 'summoner', 'imp'], { demonChar: 'summoner' });
+    night(s);
+    execute(s, 3);
+    expect(s.winner).toBe('good');
+  });
+
+  it('无神论者：没有邪恶角色；处决说书人善良获胜', () => {
+    const def = makeCustom('无神', [...towns, 'atheist', 'poisoner', 'imp']);
+    for (let i = 0; i < 30; i++) {
+      const x = randomSetup(def, 7, seeded(i));
+      if (x.roles.includes('atheist')) expect(x.roles.every((r) => !['minion', 'demon'].includes(ROLES[r].team))).toBe(true);
+    }
+    const s = game(['chef', 'empath', 'atheist', 'monk', 'soldier'], [...towns, 'atheist', 'imp'], { demonChar: 'atheist' });
+    night(s);
+    expect(s.winner).toBeNull();
+    executeStoryteller(s);
+    expect(s.winner).toBe('good');
+  });
+
+  it('村夫：多出来的村夫里有一个整局醉酒；每个村夫都醒', () => {
+    const s = game(['villageidiot', 'villageidiot', 'empath', 'poisoner', 'imp', 'monk', 'soldier']);
+    expect([1, 2]).toContain(s.viDrunk);
+    expect(malfunction(s, s.viDrunk!)).toBe(true);
+    const seen = night(s);
+    expect(seen.filter((x) => x === 'villageidiot')).toHaveLength(2);
+  });
+
+  it('工程师把恶魔换成另一种恶魔', () => {
+    const s = game(['engineer', 'chef', 'empath', 'poisoner', 'imp', 'monk', 'soldier'], ['engineer', 'chef', 'empath', 'poisoner', 'imp', 'zombuul', 'monk', 'soldier']);
+    night(s, { engineer: { kind: 'engineer', demon: 'zombuul' } });
+    expect(seatOf(s, 5).role).toBe('zombuul');
+  });
+
+  it('半兽人杀死好人：恶魔今晚杀不了人', () => {
+    const s = game(['lycanthrope', 'chef', 'empath', 'poisoner', 'imp', 'monk', 'soldier']);
+    s.fauxPaw = 7;
+    night(s);
+    day(s);
+    night(s, { lycanthrope: { kind: 'target', target: 2 }, imp: { kind: 'imp', target: 3 } });
+    expect(seatOf(s, 2).alive).toBe(false);
+    expect(seatOf(s, 3).alive).toBe(true);
+  });
+
+  it('异教领袖：所有善良玩家入教，他的阵营获胜', () => {
+    const s = game(['cultleader', 'chef', 'empath', 'poisoner', 'imp', 'monk', 'soldier']);
+    night(s, { cultleader: { kind: 'cult', evil: false } });
+    cultVote(s, 1, true);
+    expect(s.winner).toBe('good');
+  });
+
+  it('隐士在场、剧本有圣徒：处决隐士邪恶获胜', () => {
+    const s = game(['hermit', 'chef', 'empath', 'poisoner', 'imp', 'monk', 'soldier'], ['hermit', 'saint', 'chef', 'empath', 'poisoner', 'imp', 'monk', 'soldier']);
+    night(s);
+    execute(s, 1);
+    expect(s.winner).toBe('evil');
   });
 });

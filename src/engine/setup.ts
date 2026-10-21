@@ -1,4 +1,4 @@
-import { ROLES, roleName, type FabledId, type RoleId } from './roles';
+import { ROLES, isEvilTeam, roleName, type FabledId, type RoleId } from './roles';
 import { balance, recommend, type Choice } from './balance';
 import { actorFor, inPlay, isEvil, lilMonsta, notInPlay, scriptOf, scriptRolesOf, seatName } from './core';
 import { SCRIPTS, type ScriptDef, type ScriptId } from './editions';
@@ -65,9 +65,9 @@ export const godfatherMod = (script: ScriptRef, roles: RoleId[], alch?: RoleId |
 export const godfatherModFor = (s: GameState) => godfatherMod(scriptOf(s), s.seats.map((x) => x.role), s.alchemistPicked ? s.alchemistAbility : undefined);
 
 /** 外来者人数的修正：男爵 +2、气球驾驶员 +1、方古 +1、亡骨魔 −1、哨兵 ±1、教父 ±1。roles 要包含恶魔 */
-const outsiderDelta = (roles: RoleId[], sentinelDelta: number, script: ScriptRef = 'tb', godfatherDelta = 1, alch?: RoleId | null) =>
+const outsiderDelta = (roles: RoleId[], sentinelDelta: number, script: ScriptRef = 'tb', godfatherDelta = 1, alch?: RoleId | null, hermitDelta = 0) =>
   (roles.includes('baron') ? 2 : 0) + (roles.includes('balloonist') ? 1 : 0) + (roles.includes('fanggu') ? 1 : 0) - (roles.includes('vigormortis') ? 1 : 0) +
-  sentinelDelta + (godfatherMod(script, roles, alch) ? godfatherDelta : 0);
+  sentinelDelta + (godfatherMod(script, roles, alch) ? godfatherDelta : 0) + (roles.includes('hermit') ? hermitDelta : 0);
 
 export interface RandomSetup {
   /** 每个座位的角色（小怪宝时没有恶魔座位） */
@@ -75,6 +75,8 @@ export interface RandomSetup {
   demonChar: RoleId;
   /** 教父：外来者 +1 / −1 */
   godfatherDelta?: number;
+  /** 隐士：外来者 0 / −1 */
+  hermitDelta?: number;
 }
 
 export function randomSetup(script: ScriptRef, count: number, rng: Rng, sentinelDelta = 0): RandomSetup {
@@ -91,7 +93,8 @@ export function randomSetup(script: ScriptRef, count: number, rng: Rng, sentinel
     const outs = of('outsider');
     // 教父：本来没有外来者就只能 +1
     const gfd = o === 0 || rng() < 0.5 ? 1 : -1;
-    const outCount = Math.max(0, Math.min(outs.length, o + outsiderDelta([...towns, ...minions, demon], sentinelDelta, script, gfd)));
+    const hd = rng() < 0.5 ? 0 : -1;
+    const outCount = Math.max(0, Math.min(outs.length, o + outsiderDelta([...towns, ...minions, demon], sentinelDelta, script, gfd, undefined, hd)));
     const tFinal = count - minions.length - (lil ? 0 : 1) - outCount;
     if (tFinal < 1 && tries < 50) continue;
     // 多了就去掉几个（保留气球驾驶员/炼金术士），少了就补（不再补它们，免得外来者人数又变）
@@ -104,10 +107,40 @@ export function randomSetup(script: ScriptRef, count: number, rng: Rng, sentinel
       const more = pickTownsfolk(of('townsfolk').filter((r) => !towns.includes(r) && !SETUP_TOWNS.includes(r)), tFinal - towns.length, f4, rng, !!sc.f4Cap);
       towns = [...towns, ...more];
     }
-    const roles = withRequired([...towns, ...sample(outs, outCount, rng), ...minions, ...(lil ? [] : [demon])], rng);
+    let roles = [...towns, ...sample(outs, outCount, rng), ...minions, ...(lil ? [] : [demon])];
+    let demonChar: RoleId = demon;
+    const goodPool = (not: RoleId[]) => [...of('townsfolk'), ...of('outsider')].filter((r) => !not.includes(r) && r !== 'drunk' && r !== 'lunatic');
+    // 军团：大部分玩家是军团，好人只有"爪牙数 + 1"个
+    if (demon === 'legion') {
+      const good = shuffle(roles.filter((r) => ROLES[r].team === 'townsfolk' || ROLES[r].team === 'outsider'), rng).slice(0, m + 1);
+      roles = [...good, ...Array<RoleId>(count - good.length).fill('legion')];
+    }
+    // 召唤师：开局没有恶魔，多一个镇民
+    if (roles.includes('summoner')) {
+      const extra = shuffle(goodPool(roles).filter((r) => ROLES[r].team === 'townsfolk'), rng)[0];
+      roles = roles.filter((r) => ROLES[r].team !== 'demon');
+      if (extra) roles.push(extra);
+      demonChar = 'summoner';
+    }
+    // 无神论者：没有邪恶角色
+    if (roles.includes('atheist')) {
+      const evil = roles.filter((r) => isEvilTeam(ROLES[r].team));
+      const fill = shuffle(goodPool(roles), rng).slice(0, evil.length);
+      roles = [...roles.filter((r) => !isEvilTeam(ROLES[r].team)), ...fill];
+      demonChar = 'atheist';
+    }
+    // 村夫：再加 0–2 个（替换别的镇民）
+    if (roles.includes('villageidiot')) {
+      const extra = Math.floor(rng() * 3);
+      for (let k = 0; k < extra; k++) {
+        const i = roles.findIndex((r) => ROLES[r].team === 'townsfolk' && r !== 'villageidiot' && !SETUP_TOWNS.includes(r));
+        if (i >= 0) roles[i] = 'villageidiot';
+      }
+    }
+    roles = withRequired(roles, rng);
     // 自由配板：网页没做的相克不让同时上场
     if (sc.id === 'custom' && unhandledClash([...roles, demon]) && tries < 50) continue;
-    if (roles.length === count || tries >= 50) return { roles, demonChar: demon, godfatherDelta: gfd };
+    if (roles.length === count || tries >= 50) return { roles, demonChar, godfatherDelta: gfd, hermitDelta: hd };
   }
 }
 
@@ -323,6 +356,10 @@ export function newGame(): GameState {
     lleechHost: null,
     yaggaPhrase: '',
     yaggaSaid: { day: 0, count: 0 },
+    viDrunk: null,
+    fauxPaw: null,
+    summonDone: false,
+    hermitDelta: 0,
     bluffs: [],
     redHerring: null,
     setupZ: 0,
@@ -376,6 +413,7 @@ function applySetup(s: GameState, x: RandomSetup, rng: Rng) {
   s.seats = withTravellers(s, seatsFrom(shuffle(x.roles, rng)));
   s.demonChar = x.demonChar;
   s.godfatherDelta = x.godfatherDelta ?? 1;
+  s.hermitDelta = x.hermitDelta ?? 0;
   s.alchemistPicked = false;
   refreshSetup(s, rng);
 }
@@ -449,7 +487,7 @@ function normalize(s: GameState, rng: Rng, keep?: number) {
   // 本来没有外来者时教父只能 +1
   if (o === 0) s.godfatherDelta = 1;
   const alch = s.alchemistPicked ? s.alchemistAbility : undefined;
-  const target = Math.max(0, Math.min(scriptRolesOf(s, 'outsider').length, o + outsiderDelta([...roles, ...(s.demonChar ? [s.demonChar] : [])], s.sentinelDelta, scriptOf(s), s.godfatherDelta, alch)));
+  const target = Math.max(0, Math.min(scriptRolesOf(s, 'outsider').length, o + outsiderDelta([...roles, ...(s.demonChar ? [s.demonChar] : [])], s.sentinelDelta, scriptOf(s), s.godfatherDelta, alch, s.hermitDelta)));
   const team = (x: Seat) => ROLES[x.role].team;
   for (let guard = 0; guard < 6; guard++) {
     const outs = s.seats.filter((x) => team(x) === 'outsider');
@@ -480,6 +518,12 @@ export function toggleFabled(s: GameState, f: FabledId, on: boolean, rng: Rng) {
 
 export function setSentinelDelta(s: GameState, d: number, rng: Rng) {
   s.sentinelDelta = d;
+  normalize(s, rng);
+  refreshSetup(s, rng);
+}
+
+/** 外来者修正改了（隐士）：重新调外来者人数 */
+export function normalizeOutsiders(s: GameState, rng: Rng) {
   normalize(s, rng);
   refreshSetup(s, rng);
 }
@@ -604,7 +648,13 @@ export function refreshSetup(s: GameState, rng: Rng) {
     s.alchemistAbility = alchemistAbilityFor(scriptOf(s), s.drunkFake === 'alchemist' ? [...roles, 'alchemist'] : roles);
   }
   // 疯子看到在场的恶魔；小怪宝时给他看涡流
-  s.lunaticFake = inPlay(s, 'lunatic') ? (lilMonsta(s) ? 'vortox' : s.demonChar) : null;
+  s.lunaticFake = inPlay(s, 'lunatic')
+    ? lilMonsta(s)
+      ? 'vortox'
+      : s.demonChar && ROLES[s.demonChar].team === 'demon'
+        ? s.demonChar
+        : (scriptRolesOf(s, 'demon')[0] ?? 'imp')
+    : null;
   const am = amnesiacChoices(s);
   s.amnesiacAbility = am.length ? am[recommend(am, score, rng)].value : null;
   // 5–6 人局官方规则：恶魔没有伪装
@@ -621,6 +671,24 @@ export function refreshSetup(s: GameState, rng: Rng) {
   s.xaanNight = s.seats.some((x) => x.role === 'xaan') ? s.seats.filter((x) => !x.traveller && ROLES[x.role].team === 'outsider').length : 0;
   if (s.seats.some((x) => x.role === 'mezepheles') && !s.mezeWord) s.mezeWord = pick(MEZE_WORDS, rng);
   if (s.demonChar === 'yaggababble' && !s.yaggaPhrase) s.yaggaPhrase = pick(YAGGA_PHRASES, rng);
+  // 村夫不止一个：多出来的里有一个整局醉酒
+  const vis = s.seats.filter((x) => x.role === 'villageidiot');
+  s.viDrunk = vis.length >= 2 ? pick(vis, rng).n : null;
+  const fp = fauxPawChoices(s, rng);
+  s.fauxPaw = fp.length ? fp[recommend(fp, balance(s).score, rng)].value : null;
+}
+
+/** 半兽人：哪个善良玩家被当成邪恶 */
+export function fauxPawChoices(s: GameState, rng: Rng): Choice<number>[] {
+  if (!s.seats.some((x) => x.role === 'lycanthrope')) return [];
+  const good = s.seats.filter((x) => !x.traveller && !isEvil(x) && x.role !== 'lycanthrope');
+  if (!good.length) return [];
+  const lbl = (x: Seat) => `${seatName(x.n)}（${roleName(x.role)}）`;
+  const strong = [...good].sort((a, b) => ROLES[b.role].weight - ROLES[a.role].weight)[0];
+  const mid = good.length > 1 ? pick(good.filter((x) => x.n !== strong.n), rng) : strong;
+  const out: Choice<number>[] = [{ key: 'mid', label: lbl(mid), value: mid.n, lean: 0, truth: true, standard: true, reason: '随便一名善良玩家，标准做法。' }];
+  if (strong.n !== mid.n) out.push({ key: 'strong', label: lbl(strong), value: strong.n, lean: -1, truth: true, reason: `${roleName(strong.role)}被当成邪恶，好人会怀疑一个得力的人，帮邪恶。` });
+  return out;
 }
 
 /** 牙噶巴卜的秘密短语：平常说话会用到的 */

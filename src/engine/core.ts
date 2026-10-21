@@ -128,7 +128,10 @@ export const tempDrunk = (s: GameState, n: number) => s.tempDrunk.some((d) => d.
 /** 能力失灵：酒鬼、提线木偶（以为自己是好人）、被心上人弄醉的人，或正在中毒 */
 export function malfunction(s: GameState, n: number): boolean {
   const r = seatOf(s, n).role;
-  return r === 'drunk' || r === 'marionette' || s.sweetheartDrunk === n || philoDrunk(s, n) || tempDrunk(s, n) || isPoisoned(s, n) || preachedNow(s, n) || puzzleDrunkNow(s, n);
+  return (
+    r === 'drunk' || r === 'marionette' || s.sweetheartDrunk === n || philoDrunk(s, n) || tempDrunk(s, n) || isPoisoned(s, n) || preachedNow(s, n) ||
+    puzzleDrunkNow(s, n) || (s.viDrunk === n && r === 'villageidiot')
+  );
 }
 
 /** 被传教士选中的爪牙：传教士活着且健康时没有能力 */
@@ -176,6 +179,8 @@ export function wakesAs(s: GameState, st: Seat, r: RoleId): boolean {
   if (s.alchemistAbility === r && believedRole(s, st) === 'alchemist') return true;
   // 科学怪人：恶魔在那个善良角色的位置醒（科学怪人活着且健康）
   if (s.boffinAbility === r && teamOf(st.role) === 'demon' && boffinActive(s)) return true;
+  // 隐士：剧本上所有外来者的能力
+  if (st.role === 'hermit' && r !== 'hermit' && teamOf(r) === 'outsider' && scriptOf(s).roles.includes(r)) return true;
   return s.gained[st.n] === r;
 }
 

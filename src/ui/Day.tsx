@@ -10,7 +10,7 @@ import {
   harpyPunish, nominateVirgin, previewSlayer, previewVirgin, setCannibalFake, setDemonVoted, savantVisit, scapegoatFor, setDuchessVisitors,
   slayerShoot, markUsed, nomResults, voteNeed, type NomResult, type NomRow,
   cereVerdict, jugglerCanGuess, jugglerCount, jugglerGuess, setMinionNominated, twinsBlock, witchActive, witchStrikes,
-  damselGuess, golemNominates, puzzleGuess, boomResolve, mezeSaid, psychoKill, vizierExecute, riotDay, riotNominate, yaggaSay,
+  damselGuess, golemNominates, puzzleGuess, boomResolve, mezeSaid, psychoKill, vizierExecute, riotDay, riotNominate, yaggaSay, cultVote, executeStoryteller,
 } from '../engine/flow';
 import { activeTravellers, beggarLearns, exile, gunslingerPreview, gunslingerShoot, leave } from '../engine/travellers';
 import { clone } from '../engine/core';
@@ -70,7 +70,7 @@ function demonDeathWarning(s: GameState, n: number, verb: '被处决了' | '死�
 }
 
 type Panel = 'nom' | 'virgin' | 'slayer' | 'exec' | 'artist' | 'fisherman' | 'savant' | 'amnesiac' | 'mutant' | 'duchess' | 'fear' | 'alsaahir' | 'gossip' | 'tinker' | 'juggler' | 'golem' | 'damsel' | 'puzzle'
-  | 'psycho' | 'vizier' | 'meze' | null;
+  | 'psycho' | 'vizier' | 'meze' | 'cult' | null;
 
 export function DayScreen({ g }: { g: Game }) {
   const s = g.s;
@@ -207,6 +207,7 @@ export function DayScreen({ g }: { g: Game }) {
       {panel === 'psycho' && <PsychoSheet g={g} onClose={close} />}
       {panel === 'vizier' && <VizierSheet g={g} onClose={close} />}
       {panel === 'meze' && <MezeSheet g={g} onClose={close} />}
+      {panel === 'cult' && <CultSheet g={g} onClose={close} />}
       {panel === 'nom' && (
         <NomSheet
           g={g}
@@ -257,6 +258,8 @@ function DayAbilities({ s, open }: { s: GameState; open: (p: Panel) => void }) {
   if (vizier) items.push(btn('vizier', `维齐尔（${seatName(vizier.n)}）下令立即处决`));
   const meze = s.seats.find((x) => x.role === 'mezepheles');
   if (meze && !s.mezeUsed && s.mezeTarget === null && s.mezeWord) items.push(btn('meze', `有善良玩家说出了秘密词「${s.mezeWord}」`));
+  const cult = holder('cultleader');
+  if (cult) items.push(btn('cult', `异教领袖（${seatName(cult.n)}）发起入教投票`));
   const golem = holder('golem');
   if (golem && !golem.used) items.push(btn('golem', `魔像（${seatName(golem.n)}）提名了一个人`));
   const damsel = s.seats.find((x) => x.role === 'damsel');
@@ -450,6 +453,14 @@ function ExecSheet({ g, onClose }: { g: Game; onClose: () => void }) {
         <button className={`btn btn-block ${noneEnding ? 'btn-danger' : 'btn-outline'}`} onClick={() => g.commit((x) => execute(x, null))}>
           {noneEnding ? `今天没人被处决 → ${noneEnding}` : '今天没人被处决'}
         </button>
+        {scriptOf(s).roles.includes('atheist') && (
+          <ConfirmButton
+            className="btn btn-danger btn-block"
+            label={`说书人（你）被处决 → ${s.seats.some((x) => x.role === 'atheist') ? '善良' : '邪恶'}立即获胜`}
+            confirmLabel="再点一次确认"
+            onConfirm={() => g.commit((x) => executeStoryteller(x))}
+          />
+        )}
       </div>
     </Sheet>
   );
@@ -1026,6 +1037,12 @@ function SecretNotices({ s }: { s: GameState }) {
   const vg = s.vigor.filter((v) => !seatOf(s, v.minion).alive && teamOf(seatOf(s, v.minion).role) === 'minion');
   if (vg.length && s.seats.some((x) => x.role === 'vigormortis' && x.alive))
     out.push(<p key="vg">被亡骨魔杀死的爪牙 {vg.map((v) => seatName(v.minion)).join('、')} 能力还在{vg.some((v) => v.poisoned) ? `；${vg.filter((v) => v.poisoned).map((v) => seatName(v.poisoned)).join('、')} 因此中毒` : ''}。</p>);
+  if (s.seats.some((x) => x.alive && x.role === 'legion'))
+    out.push(<p key="lg">军团在场：数票时如果只有邪恶玩家举手，就宣布这次是 0 票。只剩一个好人活着时，你可以宣布邪恶获胜。</p>);
+  if (s.seats.some((x) => x.role === 'atheist'))
+    out.push(<p key="at">无神论者在场：没有邪恶玩家，你可以打破规则假装有邪恶。有人提名你（说书人）并且票数够，就处决你：善良获胜。</p>);
+  if (s.fauxPaw && s.seats.some((x) => x.role === 'lycanthrope' && x.alive)) out.push(<p key="fp">{seatName(s.fauxPaw)} 被半兽人的能力当成邪恶（各种信息里算邪恶）。</p>);
+  if (s.seats.some((x) => x.role === 'summoner' && x.alive) && !s.summonDone) out.push(<p key="sm">召唤师还没召唤恶魔（第三晚）：现在没有恶魔，游戏照常进行。</p>);
   const wraith = s.seats.find((x) => x.alive && x.role === 'wraith');
   if (wraith) out.push(<p key="wr">亡魂（{seatName(wraith.n)}）：夜里每次叫醒邪恶玩家时，先叫醒他。</p>);
   if (s.xaanNight && s.night === s.xaanNight && s.seats.some((x) => x.role === 'xaan' && x.alive))
@@ -1770,5 +1787,33 @@ function BoomCard({ g }: { g: Game }) {
         确认
       </button>
     </div>
+  );
+}
+
+/** 异教领袖发起入教投票 */
+function CultSheet({ g, onClose }: { g: Game; onClose: () => void }) {
+  const s = g.s;
+  const c = holderOf(s, 'cultleader')!;
+  const [all, setAll] = useState<boolean | null>(null);
+  const bad = malfunction(s, c.n);
+  const team = isEvil(c) ? '邪恶' : '善良';
+  return (
+    <Sheet title={`异教领袖（${seatName(c.n)}）发起入教`} onClose={onClose}>
+      <div className="stack">
+        <p className="dim">像放逐旅行者那样走一圈数票（不需要投票标记）。所有善良玩家都举手，他的阵营（现在是{team}）直接获胜。</p>
+        <TwoChoice value={all} onChange={setAll} yes="所有善良玩家都举手了" no="没有全部举手" />
+        {all !== null && (
+          <>
+            <div className={`card${all && !bad ? ' card-warn' : ''}`}>
+              <p>{all ? (bad ? '他中毒/醉酒：教派没有成立，什么都没发生。' : `教派成立：${team}阵营获胜！`) : '什么都没有发生。'}</p>
+            </div>
+            <SayBox title="公开宣布" lines={all && !bad ? [`教派成立！${team}阵营获胜！`] : ['什么都没有发生。']} />
+          </>
+        )}
+        <button className="btn btn-primary btn-block" disabled={all === null} onClick={() => { g.commit((st) => cultVote(st, c.n, !!all)); onClose(); }}>
+          确认
+        </button>
+      </div>
+    </Sheet>
   );
 }

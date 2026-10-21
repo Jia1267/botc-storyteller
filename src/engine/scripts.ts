@@ -109,9 +109,35 @@ export const SLOT_TITLE: Record<SlotId, string> = {
   lordoftyphon: '堤丰之首',
   kazali: '卡扎力',
   riot: '暴乱：爪牙变成暴乱',
+  legion: '军团：今晚谁死',
+  summoner: '召唤师',
+  villageidiot: '村夫',
+  engineer: '工程师',
+  lycanthrope: '半兽人',
+  cultleader: '异教领袖的阵营',
 };
 
 const SLOT_LINES: Partial<Record<SlotId, Lines>> = {
+  summoner: {
+    simple: ['请选择一名玩家，再在角色表上指一个恶魔：他会变成这个恶魔。'],
+    atmo: ['召唤阵亮了起来……', '选一个容器，再选一个恶魔。'],
+  },
+  villageidiot: {
+    simple: ['请选择一名玩家。'],
+    atmo: ['村夫歪着头看着大家……', '你想看看谁？'],
+  },
+  engineer: {
+    simple: ['你要用能力吗？要用就在角色表上指恶魔，或者指几个爪牙。'],
+    atmo: ['工程师铺开了图纸……', '你要造出什么样的敌人？不用就摇头。'],
+  },
+  lycanthrope: {
+    simple: ['请选择一名活着的玩家。'],
+    atmo: ['满月升起，你感到了饥饿……', '选择你的猎物。'],
+  },
+  cultleader: {
+    simple: ['你现在是这个阵营。'],
+    atmo: ['教派的低语在你耳边回响……'],
+  },
   ojo: {
     simple: ['请在角色表上指一个角色：他会死亡。'],
     atmo: ['奥赫的眼睛在黑暗里睁开……', '你要哪个角色的命？'],

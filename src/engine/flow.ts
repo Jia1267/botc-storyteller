@@ -25,11 +25,18 @@ const ROLE_SLOTS: SlotId[] = [
   'eviltwin', 'witch', 'cerenovus', 'pithag',
   'steward', 'knight', 'noble', 'shugenja', 'highpriestess', 'king', 'choirboy', 'nightwatchman', 'farmer', 'acrobat', 'preacher',
   'huntsman', 'ogre', 'qutler', 'boffin', 'wizard', 'organgrinder', 'mezepheles',
+  'villageidiot', 'engineer', 'lycanthrope', 'cultleader', 'summoner',
 ];
 
 /** 恶魔自己醒来行动的步骤（驱魔人选中恶魔、麻脸巫婆造了恶魔说书人决定今晚不死人时都不醒） */
 const DEMON_SLOTS: SlotId[] = ['zombuul', 'alhadikhia', 'pukka', 'shabaloth', 'po', 'fanggu', 'nodashii', 'vigormortis', 'ojo', 'lleech', 'lordoftyphon', 'kazali'];
 
+
+/** 召唤师还能在第三晚造恶魔：他活着、健康、还没召唤过 */
+export function summonerPending(s: GameState): boolean {
+  const sm = s.seats.find((x) => x.role === 'summoner' && x.alive);
+  return !!sm && !s.summonDone && !malfunction(s, sm.n);
+}
 
 /** 女巫的诅咒还有效：女巫的能力在（活着或被亡骨魔杀死）、健康、存活超过三人 */
 export function witchActive(s: GameState): boolean {
@@ -143,7 +150,8 @@ function candidates(s: GameState, slot: SlotId): Seat[] {
     if (teamOf(x.role) === 'minion' && preachedNow(s, x.n)) return false;
     if (slot === 'king') return x.alive && s.seats.filter((y) => !y.alive).length >= s.seats.filter((y) => y.alive).length;
     if (slot === 'choirboy') return x.alive && kingKilledTonight(s);
-    if (slot === 'nightwatchman' || slot === 'huntsman' || slot === 'wizard') return x.alive && !x.used;
+    if (slot === 'nightwatchman' || slot === 'huntsman' || slot === 'wizard' || slot === 'engineer') return x.alive && !x.used;
+    if (slot === 'summoner') return x.alive && (s.night === 1 || (s.night === 3 && !s.summonDone));
     if (slot === 'boffin') return x.alive && !!s.boffinAbility;
     if (slot === 'philosopher') return x.alive && (!x.used || !!s.ns?.philoNow);
     if (slot === 'juggler') return x.alive && s.juggler?.seat === x.n && s.juggler.day === s.night - 1 && !!s.juggler.guesses;
@@ -193,7 +201,10 @@ export function shouldRun(s: GameState, slot: SlotId): boolean {
       return true;
     // 唯一的爪牙是提线木偶（他不知道自己是爪牙）：没有爪牙要互认
     case 'minionInfo':
-      return s.night === 1 && s.count >= 7 && !lilMonsta(s) && minionSeats(s).length > 0 && !poppyActive(s);
+      return s.night === 1 && s.count >= 7 && !lilMonsta(s) && minionSeats(s).length > 0 && !poppyActive(s) && !!demonSeat(s);
+    // 军团：每晚由说书人决定死不死人
+    case 'legion':
+      return s.night > 1 && s.seats.some((x) => x.alive && x.role === 'legion');
     // 牙噶巴卜：第一晚看短语；之后前一天说过短语的那晚由你决定谁死
     case 'yaggababble': {
       const d = demonSeat(s);
@@ -218,7 +229,7 @@ export function shouldRun(s: GameState, slot: SlotId): boolean {
       return !!p && !p.alive && !p.death?.sick && !s.poppyResolved && !!demonSeat(s);
     }
     case 'demonInfo':
-      return s.night === 1 && s.count >= 7 && !lilMonsta(s);
+      return s.night === 1 && s.count >= 7 && !lilMonsta(s) && !!demonSeat(s);
     case 'lilmonsta':
       return lilMonsta(s) && s.seats.some((x) => x.alive && ROLES[x.role].team === 'minion');
     case 'duchess':
@@ -297,7 +308,7 @@ export function dealNext(s: GameState) {
 function win(s: GameState, who: 'good' | 'evil', reason: string, phase: 'night' | 'day') {
   if (s.winner) return;
   // 异端分子：胜负反过来（他死了也算，中毒醉酒不算）
-  const her = s.seats.find((x) => x.role === 'heretic');
+  const her = s.seats.find((x) => x.role === 'heretic' || (x.role === 'hermit' && scriptOf(s).roles.includes('heretic')));
   if (her && !malfunction(s, her.n)) {
     who = who === 'good' ? 'evil' : 'good';
     reason = `${reason}；异端分子（${seatName(her.n)}）在场，胜负反过来`;
@@ -314,6 +325,13 @@ export function checkWin(s: GameState, phase: 'night' | 'day'): boolean {
   if (!demonSeat(s) && s.mastermindDay && s.night <= s.mastermindDay) return false;
   // 镜像双子：两个双子都活着时善良赢不了，游戏继续
   if (!demonSeat(s) && twinsBlock(s)) return false;
+  // 召唤师还没召唤：没有恶魔也不结束
+  if (!demonSeat(s) && summonerPending(s)) return false;
+  // 无神论者：本来就没有恶魔；只剩两人善良输
+  if (!demonSeat(s) && s.seats.some((x) => x.role === 'atheist')) {
+    if (aliveCount(s) <= 2) win(s, 'evil', '无神论者在场，只剩两名玩家存活，善良落败', phase);
+    return !!s.winner;
+  }
   if (!demonSeat(s)) win(s, 'good', lilMonsta(s) ? '照看小怪宝的人死了' : '恶魔死了', phase);
   // 假死的僵怖其实还活着，要算上
   else if (aliveCount(s) + (s.zombuulFake ? 1 : 0) <= 2) win(s, 'evil', '只剩两名玩家存活', phase);
@@ -383,7 +401,10 @@ export type SlotPayload =
   | { kind: 'wish'; text: string | null }
   | { kind: 'ojo'; role: RoleId; target: number | null }
   | { kind: 'kazali'; picks: { seat: number; role: RoleId }[] }
-  | { kind: 'yagga'; picks: number[] };
+  | { kind: 'yagga'; picks: number[] }
+  | { kind: 'engineer'; demon?: RoleId; minions?: { seat: number; role: RoleId }[] }
+  | { kind: 'cult'; evil: boolean }
+  | { kind: 'summon'; target: number; role: RoleId };
 
 /** 这一步里玩家用能力"选择"了哪些人（莽夫用） */
 function chosenSeats(p: SlotPayload): number[] {
@@ -506,6 +527,8 @@ function usedAbility(p: SlotPayload): boolean {
       return !!p.text;
     case 'yagga':
       return p.picks.length > 0;
+    case 'engineer':
+      return !!p.demon || !!p.minions?.length;
     case 'seamstress':
       return !!p.picks;
     case 'po':
@@ -1234,6 +1257,81 @@ export function completeSlot(s: GameState, p: SlotPayload) {
       for (const x of s.seats) if (x.alive && teamOf(x.role) === 'minion') x.role = 'riot';
       addLog(s, 'night', '第三晚：所有爪牙变成了暴乱，已告知他们');
       break;
+    case 'villageidiot':
+      if (p.kind === 'yesno') {
+        infoStat(s, p.truth);
+        addLog(s, 'night', `村夫 ${who}：${p.yes ? '邪恶' : '善良'}${tag(p.truth)}`, p.truth);
+      }
+      break;
+    case 'engineer':
+      if (p.kind === 'engineer') {
+        if (!p.demon && !p.minions?.length) addLog(s, 'night', `工程师 ${who} 今晚不用能力`);
+        else {
+          actor!.used = true;
+          const ok = !malfunction(s, actor!.n);
+          const changes: string[] = [];
+          if (ok && p.demon) {
+            const d = demonSeat(s);
+            if (d && d.role !== p.demon) {
+              changes.push(`${seatName(d.n)} 从${roleName(d.role)}变成${roleName(p.demon)}`);
+              d.role = p.demon;
+              s.roleSince[d.n] = s.night;
+            }
+          }
+          if (ok && p.minions)
+            for (const c of p.minions) {
+              const x = seatOf(s, c.seat);
+              if (x.role === c.role) continue;
+              changes.push(`${seatName(x.n)} 从${roleName(x.role)}变成${roleName(c.role)}`);
+              x.role = c.role;
+              x.used = false;
+              s.roleSince[x.n] = s.night;
+            }
+          addLog(s, 'night', `工程师 ${who} 用了能力：${!ok ? '（中毒/醉酒，无效）' : changes.length ? changes.join('，') + '，已告知他们' : '选的角色都已在场，什么都没变'}`);
+        }
+      }
+      break;
+    case 'lycanthrope':
+      if (p.kind === 'target') {
+        const x = seatOf(s, p.target);
+        addLog(s, 'night', `半兽人 ${who} 选择了 ${seatName(p.target)}`);
+        if (malfunction(s, actor!.n)) addLog(s, 'night', '半兽人中毒/醉酒：什么都没有发生');
+        else if (!isEvil(x) && x.alive && s.fauxPaw !== x.n) {
+          if (kill(s, x.n, 'night', '被半兽人杀死')) {
+            ns.demonNoKill = '半兽人今晚杀了一个好人，恶魔不能杀人';
+            addLog(s, 'night', '他是好人：死亡，恶魔今晚不能杀人');
+          }
+        } else addLog(s, 'night', '他是邪恶的（或被当成邪恶）：不会死，恶魔照常杀人');
+      }
+      break;
+    case 'cultleader':
+      if (p.kind === 'cult') {
+        const was = isEvil(actor!);
+        if (!malfunction(s, actor!.n)) setAlignment(actor!, p.evil);
+        const now = isEvil(actor!);
+        addLog(s, 'night', `异教领袖 ${who} 现在是${now ? '邪恶' : '善良'}阵营${was !== now ? '（变了，已告知他）' : ''}`);
+      }
+      break;
+    case 'summoner':
+      if (s.night === 1) addLog(s, 'night', `召唤师 ${who} 得知伪装角色 ${s.bluffs.map(roleName).join('、')}`);
+      else if (p.kind === 'summon') {
+        s.summonDone = true;
+        if (malfunction(s, actor!.n)) addLog(s, 'night', `召唤师 ${who} 中毒/醉酒：没能召唤出恶魔`);
+        else {
+          const x = seatOf(s, p.target);
+          x.role = p.role;
+          delete x.alignment;
+          s.roleSince[x.n] = s.night;
+          addLog(s, 'night', `召唤师 ${who} 把 ${seatName(x.n)} 变成了邪恶的${roleName(p.role)}，已告知他`);
+        }
+      }
+      break;
+    case 'legion':
+      if (p.kind === 'target') {
+        addLog(s, 'night', `军团：说书人决定 ${seatLabel(s, p.target)} 死亡`);
+        kill(s, p.target, 'night', '被恶魔杀死（军团）');
+      } else addLog(s, 'night', '军团：今晚没有人死');
+      break;
     case 'dusk':
       break;
   }
@@ -1646,7 +1744,7 @@ export function execute(s: GameState, n: number | null, cause = '被处决', opt
   }
   s.lastExecution = { night: s.night, seat: n };
   addLog(s, 'day', `${seatLabel(s, n)} ${cause}`);
-  if (st.role === 'saint' && !malfunction(s, n)) return win(s, 'evil', '圣徒被处决', 'day');
+  if ((st.role === 'saint' || (st.role === 'hermit' && scriptOf(s).roles.includes('saint'))) && !malfunction(s, n)) return win(s, 'evil', '圣徒被处决', 'day');
   if (st.role === 'goblin' && !malfunction(s, n) && opts.goblinClaimed) return win(s, 'evil', '哥布林被提名时公开声称自己是哥布林，并被处决', 'day');
   const fm = s.seats.find((x) => x.role === 'fearmonger' && x.alive);
   const fearNominated = opts.fearmongerNominated ?? s.fearNominated === n;
@@ -1755,6 +1853,21 @@ export function twinActive(s: GameState): boolean {
 }
 
 /* ---------------- 梦殒春宵：白天 ---------------- */
+
+/** 异教领袖发起入教：所有善良玩家都举手，他的阵营获胜 */
+export function cultVote(s: GameState, cultN: number, allJoined: boolean) {
+  const c = seatOf(s, cultN);
+  addLog(s, 'day', `异教领袖（${seatName(cultN)}）发起入教投票：${allJoined ? '所有善良玩家都加入了' : '没有所有善良玩家都加入'}`);
+  if (allJoined && !malfunction(s, cultN)) win(s, isEvil(c) ? 'evil' : 'good', `所有善良玩家都加入了异教领袖（${seatName(cultN)}）的教派`, 'day');
+}
+
+/** 处决了说书人：无神论者在场善良获胜，否则邪恶获胜 */
+export function executeStoryteller(s: GameState) {
+  s.executed = null;
+  addLog(s, 'day', '说书人被处决');
+  const atheist = s.seats.some((x) => x.role === 'atheist');
+  win(s, atheist ? 'good' : 'evil', atheist ? '无神论者在场，说书人被处决' : '没有无神论者，却处决了说书人', 'day');
+}
 
 /** 牙噶巴卜白天公开说了一次秘密短语 */
 export function yaggaSay(s: GameState, delta: number) {
