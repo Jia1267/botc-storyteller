@@ -81,9 +81,61 @@ export const SLOT_TITLE: Record<SlotId, string> = {
   fanggu: '方古',
   nodashii: '诺-达鲺',
   vigormortis: '亡骨魔',
+  steward: '事务官',
+  knight: '骑士',
+  noble: '贵族',
+  shugenja: '修行者',
+  highpriestess: '女祭司',
+  king: '国王',
+  choirboy: '唱诗男孩',
+  nightwatchman: '守夜人',
+  farmer: '农夫死了：一人变成农夫',
+  acrobat: '杂技演员',
+  preacher: '传教士',
+  poppygrower: '罂粟种植者死了：邪恶互认',
 };
 
 const SLOT_LINES: Partial<Record<SlotId, Lines>> = {
+  steward: {
+    simple: ['这名玩家是善良的。'],
+    atmo: ['管家的账本上，有一个可靠的名字……', '这个人是善良的。'],
+  },
+  knight: {
+    simple: ['这两名玩家都不是恶魔。'],
+    atmo: ['骑士举起盾牌……', '这两个人，都不是恶魔。'],
+  },
+  noble: {
+    simple: ['这三名玩家中，恰好有一人是邪恶的。'],
+    atmo: ['贵族的宴会上来了三位客人……', '其中恰好一位，心怀不轨。'],
+  },
+  shugenja: {
+    simple: ['离你最近的邪恶玩家，在这个方向。'],
+    atmo: ['风从这边吹来，带着邪恶的气息……'],
+  },
+  highpriestess: {
+    simple: ['我觉得你最该去找这个人聊聊。'],
+    atmo: ['神谕在烛光里显现……', '去和这个人谈谈吧。'],
+  },
+  king: {
+    simple: ['这个角色还活着。'],
+    atmo: ['国王俯视着他的臣民……', '这个角色，还活在你的王国里。'],
+  },
+  choirboy: {
+    simple: ['杀死国王的恶魔，是这名玩家。'],
+    atmo: ['唱诗班的歌声停了……', '杀死国王的，就是他。'],
+  },
+  nightwatchman: {
+    simple: ['你要用能力吗？要用就指一名玩家：他会知道你是守夜人。'],
+    atmo: ['守夜人提着灯，在街上巡逻……', '你要让谁知道你的身份？不用就摇头。'],
+  },
+  acrobat: {
+    simple: ['请选择一名玩家。'],
+    atmo: ['走钢丝的人张开双臂……', '选一个人。'],
+  },
+  preacher: {
+    simple: ['请选择一名玩家。'],
+    atmo: ['布道的钟声响起……', '你要向谁传道？'],
+  },
   clockmaker: {
     simple: ['恶魔和离他最近的爪牙之间，隔了这么多步。'],
     atmo: ['钟摆来回摆动……', '从恶魔到他最近的爪牙，要走这么多步。'],

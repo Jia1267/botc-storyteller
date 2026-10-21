@@ -7,7 +7,7 @@ import {
 } from '../engine/core';
 import {
   completeSlot, currentSlot, demonKillPreview, effectiveSlot, fangguJumps, goonInformed, goonTriggered, godfatherOutsiders, hadikhiaPreview, minionSeats, notWakingTonight,
-  pithagBlock, previewImp, shouldRun, slotActor, slotsFor, type SlotPayload,
+  pithagBlock, previewImp, shouldRun, slotActor, slotsFor, type SlotPayload, magicianSeat, poppyActive,
 } from '../engine/flow';
 import { firstNightOnly } from '../engine/nightOrder';
 import type { Choice } from '../engine/balance';
@@ -18,6 +18,8 @@ import {
   pairChoices, pairVerdict, pixieChoices, plagueChoices, revealChoices, revealVerdict, seamstressChoices, starpassChoices, stHarpyChoices, stPoisonChoices, sweetheartChoices,
   widowInformChoices, type PairInfo, type PairKind,
   clockmakerChoices, clockmakerCount, jugglerChoices, mathChoices, oracleChoices, pithagNightChoices, sageChoices, towncrierChoices, vigorPoisonChoices,
+  SEATS_COUNT, choirboyChoices, farmerChoices, kingChoices, knightChoices, nobleChoices, priestessChoices, seatsVerdict, shugenjaChoices, shugenjaSteps,
+  stewardChoices, type SeatsKind,
 } from '../engine/info';
 import { SLOT_TITLE, dawnLines, librarianZeroLines, slotLines } from '../engine/scripts';
 import type { GameState, Seat, SlotId } from '../engine/types';
@@ -62,7 +64,7 @@ export function NightScreen({ g }: { g: Game }) {
             {slot === 'amnesiac' && s.amnesiacAbility ? `（像${roleName(s.amnesiacAbility)}）` : ''}
             {slot === 'philosopher' && s.ns!.philoNow ? `：用${roleName(s.ns!.philoNow)}的能力` : ''}
           </h2>
-          {actor && !(slot === 'lunatic' && s.night === 1) && <ActorLine s={s} actor={actor} slot={eff} />}
+          {actor && !(slot === 'lunatic' && s.night === 1) && slot !== 'farmer' && !(slot === 'king' && s.night === 1) && <ActorLine s={s} actor={actor} slot={eff} />}
         </div>
         <SlotBody g={g} s={s} slot={eff} actor={actor} />
       </div>
@@ -373,6 +375,25 @@ function SlotBody({ g, s, slot, actor }: { g: Game; s: GameState; slot: SlotId; 
     case 'nodashii':
     case 'vigormortis':
       return <SvDemonStep g={g} s={s} actor={actor!} slot={slot} />;
+    case 'steward':
+    case 'knight':
+    case 'noble':
+    case 'highpriestess':
+    case 'choirboy':
+      return <SeatsInfoStep g={g} s={s} actor={actor!} kind={slot} />;
+    case 'shugenja':
+      return <ShugenjaStep g={g} s={s} actor={actor!} />;
+    case 'king':
+      return s.night === 1 ? <KingRevealStep g={g} s={s} /> : <KingStep g={g} s={s} actor={actor!} />;
+    case 'nightwatchman':
+      return <NightwatchStep g={g} s={s} actor={actor!} />;
+    case 'farmer':
+      return <FarmerStep g={g} s={s} actor={actor!} />;
+    case 'acrobat':
+    case 'preacher':
+      return <TargetStep g={g} s={s} actor={actor!} slot={slot} />;
+    case 'poppygrower':
+      return <PoppyStep g={g} s={s} />;
     default:
       return <SkipStep g={g} />;
   }
@@ -431,7 +452,10 @@ function MinionInfoStep({ g, s }: { g: Game; s: GameState }) {
   const ms = seatsText(minions.map((x) => x.n));
   const one = minions.length === 1;
   const d = demonSeat(s)!;
-  usePoint([d.n]);
+  const mg = magicianSeat(s);
+  // 魔术师：爪牙以为他也是恶魔，两人一起指，顺序打乱
+  const both = useMemo(() => (mg ? shuffle([d.n, mg.n], stepRng(s, 2)) : [d.n]), [s, d.n, mg]);
+  usePoint(both);
   return (
     <>
       <DoBox
@@ -439,9 +463,15 @@ function MinionInfoStep({ g, s }: { g: Game; s: GameState }) {
           <>
             轻拍爪牙 <b>{ms}</b> 的肩膀，让{one ? '他' : '他们'}睁眼。
           </>,
-          <>
-            用手指向恶魔：<b>{seatName(d.n)}</b>。
-          </>,
+          mg ? (
+            <>
+              用手依次指向 <b>{seatsText(both)}</b>，告诉他们"这是你们的恶魔"（其中 {seatName(mg.n)} 是魔术师，别说出来）。
+            </>
+          ) : (
+            <>
+              用手指向恶魔：<b>{seatName(d.n)}</b>。
+            </>
+          ),
           one ? '等他看清，再让他闭眼。' : '等他们互相看清彼此，再让他们闭眼。',
         ]}
       />
@@ -459,9 +489,13 @@ function MinionInfoStep({ g, s }: { g: Game; s: GameState }) {
 function DemonInfoStep({ g, s }: { g: Game; s: GameState }) {
   const done = useDone(g);
   const ui = useUi();
-  const ms = seatsText(minionSeats(s).map((x) => x.n));
+  const mg = magicianSeat(s);
+  const poppy = poppyActive(s);
+  // 魔术师：恶魔以为他也是爪牙；罂粟种植者在场：不指爪牙
+  const shown = useMemo(() => (poppy ? [] : shuffle([...minionSeats(s).map((x) => x.n), ...(mg ? [mg.n] : [])], stepRng(s, 3))), [s, mg, poppy]);
+  const ms = seatsText(shown);
   const d = demonSeat(s)!;
-  usePoint(minionSeats(s).map((x) => x.n));
+  usePoint(shown);
   return (
     <>
       <DoBox
@@ -476,10 +510,12 @@ function DemonInfoStep({ g, s }: { g: Game; s: GameState }) {
           sleep,
         ]}
       />
-      {!ms && <p className="dim">唯一的爪牙是提线木偶，下一步再单独告诉恶魔，这一步不用指爪牙。</p>}
+      {!ms && !poppy && <p className="dim">唯一的爪牙是提线木偶，下一步再单独告诉恶魔，这一步不用指爪牙。</p>}
+      {poppy && <p className="dim">罂粟种植者在场：恶魔不知道爪牙是谁，只给他看三个伪装。罂粟种植者死的那晚网页会带你让他们互认。</p>}
+      {mg && !poppy && <p className="dim">{seatName(mg.n)} 是魔术师：恶魔会以为他也是爪牙，一起指，别说出来。</p>}
       {/* 没有爪牙时只念伪装那一句 */}
       <SayBox lines={slotLines('demonInfo', s.style).slice(ms ? 0 : 1)} title="小声说" />
-      <p className="muted">伪装角色：{s.bluffs.map(roleName).join('、')}</p>
+      <p className="muted">伪装角色：{s.bluffs.map(roleName).join('、') || '没有（板子上的善良角色都在场）'}</p>
       <BottomBar wide>
         <CardButton label="给他看伪装" onClick={() => ui.showCard({ title: '这三个角色不在场，你可以伪装成他们', big: s.bluffs.map(roleName) })} />
         <button className="btn btn-primary grow" onClick={() => done({ kind: 'none' })}>
@@ -535,7 +571,7 @@ function DawnStep({ g, s }: { g: Game; s: GameState }) {
 
 function TargetStep({
   g, s, actor, slot,
-}: StepProps & { slot: 'poisoner' | 'monk' | 'butler' | 'fearmonger' | 'bureaucrat' | 'thief' | 'devilsadvocate' | 'exorcist' | 'witch' }) {
+}: StepProps & { slot: 'poisoner' | 'monk' | 'butler' | 'fearmonger' | 'bureaucrat' | 'thief' | 'devilsadvocate' | 'exorcist' | 'witch' | 'acrobat' | 'preacher' }) {
   const done = useDone(g);
   const ui = useUi();
   const [t, setT] = useState<number[]>([]);
@@ -551,8 +587,13 @@ function TargetStep({
   ];
   const lastNote = last ? `不能再选昨晚的 ${seatName(last)}。` : '';
   const exorcisedDemon = slot === 'exorcist' && t.length > 0 && !bad && isDemonSeat(s, t[0]) ? t[0] : null;
+  const preachedMinion = slot === 'preacher' && t.length > 0 && !bad && teamOf(seatOf(s, t[0]).role) === 'minion' ? t[0] : null;
   const note =
-    slot === 'witch'
+    slot === 'acrobat'
+      ? `他选的人今晚任何时候醉酒或中毒，天亮前杂技演员就死（网页会自动算）。${bad ? '（他中毒/醉酒：不会因此死亡）' : ''}`
+      : slot === 'preacher'
+      ? `他选中爪牙的话，那个爪牙从此没有能力。${bad ? '（他中毒/醉酒：照常让他选，但无效）' : ''}`
+      : slot === 'witch'
       ? `他选的人明天一提名就会死（白天网页会提醒你）。只剩三人存活时诅咒失效。${bad ? '（他中毒/醉酒：照常让他选，但无效）' : ''}`
       : slot === 'devilsadvocate'
       ? `他选的人如果明天被处决，不会死（处决时网页会提醒你）。${lastNote}${bad ? '（他中毒/醉酒：照常让他选，但无效）' : ''}`
@@ -591,9 +632,15 @@ function TargetStep({
           />
         </Reveal>
       )}
+      {preachedMinion && (
+        <Reveal key={preachedMinion}>
+          <DoBox title="他选中了爪牙：接着叫醒那个爪牙" items={[wake(preachedMinion), '点「给爪牙看」：传教士选中了你。告诉他从现在起他没有能力了。', sleep]} />
+        </Reveal>
+      )}
       <Tips role={slot === 'fearmonger' || slot === 'devilsadvocate' || slot === 'witch' ? slot : believedRole(s, actor)} drunk={actor.role === 'drunk'} />
       <BottomBar wide>
         {exorcisedDemon && <CardButton label="给恶魔看" onClick={() => ui.showCard({ title: '这名玩家是', big: ['驱魔人'] })} />}
+        {preachedMinion && <CardButton label="给爪牙看" onClick={() => ui.showCard({ title: '这个角色选中了你', big: ['传教士'], note: '你失去了能力。' })} />}
         <button className="btn btn-primary grow" disabled={!t.length} onClick={() => done({ kind: 'target', target: t[0] })}>
           {t.length ? `确认：${seatName(t[0])}，下一步` : '先点出他指的人'}
         </button>
@@ -3078,6 +3125,239 @@ function SvDemonStep({ g, s, actor, slot }: StepProps & { slot: 'fanggu' | 'noda
           onClick={() => done(slot === 'vigormortis' ? { kind: 'vigor', target: t[0], poison: vigorMinion ? poison : null } : { kind: 'target', target: t[0] })}
         >
           {t.length ? '完成，下一步' : '先点出他指的人'}
+        </button>
+      </BottomBar>
+    </>
+  );
+}
+
+/* ---------------- 实验性角色：镇民 ---------------- */
+
+const SEATS_DO: Record<SeatsKind, (ns: string) => string> = {
+  steward: (ns) => `用手指向 ${ns}：他是善良的。`,
+  knight: (ns) => `用手依次指向 ${ns}：他们都不是恶魔。`,
+  noble: (ns) => `用手依次指向 ${ns}：其中恰好一人是邪恶的。`,
+  highpriestess: (ns) => `用手指向 ${ns}：你觉得他最该去找这个人聊。`,
+  choirboy: (ns) => `用手指向 ${ns}：他就是杀死国王的恶魔。`,
+};
+
+/** 指几个人的信息：事务官 / 骑士 / 贵族 / 女祭司 / 唱诗男孩 */
+function SeatsInfoStep({ g, s, actor, kind }: StepProps & { kind: SeatsKind }) {
+  const done = useDone(g);
+  const choices = useMemo(() => {
+    const rng = stepRng(s);
+    return kind === 'steward'
+      ? stewardChoices(s, actor.n, rng)
+      : kind === 'knight'
+        ? knightChoices(s, actor.n, rng)
+        : kind === 'noble'
+          ? nobleChoices(s, actor.n, rng)
+          : kind === 'highpriestess'
+            ? priestessChoices(s, actor.n, rng)
+            : choirboyChoices(s, actor.n, rng);
+  }, [s, actor.n, kind]);
+  const rec = useMemo(() => recommend(choices, balance(s).score, stepRng(s, 1)), [choices, s]);
+  const [sel, setSel] = useState(rec);
+  const [man, setMan] = useState<number[]>([]);
+  const need = SEATS_COUNT[kind];
+  const lie = mustLie(s, kind);
+  const healthy = !malfunction(s, actor.n) && !lie;
+  const verdict = man.length === need ? seatsVerdict(s, kind, man) : null;
+  const illegal = sel === -1 && verdict !== null && kind !== 'highpriestess' && ((healthy && verdict === 'false') || (lie && verdict !== 'false'));
+  const picks = sel >= 0 ? (choices[sel]?.value ?? null) : man.length === need ? [...man].sort((a, b) => a - b) : null;
+  const truth = sel >= 0 ? !!choices[sel]?.truth : verdict !== 'false';
+  const twist = sel >= 0 ? !!choices[sel]?.twist : verdict === 'twist';
+  usePoint(picks ?? []);
+  return (
+    <>
+      {kind === 'choirboy' && <p className="muted">国王今晚被恶魔杀死了：叫醒唱诗男孩，指向恶魔。</p>}
+      <ChoicePanel
+        s={s} choices={choices} sel={sel} rec={rec} onSel={setSel}
+        manual={
+          <div className="stack" style={{ gap: 8 }}>
+            <SeatPicker s={s} selected={man} max={need} onChange={setMan} disabled={[actor.n]} label={`指哪${need === 1 ? '个' : ` ${need} 个`}人？`} />
+            {illegal && <p className="evil">{lie ? '涡流在场，必须给假信息。' : '他没有中毒也不是酒鬼，必须给真信息。这样给不合规。'}</p>}
+            {verdict === 'false' && !healthy && <p className="dim">这是假信息（他中毒/醉酒，可以给）。</p>}
+          </div>
+        }
+      />
+      <DoBox items={[wake(actor.n), picks ? SEATS_DO[kind](seatsText(picks)) : null, sleep]} />
+      <SayBox lines={slotLines(kind, s.style)} title="小声说" />
+      <Tips role={kind} drunk={actor.role === 'drunk'} />
+      <BottomBar wide>
+        <button className="btn btn-primary btn-block" disabled={!picks || illegal} onClick={() => picks && done({ kind: 'seats', seats: picks, truth, twist })}>
+          完成，下一步
+        </button>
+      </BottomBar>
+    </>
+  );
+}
+
+function ShugenjaStep({ g, s, actor }: StepProps) {
+  const done = useDone(g);
+  const choices = useMemo(() => shugenjaChoices(s, actor.n), [s, actor.n]);
+  const rec = useMemo(() => recommend(choices, balance(s).score, stepRng(s, 1)), [choices, s]);
+  const [sel, setSel] = useState(rec);
+  const c = choices[sel] ?? choices[0];
+  const { cw, ccw } = shugenjaSteps(s, actor.n);
+  const order = circleOrder(s);
+  const i = order.indexOf(actor.n);
+  const next = order[(i + 1) % order.length];
+  const prev = order[(i - 1 + order.length) % order.length];
+  return (
+    <>
+      <p className="muted">
+        顺时针（往 {seatName(next)} 那边）最近的邪恶玩家隔 {cw} 步；逆时针（往 {seatName(prev)} 那边）隔 {ccw} 步。
+      </p>
+      <ChoicePanel s={s} choices={choices} sel={sel} rec={rec} onSel={(i2) => i2 >= 0 && setSel(i2)} />
+      <DoBox items={[wake(actor.n), <>用手水平指向 <b>{c.value ? `${seatName(next)} 那一侧（顺时针）` : `${seatName(prev)} 那一侧（逆时针）`}</b>。</>, sleep]} />
+      <SayBox lines={slotLines('shugenja', s.style)} title="小声说" />
+      <Tips role="shugenja" drunk={actor.role === 'drunk'} />
+      <BottomBar wide>
+        <button className="btn btn-primary btn-block" onClick={() => done({ kind: 'direction', cw: c.value, truth: c.truth, twist: c.twist })}>
+          完成，下一步
+        </button>
+      </BottomBar>
+    </>
+  );
+}
+
+/** 第一晚：恶魔得知谁是国王 */
+function KingRevealStep({ g, s }: { g: Game; s: GameState }) {
+  const done = useDone(g);
+  const ui = useUi();
+  const d = demonSeat(s)!;
+  const k = s.seats.find((x) => x.role === 'king')!;
+  usePoint([k.n]);
+  return (
+    <>
+      <DoBox items={[wake(d.n), <>点「给恶魔看」：国王；再用手指向 <b>{seatName(k.n)}</b>。</>, sleep]} />
+      <SayBox lines={['这名玩家是国王。']} title="小声说" />
+      <Tips role="king" />
+      <BottomBar wide>
+        <CardButton label="给恶魔看" onClick={() => ui.showCard({ title: '这名玩家是', big: ['国王'], team: 'townsfolk' })} />
+        <button className="btn btn-primary grow" onClick={() => done({ kind: 'none' })}>
+          完成，下一步
+        </button>
+      </BottomBar>
+    </>
+  );
+}
+
+function KingStep({ g, s, actor }: StepProps) {
+  const done = useDone(g);
+  const ui = useUi();
+  const choices = useMemo(() => kingChoices(s, actor.n, stepRng(s)), [s, actor.n]);
+  const rec = useMemo(() => recommend(choices, balance(s).score, stepRng(s, 1)), [choices, s]);
+  const [sel, setSel] = useState(rec);
+  const c = choices[sel] ?? choices[0];
+  const dead = s.seats.filter((x) => !x.alive).length;
+  return (
+    <>
+      <p className="muted">死了 {dead} 人、活着 {s.seats.length - dead} 人：死人不少于活人，国王每晚得知一个还活着的角色。</p>
+      <ChoicePanel s={s} choices={choices} sel={sel} rec={rec} onSel={(i) => i >= 0 && setSel(i)} />
+      <DoBox items={[wake(actor.n), c ? <>点「给他看」：<b>【{roleName(c.value)}】</b>还活着。</> : null, sleep]} />
+      <SayBox lines={slotLines('king', s.style)} title="小声说" />
+      <Tips role="king" drunk={actor.role === 'drunk'} />
+      <BottomBar wide>
+        {c && <CardButton onClick={() => ui.showCard(roleCard(c.value, '这个角色还活着'))} />}
+        <button className="btn btn-primary grow" disabled={!c} onClick={() => c && done({ kind: 'role', role: c.value, truth: c.truth })}>
+          完成，下一步
+        </button>
+      </BottomBar>
+    </>
+  );
+}
+
+function NightwatchStep({ g, s, actor }: StepProps) {
+  const done = useDone(g);
+  const ui = useUi();
+  const [use, setUse] = useState<boolean | null>(null);
+  const [t, setT] = useState<number[]>([]);
+  const bad = malfunction(s, actor.n) || !!goonTriggered(s, actor, t, 'nightwatchman');
+  const lie = mustLie(s, 'nightwatchman');
+  // 涡流在场：被选的人得到的是假信息（指向别人）
+  const fake = lie && t.length ? s.seats.find((x) => x.alive && x.n !== actor.n && x.n !== t[0])?.n : undefined;
+  const shown = fake ?? actor.n;
+  return (
+    <>
+      <DoBox items={[wake(actor.n), '问他今晚要不要用能力（整局一次）。要用就让他指一名玩家。', sleep]} />
+      <SayBox lines={slotLines('nightwatchman', s.style)} title="小声说" />
+      <TwoChoice value={use} onChange={setUse} yes="他要用" no="他不用（摇头）" />
+      {use && <SeatPicker s={s} selected={t} max={1} onChange={setT} disabled={[actor.n]} label="他指了谁？" />}
+      {use && t.length > 0 && (
+        <Reveal key={t[0]}>
+          {bad ? (
+            <div className="card">
+              <p>守夜人中毒/醉酒：{seatName(t[0])} 不会被叫醒（能力用掉了）。</p>
+            </div>
+          ) : (
+            <DoBox
+              title="然后叫醒被选的人"
+              items={[wake(t[0]), <>点「给他看」：守夜人；再用手指向 <b>{seatName(shown)}</b>{fake ? '（涡流在场，指一个别人）' : ''}。</>, sleep]}
+            />
+          )}
+        </Reveal>
+      )}
+      <Tips role="nightwatchman" drunk={actor.role === 'drunk'} />
+      <BottomBar wide>
+        {use && t.length > 0 && !bad && <CardButton onClick={() => ui.showCard({ title: '这名玩家是', big: ['守夜人'], team: 'townsfolk' })} />}
+        <button className="btn btn-primary grow" disabled={use === null || (use && !t.length)} onClick={() => done({ kind: 'nightwatch', target: use ? t[0] : null })}>
+          {use === false ? '他不用，下一步' : use && t.length ? '完成，下一步' : use ? '先点出他指的人' : '先问他用不用'}
+        </button>
+      </BottomBar>
+    </>
+  );
+}
+
+function FarmerStep({ g, s, actor }: StepProps) {
+  const done = useDone(g);
+  const ui = useUi();
+  const choices = useMemo(() => farmerChoices(s, stepRng(s)), [s]);
+  const rec = useMemo(() => recommend(choices, balance(s).score, stepRng(s, 1)), [choices, s]);
+  const [sel, setSel] = useState(rec);
+  const c = choices[sel] ?? choices[0];
+  usePoint(c ? [c.value] : []);
+  return (
+    <>
+      <p className="muted">农夫（{seatName(actor.n)}）今晚死了：一名活着的善良玩家变成农夫，他原来的能力没有了。</p>
+      {choices.length ? (
+        <ChoicePanel s={s} choices={choices} sel={sel} rec={rec} onSel={(i) => i >= 0 && setSel(i)} moreLabel="换一个人" />
+      ) : (
+        <p className="dim">没有活着的善良玩家可以变成农夫。</p>
+      )}
+      {c && <DoBox items={[wake(c.value), '点「给他看」：你现在是农夫。', sleep]} />}
+      <Tips role="farmer" />
+      <BottomBar wide>
+        {c && <CardButton onClick={() => ui.showCard(roleCard('farmer', '你现在是', true))} />}
+        <button className="btn btn-primary grow" onClick={() => (c ? done({ kind: 'farmer', to: c.value }) : done({ kind: 'none' }))}>
+          完成，下一步
+        </button>
+      </BottomBar>
+    </>
+  );
+}
+
+/** 罂粟种植者死后：邪恶互认 */
+function PoppyStep({ g, s }: { g: Game; s: GameState }) {
+  const done = useDone(g);
+  const minions = minionSeats(s).filter((x) => x.alive);
+  const d = demonSeat(s)!;
+  return (
+    <>
+      <p className="muted">罂粟种植者死了：今晚爪牙和恶魔互相认识。</p>
+      <DoBox
+        items={[
+          minions.length ? <>轻拍爪牙 <b>{seatsText(minions.map((x) => x.n))}</b>，让他们睁眼，用手指向恶魔 <b>{seatName(d.n)}</b>。让他们闭眼。</> : null,
+          wake(d.n),
+          minions.length ? <>用手依次指向爪牙 <b>{seatsText(minions.map((x) => x.n))}</b>。</> : '告诉他没有活着的爪牙。',
+          sleep,
+        ]}
+      />
+      <SayBox lines={['这是你们的恶魔。', '这些是你的爪牙。']} title="小声说" />
+      <BottomBar wide>
+        <button className="btn btn-primary btn-block" onClick={() => done({ kind: 'none' })}>
+          完成，下一步
         </button>
       </BottomBar>
     </>

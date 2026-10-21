@@ -1,6 +1,6 @@
 import { ROLES, isEvilTeam, roleName, type RoleId, type Team } from './roles';
 import {
-  abilityAlive, addLog, aliveCount, aliveVoters, deathShield, demonSeat, diedOnDay, hasAbility, inPlay, isDemonSeat, isEvil, isPoisoned, kill, lilMonsta,
+  abilityAlive, addLog, aliveCount, aliveVoters, deathShield, demonCause, drunkOrPoisoned, preachedNow, demonSeat, diedOnDay, hasAbility, inPlay, isDemonSeat, isEvil, isPoisoned, kill, lilMonsta,
   malfunction, scriptOf, seatLabel, seatOf, teamOf, vortoxActive, wakesAs, seatName,
 } from './core';
 import { firstNightOnly } from './nightOrder';
@@ -23,13 +23,12 @@ const ROLE_SLOTS: SlotId[] = [
   'sailor', 'courtier', 'grandmother', 'innkeeper', 'gambler', 'assassin', 'professor',
   'clockmaker', 'snakecharmer', 'mathematician', 'towncrier', 'oracle', 'philosopher', 'juggler', 'sage',
   'eviltwin', 'witch', 'cerenovus', 'pithag',
+  'steward', 'knight', 'noble', 'shugenja', 'highpriestess', 'king', 'choirboy', 'nightwatchman', 'farmer', 'acrobat', 'preacher',
 ];
 
 /** 恶魔自己醒来行动的步骤（驱魔人选中恶魔、麻脸巫婆造了恶魔说书人决定今晚不死人时都不醒） */
 const DEMON_SLOTS: SlotId[] = ['zombuul', 'alhadikhia', 'pukka', 'shabaloth', 'po', 'fanggu', 'nodashii', 'vigormortis'];
 
-/** 被恶魔杀死（贤者用） */
-export const demonCause = (cause: string) => cause.startsWith('被恶魔杀死') || cause === '被普卡的毒杀死' || cause === '被小怪宝杀死';
 
 /** 女巫的诅咒还有效：女巫的能力在（活着或被亡骨魔杀死）、健康、存活超过三人 */
 export function witchActive(s: GameState): boolean {
@@ -121,11 +120,25 @@ function candidates(s: GameState, slot: SlotId): Seat[] {
   if (slot === 'lunatic') return s.seats.filter((x) => x.role === 'lunatic' && x.alive && lunaticStepNeeded(s));
   if (slot === 'amnesiac') return s.seats.filter((x) => x.role === 'amnesiac' && x.alive && amnesiacWakes(s));
   if (!ROLE_SLOTS.includes(slot)) return [];
-  // 被亡骨魔杀死的爪牙照常醒
-  if (slot === 'witch') return s.seats.filter((x) => wakesAs(s, x, 'witch') && abilityAlive(s, x) && aliveCount(s) > 3);
-  if (slot === 'cerenovus' || slot === 'pithag') return s.seats.filter((x) => wakesAs(s, x, slot) && abilityAlive(s, x));
+  // 被亡骨魔杀死的爪牙照常醒；被传教士选中的爪牙不醒
+  if (slot === 'witch') return s.seats.filter((x) => wakesAs(s, x, 'witch') && abilityAlive(s, x) && aliveCount(s) > 3 && !preachedNow(s, x.n));
+  if (slot === 'cerenovus' || slot === 'pithag') return s.seats.filter((x) => wakesAs(s, x, slot) && abilityAlive(s, x) && !preachedNow(s, x.n));
+  // 国王：第一晚叫醒恶魔告诉他谁是国王
+  if (slot === 'king' && s.night === 1) {
+    const d = demonSeat(s);
+    return d && s.seats.some((x) => x.role === 'king') ? [d] : [];
+  }
+  // 农夫：今晚死了（死时没中毒醉酒）的农夫，由他带出下一个农夫（他自己不醒）
+  if (slot === 'farmer')
+    return s.seats.filter(
+      (x) => x.role === 'farmer' && !x.alive && x.death?.when === 'night' && x.death.night === s.night && !x.death.sick && !(s.ns?.doneActors ?? []).includes(x.n),
+    );
   return s.seats.filter((x) => {
     if (!wakesAs(s, x, slot as RoleId)) return false;
+    if (teamOf(x.role) === 'minion' && preachedNow(s, x.n)) return false;
+    if (slot === 'king') return x.alive && s.seats.filter((y) => !y.alive).length >= s.seats.filter((y) => y.alive).length;
+    if (slot === 'choirboy') return x.alive && kingKilledTonight(s);
+    if (slot === 'nightwatchman') return x.alive && !x.used;
     if (slot === 'philosopher') return x.alive && (!x.used || !!s.ns?.philoNow);
     if (slot === 'juggler') return x.alive && s.juggler?.seat === x.n && s.juggler.day === s.night - 1 && !!s.juggler.guesses;
     if (slot === 'sage') return !x.alive && x.death?.when === 'night' && x.death.night === s.night && demonCause(x.death.cause);
@@ -154,6 +167,16 @@ export function slotActor(s: GameState, slot: SlotId): Seat | undefined {
   return pendingActors(s, slot)[0];
 }
 
+/** 罂粟种植者在场且活着：第一晚邪恶不互认 */
+export const poppyActive = (s: GameState) => s.seats.some((x) => x.role === 'poppygrower' && x.alive) && !s.poppyResolved;
+
+/** 魔术师在场：爪牙以为他是恶魔，恶魔以为他是爪牙 */
+export const magicianSeat = (s: GameState) => s.seats.find((x) => x.role === 'magician' && x.alive);
+
+/** 今晚国王被恶魔杀死了（唱诗男孩） */
+export const kingKilledTonight = (s: GameState) =>
+  s.seats.some((x) => x.role === 'king' && !x.alive && x.death?.when === 'night' && x.death.night === s.night && demonCause(x.death.cause));
+
 /** 爪牙（提线木偶不算：他不知道自己是爪牙，爪牙互认时不叫他） */
 export const minionSeats = (s: GameState) => s.seats.filter((x) => ROLES[x.role].team === 'minion' && x.role !== 'marionette');
 
@@ -164,7 +187,12 @@ export function shouldRun(s: GameState, slot: SlotId): boolean {
       return true;
     // 唯一的爪牙是提线木偶（他不知道自己是爪牙）：没有爪牙要互认
     case 'minionInfo':
-      return s.night === 1 && s.count >= 7 && !lilMonsta(s) && minionSeats(s).length > 0;
+      return s.night === 1 && s.count >= 7 && !lilMonsta(s) && minionSeats(s).length > 0 && !poppyActive(s);
+    // 罂粟种植者死了（死时健康）：当晚邪恶互认
+    case 'poppygrower': {
+      const p = s.seats.find((x) => x.role === 'poppygrower');
+      return !!p && !p.alive && !p.death?.sick && !s.poppyResolved && !!demonSeat(s);
+    }
     case 'demonInfo':
       return s.night === 1 && s.count >= 7 && !lilMonsta(s);
     case 'lilmonsta':
@@ -206,7 +234,19 @@ function advance(s: GameState) {
   ns.doneActors = [];
   while (i < order.length && !shouldRun(s, order[i])) i++;
   ns.slot = i;
-  if (order[i] === 'dawn') checkWin(s, 'night');
+  if (order[i] === 'dawn') {
+    resolveAcrobats(s);
+    checkWin(s, 'night');
+  }
+}
+
+/** 杂技演员：他选的人今晚醉酒或中毒了，他死 */
+function resolveAcrobats(s: GameState) {
+  for (const a of s.ns?.acrobat ?? []) {
+    const x = seatOf(s, a.actor);
+    if (x.alive && !malfunction(s, a.actor) && drunkOrPoisoned(s, a.target)) kill(s, a.actor, 'night', `杂技演员选的 ${seatName(a.target)} 今晚醉酒或中毒`);
+  }
+  if (s.ns) s.ns.acrobat = [];
 }
 
 export function startNight(s: GameState) {
@@ -214,6 +254,8 @@ export function startNight(s: GameState) {
   s.night += 1;
   s.executed = undefined;
   s.ns = { slot: -1, doneActors: [], deaths: [], monk: null, woke: [], lunaticPick: null };
+  const pr = s.seats.find((x) => x.role === 'princess' && x.alive);
+  if (s.princessNight === s.night && pr && !malfunction(s, pr.n)) s.ns.demonNoKill = '公主提名的人今天被处决了，今晚恶魔不杀人';
   s.voteMods = {};
   addLog(s, 'night', `第 ${s.night} 夜开始`);
   advance(s);
@@ -301,7 +343,11 @@ export type SlotPayload =
   | { kind: 'sage'; picks: [number, number]; truth: boolean }
   | { kind: 'cere'; target: number; role: RoleId }
   | { kind: 'pithag'; target: number; role: RoleId; deaths: number[]; noKill: boolean }
-  | { kind: 'vigor'; target: number; poison: number | null };
+  | { kind: 'vigor'; target: number; poison: number | null }
+  | { kind: 'seats'; seats: number[]; truth: boolean; twist?: boolean }
+  | { kind: 'direction'; cw: boolean; truth: boolean; twist?: boolean }
+  | { kind: 'nightwatch'; target: number | null }
+  | { kind: 'farmer'; to: number };
 
 /** 这一步里玩家用能力"选择"了哪些人（莽夫用） */
 function chosenSeats(p: SlotPayload): number[] {
@@ -331,6 +377,8 @@ function chosenSeats(p: SlotPayload): number[] {
     case 'pithag':
     case 'vigor':
       return [p.target];
+    case 'nightwatch':
+      return p.target ? [p.target] : [];
     default:
       return [];
   }
@@ -412,6 +460,8 @@ function usedAbility(p: SlotPayload): boolean {
     case 'courtier':
     case 'philo':
       return !!p.role;
+    case 'nightwatch':
+      return !!p.target;
     case 'seamstress':
       return !!p.picks;
     case 'po':
@@ -483,11 +533,24 @@ export function completeSlot(s: GameState, p: SlotPayload) {
       s.phase = s.winner ? 'end' : 'day';
       return;
     }
-    case 'minionInfo':
-      addLog(s, 'night', `爪牙得知恶魔是 ${seatName(demonSeat(s)?.n)}`);
+    case 'minionInfo': {
+      const mg = magicianSeat(s);
+      addLog(s, 'night', `爪牙得知恶魔是 ${seatName(demonSeat(s)?.n)}${mg ? `（魔术师 ${seatName(mg.n)} 也被指为恶魔）` : ''}`);
       break;
-    case 'demonInfo':
-      addLog(s, 'night', `恶魔得知爪牙：${minionSeats(s).map((x) => `${seatName(x.n)}`).join('、') || '没有（只有提线木偶）'}；伪装角色：${s.bluffs.map(roleName).join('、')}`);
+    }
+    case 'demonInfo': {
+      const mg = magicianSeat(s);
+      addLog(
+        s, 'night',
+        poppyActive(s)
+          ? `罂粟种植者在场：恶魔只得知伪装角色 ${s.bluffs.map(roleName).join('、')}`
+          : `恶魔得知爪牙：${minionSeats(s).map((x) => `${seatName(x.n)}`).join('、') || '没有（只有提线木偶）'}${mg ? `（魔术师 ${seatName(mg.n)} 也被指为爪牙）` : ''}；伪装角色：${s.bluffs.map(roleName).join('、')}`,
+      );
+      break;
+    }
+    case 'poppygrower':
+      s.poppyResolved = true;
+      addLog(s, 'night', `罂粟种植者死了：爪牙得知恶魔是 ${seatName(demonSeat(s)?.n)}，恶魔得知爪牙 ${minionSeats(s).map((x) => seatName(x.n)).join('、') || '（无）'}`);
       break;
     case 'poisoner':
       if (p.kind === 'target') {
@@ -943,6 +1006,65 @@ export function completeSlot(s: GameState, p: SlotPayload) {
             addLog(s, 'night', `爪牙 ${seatLabel(s, p.target)} 被亡骨魔杀死：保留能力${p.poison ? `，${seatName(p.poison)} 中毒` : ''}`);
           }
         }
+      }
+      break;
+    case 'steward':
+    case 'knight':
+    case 'noble':
+    case 'highpriestess':
+    case 'choirboy':
+      if (p.kind === 'seats') {
+        infoStat(s, p.truth, p.twist);
+        const what = { steward: '是善良的', knight: '都不是恶魔', noble: '中恰好一人邪恶', highpriestess: '：最该去聊的人', choirboy: '：杀死国王的恶魔' }[eff];
+        addLog(s, 'night', `${roleName(eff)} ${who} 得知 ${p.seats.map((n) => seatName(n)).join('、')}${what}${tag(p.truth, p.twist)}`, p.truth && !p.twist);
+      }
+      break;
+    case 'shugenja':
+      if (p.kind === 'direction') {
+        infoStat(s, p.truth, p.twist);
+        addLog(s, 'night', `修行者 ${who}：最近的邪恶玩家在${p.cw ? '顺时针' : '逆时针'}方向${tag(p.truth, p.twist)}`, p.truth && !p.twist);
+      }
+      break;
+    case 'king':
+      if (s.night === 1) addLog(s, 'night', `恶魔得知国王是 ${seatName(s.seats.find((x) => x.role === 'king')?.n)}`);
+      else if (p.kind === 'role') {
+        infoStat(s, p.truth);
+        addLog(s, 'night', `国王 ${who} 得知【${roleName(p.role)}】还活着${tag(p.truth)}`, p.truth);
+      }
+      break;
+    case 'nightwatchman':
+      if (p.kind === 'nightwatch') {
+        if (!p.target) addLog(s, 'night', `守夜人 ${who} 今晚不用能力`);
+        else {
+          actor!.used = true;
+          const ok = !malfunction(s, actor!.n);
+          addLog(s, 'night', `守夜人 ${who} 选择了 ${seatName(p.target)}${ok ? `：${seatName(p.target)} 得知守夜人是 ${seatName(actor!.n)}` : '（中毒/醉酒：那人没有被叫醒）'}`);
+        }
+      }
+      break;
+    case 'farmer':
+      if (p.kind === 'farmer') {
+        const x = seatOf(s, p.to);
+        const from = x.role;
+        x.role = 'farmer';
+        x.used = false;
+        delete s.gained[x.n];
+        s.roleSince[x.n] = s.night;
+        addLog(s, 'night', `农夫 ${seatName(actor!.n)} 夜里死了：${seatName(x.n)}（原${roleName(from)}）变成农夫，已告知他`);
+      }
+      break;
+    case 'acrobat':
+      if (p.kind === 'target') {
+        ns.acrobat = [...(ns.acrobat ?? []), { actor: actor!.n, target: p.target }];
+        addLog(s, 'night', `杂技演员 ${who} 选择了 ${seatName(p.target)}（天亮前他醉酒或中毒，杂技演员就死）`);
+      }
+      break;
+    case 'preacher':
+      if (p.kind === 'target') {
+        const x = seatOf(s, p.target);
+        const hit = !malfunction(s, actor!.n) && teamOf(x.role) === 'minion';
+        if (hit && !s.preached.includes(x.n)) s.preached.push(x.n);
+        addLog(s, 'night', `传教士 ${who} 选择了 ${seatName(p.target)}${hit ? '：是爪牙，他失去能力，已告知他' : ''}`);
       }
       break;
     case 'dusk':

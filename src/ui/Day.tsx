@@ -164,6 +164,7 @@ export function DayScreen({ g }: { g: Game }) {
         </div>
         <FlowergirlCard g={g} />
         <TownCrierCard g={g} />
+        <PrincessCard g={g} />
       </div>
       {panel === 'virgin' && virgin && (
         <VirginSheet
@@ -949,6 +950,8 @@ function SecretNotices({ s }: { s: GameState }) {
   const vg = s.vigor.filter((v) => !seatOf(s, v.minion).alive && teamOf(seatOf(s, v.minion).role) === 'minion');
   if (vg.length && s.seats.some((x) => x.role === 'vigormortis' && x.alive))
     out.push(<p key="vg">被亡骨魔杀死的爪牙 {vg.map((v) => seatName(v.minion)).join('、')} 能力还在{vg.some((v) => v.poisoned) ? `；${vg.filter((v) => v.poisoned).map((v) => seatName(v.poisoned)).join('、')} 因此中毒` : ''}。</p>);
+  const preached = s.preached.filter((n) => malfunction(s, n) && seatOf(s, n).alive);
+  if (preached.length) out.push(<p key="pr">被传教士选中的爪牙 {preached.map((n) => seatName(n)).join('、')} 没有能力。</p>);
   if (s.snakePoisoned.length) out.push(<p key="sn">{s.snakePoisoned.map((n) => seatName(n)).join('、')} 被舞蛇人换下来，一直中毒。</p>);
   if (s.twin && s.seats.some((x) => x.role === 'eviltwin')) {
     const e = s.seats.find((x) => x.role === 'eviltwin')!;
@@ -1434,5 +1437,31 @@ function JugglerSheet({ g, onClose }: { g: Game; onClose: () => void }) {
         </button>
       </div>
     </Sheet>
+  );
+}
+
+/** 公主：她第一个白天提名的人被处决，当晚恶魔不杀人 */
+function PrincessCard({ g }: { g: Game }) {
+  const s = g.s;
+  const pr = s.seats.find((x) => x.alive && x.role === 'princess');
+  if (!pr || (s.roleSince[pr.n] ?? 1) !== s.night) return null;
+  const on = s.princessNight === s.night + 1;
+  return (
+    <div className="card stack" style={{ gap: 8 }}>
+      <p>
+        <b>公主（{seatName(pr.n)}）的第一个白天</b>：她提名的人如果被处决，今晚恶魔不杀人（只有你知道）。
+      </p>
+      <button
+        className={`btn btn-block ${on ? 'btn-primary' : 'btn-outline'}`}
+        onClick={() =>
+          g.commit((st) => {
+            st.princessNight = on ? 0 : st.night + 1;
+            logDay(st, on ? '改为：公主提名的人没有被处决' : `公主（${seatName(pr.n)}）提名的人被处决了：今晚恶魔不杀人`);
+          })
+        }
+      >
+        {on ? '已记下（点一下取消）' : '她提名的人被处决了：记一下'}
+      </button>
+    </div>
   );
 }

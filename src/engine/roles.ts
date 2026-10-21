@@ -22,6 +22,9 @@ export type RoleId =
   // 梦殒春宵（另外 10 个已经在上面的剧本里）
   | 'clockmaker' | 'snakecharmer' | 'mathematician' | 'towncrier' | 'oracle' | 'philosopher' | 'juggler' | 'sage'
   | 'eviltwin' | 'witch' | 'cerenovus' | 'pithag' | 'fanggu' | 'nodashii' | 'vigormortis'
+  // 实验性角色
+  | 'steward' | 'knight' | 'noble' | 'shugenja' | 'highpriestess' | 'king' | 'choirboy' | 'nightwatchman' | 'princess' | 'farmer'
+  | 'acrobat' | 'preacher' | 'magician' | 'poppygrower'
   // 旅行者（暗流涌动）
   | 'scapegoat' | 'gunslinger' | 'beggar' | 'bureaucrat' | 'thief';
 
@@ -706,6 +709,85 @@ const R: RoleDef[] = [
       '往左右两边各找最近的镇民（死人也算），中间的外来者、爪牙、旅行者跳过。网页会一直把这两人标成中毒。',
       '诺-达鲺死了或中毒，他们就恢复。',
     ],
+  },
+
+  /* ---------- 实验性角色：镇民 ---------- */
+  {
+    id: 'steward', name: '事务官', short: '事务', team: 'townsfolk', weight: 1, bluff: 1, info: true,
+    ability: '第一晚，你会得知一名善良玩家。',
+    tips: ['用手指向一名善良玩家。', '间谍可以被当成善良的指给他。', '他中毒/醉酒时可以指一名邪恶玩家。'],
+  },
+  {
+    id: 'knight', name: '骑士', short: '骑士', team: 'townsfolk', weight: 1, bluff: 1, info: true,
+    ability: '第一晚，你会得知两名不是恶魔的玩家。',
+    tips: ['指向两名不是恶魔的玩家，可以是爪牙。', '他中毒/醉酒时，两人里可以有恶魔。'],
+  },
+  {
+    id: 'noble', name: '贵族', short: '贵族', team: 'townsfolk', weight: 1, bluff: 1, info: true,
+    ability: '第一晚，你会得知三名玩家，其中恰好一人是邪恶的。',
+    tips: ['指向三名玩家：两个善良、一个邪恶。', '陌客可以当成那个邪恶的，间谍可以当成善良的。'],
+  },
+  {
+    id: 'shugenja', name: '修行者', short: '修行', team: 'townsfolk', weight: 1, bluff: 1, info: true,
+    ability: '第一晚，你会得知离你最近的邪恶玩家在你顺时针方向还是逆时针方向。两边一样近时，由说书人定。',
+    tips: [
+      '从他往两边数到最近的邪恶玩家（死人也算座位），哪边近就用手水平指向哪边。',
+      '两边一样近：你随便指一边，他不知道是不是一样近。',
+    ],
+  },
+  {
+    id: 'highpriestess', name: '女祭司', short: '祭司', team: 'townsfolk', weight: 1.5, bluff: 1.5, info: true,
+    ability: '每晚，你会得知说书人认为你最该去找谁聊。',
+    tips: ['每晚指一名玩家（死活、善恶都行）：你觉得他最该去和这个人聊。', '可以是有重要信息的人、谎话说不通的邪恶玩家，或走错路的好人。'],
+  },
+  {
+    id: 'king', name: '国王', short: '国王', team: 'townsfolk', weight: 1, bluff: 1.5, info: true,
+    ability: '每晚，如果死去的玩家不少于活着的玩家，你会得知一个存活的角色。恶魔知道你是国王。',
+    tips: [
+      '第一晚叫醒恶魔，告诉他谁是国王。',
+      '死人数量追上活人之后，每晚给国王看一个还活着的角色（善恶都行，可以重复）。',
+      '国王活到最后一天通常就赢了，可以大胆给好信息。',
+    ],
+  },
+  {
+    id: 'choirboy', name: '唱诗男孩', short: '唱诗', team: 'townsfolk', weight: 1, bluff: 1.5, info: true,
+    ability: '如果恶魔杀死了国王，你会得知谁是恶魔。[国王一定在场]',
+    tips: ['开局国王一定在场（网页配板时会自动加上）。', '恶魔夜里杀死国王的那晚叫醒他，指向恶魔。处决、爪牙杀死国王都不算。'],
+  },
+  {
+    id: 'nightwatchman', name: '守夜人', short: '守夜', team: 'townsfolk', weight: 1, bluff: 1.5,
+    ability: '整局一次，在夜里，你可以选择一名玩家：他会得知你是守夜人。',
+    tips: ['每晚问他要不要用。他选了人：叫醒那个人，给他看守夜人，再指向守夜人。', '两人不会同时睁眼。守夜人中毒/醉酒时，被选的人不会被叫醒。'],
+  },
+  {
+    id: 'princess', name: '公主', short: '公主', team: 'townsfolk', weight: 1, bluff: 1.5,
+    ability: '在你的第一个白天，如果你提名的人被处决了，当晚恶魔不杀人。',
+    tips: ['白天页面有一张卡片：公主提名的人被处决了就点一下。', '当晚恶魔照常醒来选人，但没人因此死亡；别的死亡照常。', '白天醉酒、晚上清醒也算数；晚上醉酒就不算。'],
+  },
+  {
+    id: 'farmer', name: '农夫', short: '农夫', team: 'townsfolk', weight: 1, bluff: 1.5,
+    ability: '如果你在夜里死亡，一名活着的善良玩家变成农夫。',
+    tips: ['他夜里死了：选一名活着的善良玩家，叫醒他告诉他"你现在是农夫"，他原来的能力没有了。', '白天死（比如被处决）不触发。'],
+  },
+  {
+    id: 'acrobat', name: '杂技演员', short: '杂技', team: 'townsfolk', weight: 1, bluff: 1.5,
+    ability: '每晚（第一晚除外），你选择一名玩家：如果他今晚醉酒或中毒，你死亡。',
+    tips: ['他选的人今晚任何时候醉酒或中毒（包括之后才被下毒），天亮前他就死。', '酒鬼也算醉酒。杂技演员自己中毒/醉酒时不会因此死亡。'],
+  },
+  {
+    id: 'preacher', name: '传教士', short: '传教', team: 'townsfolk', weight: 1.5, bluff: 1.5,
+    ability: '每晚，你选择一名玩家：如果他是爪牙，他会得知此事。被你选过的爪牙都失去能力。',
+    tips: ['选中爪牙：叫醒那个爪牙告诉他"传教士选中了你"，他从此不再醒来用能力。', '传教士死亡或中毒/醉酒时，这些爪牙恢复能力。'],
+  },
+  {
+    id: 'magician', name: '魔术师', short: '魔术', team: 'townsfolk', weight: 1, bluff: 1.5,
+    ability: '恶魔以为你是爪牙，爪牙以为你是恶魔。',
+    tips: ['第一晚爪牙互认时，同时指向恶魔和魔术师；恶魔得知爪牙时，也把魔术师指进去。', '魔术师自己不用醒。'],
+  },
+  {
+    id: 'poppygrower', name: '罂粟种植者', short: '罂粟', team: 'townsfolk', weight: 1.5, bluff: 1.5,
+    ability: '爪牙和恶魔互相不知道对方。你死亡的当晚，他们得知彼此。',
+    tips: ['第一晚不做爪牙互认，恶魔只看三个伪装。', '他死了（死时没中毒醉酒）：当晚叫醒爪牙指恶魔，再叫醒恶魔指爪牙。'],
   },
 
   /* ---------- 旅行者：迟到/早退的人，阵营由说书人定 ---------- */

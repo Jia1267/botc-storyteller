@@ -37,7 +37,10 @@ export type SlotId =
   | 'gossip' | 'professor' | 'tinker' | 'moonchild'
   // 梦殒春宵
   | 'clockmaker' | 'snakecharmer' | 'mathematician' | 'towncrier' | 'oracle' | 'philosopher' | 'juggler' | 'sage'
-  | 'eviltwin' | 'witch' | 'cerenovus' | 'pithag' | 'fanggu' | 'nodashii' | 'vigormortis';
+  | 'eviltwin' | 'witch' | 'cerenovus' | 'pithag' | 'fanggu' | 'nodashii' | 'vigormortis'
+  // 实验性角色
+  | 'steward' | 'knight' | 'noble' | 'shugenja' | 'highpriestess' | 'king' | 'choirboy' | 'nightwatchman' | 'farmer' | 'acrobat'
+  | 'preacher' | 'poppygrower';
 
 export interface NightState {
   /** 当前所在的夜晚顺序位置 */
@@ -60,6 +63,10 @@ export interface NightState {
   philoNow?: RoleId;
   /** 麻脸巫婆造了恶魔，说书人决定今晚恶魔杀人无效 */
   noDemonKill?: boolean;
+  /** 今晚恶魔照常醒来选人，但杀不死人（公主）：写的是原因 */
+  demonNoKill?: string;
+  /** 杂技演员今晚选的人（天亮前看他醉没醉、毒没毒） */
+  acrobat?: { actor: number; target: number }[];
   /** 旅店老板今晚保护的人（老板健康时） */
   innkeeper?: number[];
   /** 莽夫今晚已经被人选过了 */
@@ -214,6 +221,14 @@ export interface GameState {
   fangguJumped: boolean;
   /** 亡骨魔杀死的爪牙（保留能力）和因此中毒的镇民 */
   vigor: { minion: number; poisoned: number }[];
+  /** 中途换了角色的人：从第几夜开始是现在这个角色（没有就是开局就是） */
+  roleSince: Record<number, number>;
+  /** 被传教士选中的爪牙（传教士活着且健康时没有能力） */
+  preached: number[];
+  /** 公主提名的人被处决：这一夜恶魔不杀人 */
+  princessNight: number;
+  /** 罂粟种植者死后，邪恶已经互认过 */
+  poppyResolved: boolean;
   /** 恶魔的 3 个伪装 */
   bluffs: RoleId[];
   /** 占卜师干扰项 */

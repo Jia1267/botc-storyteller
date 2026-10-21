@@ -102,7 +102,7 @@ export function randomSetup(script: ScriptRef, count: number, rng: Rng, sentinel
       const more = pickTownsfolk(of('townsfolk').filter((r) => !towns.includes(r) && !SETUP_TOWNS.includes(r)), tFinal - towns.length, f4, rng, !!sc.f4Cap);
       towns = [...towns, ...more];
     }
-    const roles = [...towns, ...sample(outs, outCount, rng), ...minions, ...(lil ? [] : [demon])];
+    const roles = withRequired([...towns, ...sample(outs, outCount, rng), ...minions, ...(lil ? [] : [demon])], rng);
     // 自由配板：网页没做的相克不让同时上场
     if (sc.id === 'custom' && unhandledClash([...roles, demon]) && tries < 50) continue;
     if (roles.length === count || tries >= 50) return { roles, demonChar: demon, godfatherDelta: gfd };
@@ -111,6 +111,19 @@ export function randomSetup(script: ScriptRef, count: number, rng: Rng, sentinel
 
 /** 暗流涌动的旧接口：只要角色列表 */
 export const randomRoles = (count: number, rng: Rng) => randomSetup('tb', count, rng).roles;
+
+/** 一定要一起上场的角色：唱诗男孩 → 国王（换掉一个普通镇民） */
+const REQUIRES: Partial<Record<RoleId, RoleId>> = { choirboy: 'king' };
+
+export function withRequired(roles: RoleId[], rng: Rng): RoleId[] {
+  const out = [...roles];
+  for (const [who, need] of Object.entries(REQUIRES) as [RoleId, RoleId][]) {
+    if (!out.includes(who) || out.includes(need)) continue;
+    const idx = out.map((_, i) => i).filter((i) => ROLES[out[i]].team === ROLES[need].team && out[i] !== who && !SETUP_TOWNS.includes(out[i]));
+    if (idx.length) out[pick(idx, rng)] = need;
+  }
+  return out;
+}
 
 export const rolesWeight = (roles: RoleId[]) => roles.reduce((a, r) => a + ROLES[r].weight, 0);
 
@@ -289,6 +302,10 @@ export function newGame(): GameState {
     philoDrunk: null,
     fangguJumped: false,
     vigor: [],
+    roleSince: {},
+    preached: [],
+    princessNight: 0,
+    poppyResolved: false,
     bluffs: [],
     redHerring: null,
     setupZ: 0,
@@ -380,6 +397,11 @@ export function replaceRole(s: GameState, n: number, to: RoleId, rng: Rng) {
   const st = s.seats[n - 1];
   if (st.role === to || inPlay(s, to)) return;
   st.role = st.startRole = to;
+  // 唱诗男孩要国王：换一个普通镇民
+  const need = withRequired(s.seats.map((x) => x.role), rng);
+  s.seats.forEach((x, i) => {
+    if (i < need.length && x.role !== need[i] && x.n !== n) x.role = x.startRole = need[i];
+  });
   if (ROLES[to].team === 'demon') s.demonChar = to;
   normalize(s, rng, n);
   refreshSetup(s, rng);
