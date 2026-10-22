@@ -3,7 +3,7 @@ import { balance, recommend, type Choice } from './balance';
 import { actorFor, inPlay, isEvil, lilMonsta, notInPlay, scriptOf, scriptRolesOf, seatName } from './core';
 import { SCRIPTS, type ScriptDef, type ScriptId } from './editions';
 import { pick, sample, seeded, shuffle, type Rng } from './rng';
-import { jinxLabel, jinxesIn, unhandledClash } from './custom';
+import { jinxLabel, jinxesIn, makeCustom, playableRange, unhandledClash } from './custom';
 import type { GameState, Seat } from './types';
 
 /** 官方人数表：镇民 / 外来者 / 爪牙 / 恶魔 */
@@ -139,22 +139,60 @@ export function randomSetup(script: ScriptRef, count: number, rng: Rng, sentinel
     }
     roles = withRequired(roles, rng);
     // 自由配板：网页没做的相克不让同时上场
-    if (sc.id === 'custom' && unhandledClash([...roles, demon]) && tries < 50) continue;
+    // 召唤师局、无神论者局开局没有恶魔，只看真正上场的角色；小怪宝没人扮演，要单独算上
+    if (sc.id === 'custom' && unhandledClash(lil ? [...roles, demon] : roles) && tries < 50) continue;
     if (roles.length === count || tries >= 50) return { roles, demonChar, godfatherDelta: gfd, hermitDelta: hd };
   }
+}
+
+export interface BoardRisk {
+  /** 网页还没做的相克条数 */
+  unhandled: number;
+  /** 为了避开相克，几乎上不了场的角色 */
+  rare: RoleId[];
+  /** 随机试配了几局 */
+  tries: number;
+  /** 牵扯相克最多的角色 */
+  hot: { role: RoleId; n: number }[];
+}
+
+/** 自由配板：相克太多、或者有角色因为要避开相克几乎上不了场时，提醒说书人这个板子可能有问题 */
+export function boardRisk(roles: RoleId[]): BoardRisk | null {
+  const range = playableRange(roles);
+  const bad = jinxesIn(roles).filter((j) => !j.handled);
+  if (!range || !bad.length) return null;
+  const def = makeCustom('', roles);
+  const rng = seeded(7);
+  const seen = new Map<RoleId, number>();
+  let tries = 0;
+  for (const c of new Set([range[0], Math.round((range[0] + range[1]) / 2), range[1]]))
+    for (let i = 0; i < 100; i++, tries++) {
+      const x = randomSetup(def, c, rng);
+      for (const r of new Set([...x.roles, x.demonChar])) seen.set(r, (seen.get(r) ?? 0) + 1);
+    }
+  const jinxed = [...new Set(bad.flatMap((j) => [j.a, j.b]))];
+  const rare = jinxed.filter((r) => (seen.get(r) ?? 0) < tries * 0.03);
+  if (bad.length < 6 && !rare.length) return null;
+  const hot = jinxed
+    .map((r) => ({ role: r, n: bad.filter((j) => j.a === r || j.b === r).length }))
+    .filter((x) => x.n >= 2)
+    .sort((a, b) => b.n - a.n)
+    .slice(0, 3);
+  return { unhandled: bad.length, rare, tries, hot };
 }
 
 /** 暗流涌动的旧接口：只要角色列表 */
 export const randomRoles = (count: number, rng: Rng) => randomSetup('tb', count, rng).roles;
 
-/** 一定要一起上场的角色：唱诗男孩 → 国王（换掉一个普通镇民） */
+/** 一定要一起上场的角色：唱诗男孩 → 国王，巡山人 → 落难少女（都是拿掉一个普通镇民换进来，落难少女因此多一个外来者） */
 const REQUIRES: Partial<Record<RoleId, RoleId>> = { choirboy: 'king', huntsman: 'damsel' };
+const PAIRED = new Set<RoleId>([...Object.keys(REQUIRES), ...Object.values(REQUIRES)] as RoleId[]);
 
 export function withRequired(roles: RoleId[], rng: Rng): RoleId[] {
   const out = [...roles];
   for (const [who, need] of Object.entries(REQUIRES) as [RoleId, RoleId][]) {
     if (!out.includes(who) || out.includes(need)) continue;
-    const idx = out.map((_, i) => i).filter((i) => ROLES[out[i]].team === ROLES[need].team && out[i] !== who && !SETUP_TOWNS.includes(out[i]));
+    const idx = out.map((_, i) => i).filter((i) => ROLES[out[i]].team === 'townsfolk' && !PAIRED.has(out[i]) && !SETUP_TOWNS.includes(out[i]));
     if (idx.length) out[pick(idx, rng)] = need;
   }
   return out;
@@ -171,7 +209,10 @@ function stats(script: ScriptRef, count: number) {
   const key = `${sc.id === 'custom' ? sc.roles.join(',') : sc.id}:${count}`;
   if (!statsCache[key]) {
     const rng = seeded(1000 + count + sc.id.length * 97);
-    const xs = Array.from({ length: 800 }, () => setupWeight(randomSetup(script, count, rng)));
+    const all = Array.from({ length: 800 }, () => randomSetup(script, count, rng));
+    // 无神论者局（全员善良）不算进"平均"：不然它一多，正常的局全被算成偏邪恶，推荐反而老挑无神论者局
+    const normal = all.filter((x) => x.demonChar !== 'atheist');
+    const xs = (normal.length >= 100 ? normal : all).map(setupWeight);
     const mean = xs.reduce((a, b) => a + b, 0) / xs.length;
     const sd = Math.sqrt(xs.reduce((a, b) => a + (b - mean) ** 2, 0) / xs.length) || 1;
     statsCache[key] = { mean, sd };
@@ -193,11 +234,13 @@ export function balancedSetup(script: ScriptRef, count: number, rng: Rng, sentin
   const z = (x: RandomSetup) => Math.abs(setupZ(x.roles, count, script, x.demonChar));
   const anchor = pick(defOf(script).roles, rng);
   const has = (x: RandomSetup) => x.roles.includes(anchor) || x.demonChar === anchor;
+  // 无神论者局（全员善良）只在这次定的就是无神论者时才出，不然镇民一多，一半的局都会是它
+  const odd = (x: RandomSetup) => x.demonChar === 'atheist' && anchor !== 'atheist';
   let best: RandomSetup | null = null;
   let bestZ = Infinity;
   for (let i = 0; i < 600 && bestZ > 0.5; i++) {
     const r = randomSetup(script, count, rng, sentinelDelta);
-    if (!has(r)) continue;
+    if (!has(r) || odd(r)) continue;
     const rz = z(r);
     if (rz < bestZ) {
       best = r;
@@ -208,9 +251,10 @@ export function balancedSetup(script: ScriptRef, count: number, rng: Rng, sentin
   if (best && (bestZ < 0.8 || rng() < 0.5)) return best;
   // 这个人数下放不进这个角色：不指定角色，直接挑最均衡的
   best = randomSetup(script, count, rng, sentinelDelta);
-  bestZ = z(best);
+  bestZ = odd(best) ? Infinity : z(best);
   for (let i = 0; i < 300 && bestZ > 0.5; i++) {
     const r = randomSetup(script, count, rng, sentinelDelta);
+    if (odd(r)) continue;
     const rz = z(r);
     if (rz < bestZ) {
       best = r;
@@ -497,10 +541,12 @@ function normalize(s: GameState, rng: Rng, keep?: number) {
   const alch = s.alchemistPicked ? s.alchemistAbility : undefined;
   const target = Math.max(0, Math.min(scriptRolesOf(s, 'outsider').length, o + outsiderDelta([...roles, ...(s.demonChar ? [s.demonChar] : [])], s.sentinelDelta, scriptOf(s), s.godfatherDelta, alch, s.hermitDelta)));
   const team = (x: Seat) => ROLES[x.role].team;
+  // 巡山人带进来的落难少女是拿掉一个镇民换的：允许多一个外来者，也不把她换走
+  const damsel = roles.includes('huntsman') && roles.includes('damsel');
   for (let guard = 0; guard < 6; guard++) {
     const outs = s.seats.filter((x) => team(x) === 'outsider');
-    if (outs.length > target) {
-      const v = pick(outs.filter((x) => x.n !== keep), rng);
+    if (outs.length > target + (damsel ? 1 : 0)) {
+      const v = pick(outs.filter((x) => x.n !== keep && !(damsel && x.role === 'damsel')), rng);
       const f4 = s.seats.filter((x) => F4.includes(x.role)).length;
       const r = pickTownsfolk(notInPlay(s, 'townsfolk').filter((x) => !SETUP_TOWNS.includes(x)), 1, f4, rng, !!sc.f4Cap)[0];
       if (!v || !r) break;

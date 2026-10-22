@@ -110,7 +110,7 @@ export const JINXES: Jinx[] = [
   { a: 'plaguedoctor', b: 'boomdandy', handled: false, text: '说书人本该获得炸弹人的能力时，改为一名玩家变成炸弹人。' },
   { a: 'plaguedoctor', b: 'wraith', handled: false, text: '说书人本该获得亡魂的能力时，改为一名爪牙获得它并被告知。' },
   { a: 'recluse', b: 'ogre', handled: false, text: '陌客被食人魔当成邪恶时，食人魔会得知自己是邪恶的。' },
-  { a: 'riot', b: 'atheist', handled: false, text: '暴乱时如果说书人被提名，大家投票：够票游戏结束，不够就接着提名。' },
+  { a: 'riot', b: 'atheist', handled: false, text: '暴乱时如果说书人被提名，大家投票：说书人"即将被处决"游戏就结束；不然由说书人接着提名下一个人。' },
   { a: 'riot', b: 'banshee', handled: false, text: '每晚暴乱选一名没选过的活着的善良玩家：选中报丧女妖时她死亡并获得能力。' },
   { a: 'riot', b: 'exorcist', handled: false, text: '暴乱提名并处决了驱魔人选中的人：善良获胜。' },
   { a: 'riot', b: 'farmer', handled: false, text: '每晚暴乱选一名没选过的活着的善良玩家：选中农夫时他用能力但不死。' },

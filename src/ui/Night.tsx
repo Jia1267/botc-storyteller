@@ -10,6 +10,7 @@ import {
   pithagBlock, previewImp, shouldRun, slotActor, slotsFor, type SlotPayload, magicianSeat, poppyActive,
 } from '../engine/flow';
 import { firstNightOnly } from '../engine/nightOrder';
+import { jinxesIn } from '../engine/custom';
 import { DISTRIBUTION } from '../engine/setup';
 import type { Choice } from '../engine/balance';
 import {
@@ -4027,6 +4028,9 @@ function SummonerStep({ g, s, actor }: StepProps) {
       {t.length > 0 && <RoleGrid roles={scriptOf(s).roles.filter((r) => teamOf(r) === 'demon')} value={role} onPick={setRole} />}
       {t.length > 0 && role && (
         <Reveal key={`${t[0]}-${role}`}>
+          {jinxesIn(['summoner', role]).filter((j) => !j.handled).map((j) => (
+            <div key={j.b} className="card card-warn"><p><b>相克（网页没做，要你自己处理）</b>：{j.text}</p></div>
+          ))}
           {bad ? (
             <div className="card card-warn"><p>召唤师中毒/醉酒：召唤失败，天亮时善良获胜。</p></div>
           ) : (

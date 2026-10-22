@@ -180,6 +180,7 @@ function RolesStep({ g }: { g: Game }) {
             </div>
           );
         })}
+        <SpecialGameNotes s={s} />
         <FabledCard g={g} />
         {godfatherModFor(s) && <GodfatherCard g={g} />}
         <button className="btn btn-outline btn-sm" onClick={() => g.commit((st) => (st.setupStep = 'count'))}>
@@ -488,9 +489,7 @@ function SeatsStep({ g, onRules }: { g: Game; onRules: () => void }) {
             </p>
           </div>
         )}
-        {s.demonChar === 'summoner' && <p className="dim">召唤师在场：开局没有恶魔，多一个镇民。召唤师第三晚召唤恶魔。</p>}
-        {s.demonChar === 'atheist' && <p className="dim">无神论者在场：所有人都是善良的。你可以打破规则假装有邪恶；说书人被处决善良获胜。</p>}
-        {s.seats.some((x) => x.role === 'legion') && <p className="dim">军团：除了 {s.seats.filter((x) => !x.traveller && x.role !== 'legion').length} 个好人，其余都是军团。</p>}
+        <SpecialGameNotes s={s} />
         {s.puzzleDrunk && s.seats.some((x) => x.role === 'puzzlemaster') && (
           <div className="card">
             <h3>解谜大师</h3>
@@ -877,5 +876,21 @@ function RedHerringEdit({ g, onClose }: { g: Game; onClose: () => void }) {
       />
       {!inPlay(s, 'fortuneteller') && !actorFor(s, 'fortuneteller') && <p className="dim">场上没有占卜的人。</p>}
     </Sheet>
+  );
+}
+
+/** 没有恶魔 / 没有爪牙 / 大部分是军团的局：配角色时就说清楚，免得以为配错了 */
+function SpecialGameNotes({ s }: { s: Game['s'] }) {
+  return (
+    <>
+      {s.demonChar === 'summoner' && <p className="dim">召唤师在场：开局没有恶魔，多一个镇民。召唤师第三晚召唤恶魔。</p>}
+      {s.demonChar === 'atheist' && (
+        <p className="dim">无神论者在场：这局没有爪牙和恶魔，所有人都是善良的（规则就是这样）。你可以打破规则假装有邪恶；说书人被处决善良获胜。</p>
+      )}
+      {s.demonChar === 'kazali' && <p className="dim">卡扎力在场：开局没有爪牙，爪牙的位置先放镇民；第一晚由卡扎力指定谁变成哪个爪牙。</p>}
+      {s.seats.some((x) => x.role === 'legion') && (
+        <p className="dim">军团：除了 {s.seats.filter((x) => !x.traveller && x.role !== 'legion').length} 个好人，其余都是军团。</p>
+      )}
+    </>
   );
 }

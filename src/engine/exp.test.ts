@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { ROLES, type RoleId } from './roles';
 import { seeded } from './rng';
-import { newGame, randomSetup, refreshSetup, setCount, startDeal } from './setup';
+import { newGame, randomSetup, refreshSetup, replaceRole, setCount, setCustomScript, startDeal } from './setup';
 import { boomResolve, butcherAgain, completeSlot, cultVote, currentSlot, damselGuess, dealNext, doomsayerUse, execute, executeStoryteller, fiddlerDuel, finishDay, golemNominates, judgeRules, mezeSaid, psychoKill, riotNominate, shouldRun, slotActor, voteNeed, yaggaSay, type SlotPayload } from './flow';
 import { rulesFor } from './rulesSpeech';
 import { addTraveller, swapPlayers } from './travellers';
@@ -198,10 +198,20 @@ describe('实验性外来者', () => {
     night(s, { huntsman: { kind: 'huntsman', target: 2, become: 'chef' } });
     expect(seatOf(s, 2).role).toBe('chef');
     const def = makeCustom('巡山', ['huntsman', 'damsel', 'chef', 'empath', 'monk', 'soldier', 'undertaker', 'washerwoman', 'butler', 'recluse', 'poisoner', 'spy', 'imp']);
-    for (let i = 0; i < 40; i++) {
-      const x = randomSetup(def, 8, seeded(i));
-      if (x.roles.includes('huntsman')) expect(x.roles).toContain('damsel');
-    }
+    // 7、10 人局本来没有外来者：落难少女要换掉一个镇民进来
+    for (const n of [7, 8, 10])
+      for (let i = 0; i < 40; i++) {
+        const x = randomSetup(def, n, seeded(i));
+        if (x.roles.includes('huntsman')) expect(x.roles).toContain('damsel');
+        expect(x.roles.length).toBe(n);
+      }
+    // 手动把一个镇民换成巡山人：落难少女换掉一个镇民进来，外来者人数修正不会把她换走
+    const g = newGame();
+    setCustomScript(g, def);
+    setCount(g, 7, seeded(6));
+    expect(g.seats.map((x) => x.role)).not.toContain('huntsman');
+    replaceRole(g, g.seats.find((x) => ROLES[x.role].team === 'townsfolk')!.n, 'huntsman', seeded(6));
+    expect(g.seats.map((x) => x.role)).toContain('damsel');
   });
 
   it('告密者：第一晚爪牙得到伪装；解谜大师：开局有一人整局醉酒', () => {
@@ -585,5 +595,23 @@ describe('角色大全', () => {
     const { FABLED } = await import('./roles');
     const missing = CATALOG.filter((x) => !(x.id in ROLES) && !(x.id in FABLED) && x.id !== 'godofug-ug-mode').map((x) => x.id);
     expect(missing).toEqual([]);
+  });
+});
+
+describe('相克很多的板子', () => {
+  const R = 'king choirboy nightwatchman princess farmer acrobat preacher magician poppygrower huntsman atheist villageidiot engineer lycanthrope cultleader ogre hatter qutler hermit xaan wizard boomdandy summoner lordoftyphon kazali riot legion'.split(' ') as RoleId[];
+  it('提醒说书人板子可能有问题，并指出牵扯最多的角色', async () => {
+    const { boardRisk } = await import('./setup');
+    const r = boardRisk(R)!;
+    expect(r.unhandled).toBe(14);
+    expect(r.hot[0].role).toBe('summoner');
+    expect(boardRisk(['chef', 'empath', 'investigator', 'librarian', 'washerwoman', 'butler', 'recluse', 'poisoner', 'spy', 'imp'])).toBeNull();
+  });
+  it('一键配板不会老是无神论者局', async () => {
+    const { balancedSetup } = await import('./setup');
+    const def = makeCustom('相克多', R);
+    const rng = seeded(3);
+    const n = Array.from({ length: 40 }, () => balancedSetup(def, 10, rng)).filter((x) => x.demonChar === 'atheist').length;
+    expect(n).toBeLessThanOrEqual(4);
   });
 });
