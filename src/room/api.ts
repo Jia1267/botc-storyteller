@@ -1,7 +1,7 @@
 import { get, onDisconnect, onValue, push, ref, remove, runTransaction, set } from 'firebase/database';
 import type { CardContent } from '../ui/common';
 import { db, signIn } from './firebase';
-import { gotKey, newRoomCode, roomPath, type RoomMeta, type RoomMsg, type SeatInfo } from './protocol';
+import { gotKey, newRoomCode, pickKey, roomPath, type Acks, type MsgBody, type RoomMeta, type RoomMsg, type SeatInfo } from './protocol';
 
 export { signIn };
 
@@ -88,12 +88,25 @@ export async function sendCard(code: string, n: number, card: CardContent): Prom
   return msg;
 }
 
-/** 玩家看完了：从他的信箱里删掉 */
+/** 夜里的消息：用固定的 id 发（同一步重发就覆盖原来那条，并清掉他原来的"已看"和选择） */
+export async function sendMsg(code: string, n: number, id: string, body: MsgBody) {
+  await Promise.all([id, gotKey(id), pickKey(id)].map((k) => remove(ref(db, roomPath(code, 'acks', n, k)))));
+  const msg: RoomMsg = { id, ...clean(body), sentAt: Date.now() };
+  await set(ref(db, roomPath(code, 'priv', n, 'msgs', id)), msg);
+}
+
+/** 收回一条消息（例如说书人没等他选就往下走了） */
 export const clearMsg = (code: string, n: number, id: string) => remove(ref(db, roomPath(code, 'priv', n, 'msgs', id)));
 
 /** 所有座位的"看好了"：{ 座位: { 消息id: 点的时间 } } */
-export const watchAcks = (code: string, cb: (acks: Record<string, Record<string, number>>) => void) =>
-  onValue(ref(db, roomPath(code, 'acks')), (s) => cb(s.val() ?? {}));
+export const watchAcks = (code: string, cb: (acks: Acks) => void) => onValue(ref(db, roomPath(code, 'acks')), (s) => cb(s.val() ?? {}));
+
+/** 所有座位信箱里的消息：{ 座位: { 消息id: 消息 } } */
+export const watchMsgs = (code: string, cb: (msgs: Record<string, Record<string, RoomMsg>>) => void) =>
+  onValue(ref(db, roomPath(code, 'priv')), (s) => {
+    const all: Record<string, { msgs?: Record<string, RoomMsg> }> = s.val() ?? {};
+    cb(Object.fromEntries(Object.entries(all).map(([n, p]) => [n, p.msgs ?? {}])));
+  });
 
 /* ---------------- 两边都用 ---------------- */
 
@@ -140,6 +153,12 @@ export const watchPrivate = (
 ) => onValue(ref(db, roomPath(code, 'priv', n)), (s) => cb(s.val() ?? {}), onErr);
 
 export const ackMsg = (code: string, n: number, id: string) => set(ref(db, roomPath(code, 'acks', n, id)), Date.now());
+
+/** 夜里选好了人：先写选了谁，再写"看完了" */
+export async function answerPick(code: string, n: number, id: string, seats: number[]) {
+  await set(ref(db, roomPath(code, 'acks', n, pickKey(id))), seats);
+  await ackMsg(code, n, id);
+}
 
 /** 消息到手机上了（还没看）：让说书人知道已送达 */
 export const gotMsg = (code: string, n: number, id: string) => set(ref(db, roomPath(code, 'acks', n, gotKey(id))), Date.now());

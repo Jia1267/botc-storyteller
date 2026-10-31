@@ -1,7 +1,7 @@
 // 说书人这边的房间：开房、看谁入座、把身份发到每个人手机上。
 // Firebase 只在开过房间时才加载（import('../../room/api')），不开房的人主页面不变大。
 import { Suspense, createContext, lazy, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { metaSeats, msgStatus, roomLink, seatLabel, type RoomMeta, type SeatInfo } from '../../room/protocol';
+import { metaSeats, msgStatus, roomLink, seatLabel, type Acks, type MsgBody, type RoomMeta, type RoomMsg, type SeatInfo } from '../../room/protocol';
 import type { CardContent } from '../common';
 import { BottomBar, ConfirmButton, Sheet } from '../common';
 
@@ -37,7 +37,11 @@ export interface HostRoom {
   code: string | null;
   meta: RoomMeta | null;
   seats: Record<string, SeatInfo>;
-  acks: Record<string, Record<string, number>>;
+  acks: Acks;
+  /** 每个座位信箱里的消息 */
+  msgs: Record<string, Record<string, RoomMsg>>;
+  /** 信箱和"已看"都读到了（读到之前不自动发消息，免得把发过的再发一遍） */
+  ready: boolean;
   online: boolean;
   err: string | null;
   busy: boolean;
@@ -47,6 +51,11 @@ export interface HostRoom {
   free(n: number): Promise<void>;
   /** 把每个人的身份发到手机上；成功返回 true */
   deal(cards: Record<number, CardContent>): Promise<boolean>;
+  /** 夜里发一条消息（同一个 id 再发就是覆盖） */
+  send(n: number, id: string, body: MsgBody): Promise<void>;
+  unsend(n: number, id: string): Promise<void>;
+  /** 他手机上"看我的角色"换成新角色（红唇女郎接任、小恶魔传刀） */
+  setRole(n: number, card: CardContent): Promise<void>;
 }
 
 const RoomCtx = createContext<HostRoom | null>(null);
@@ -60,7 +69,8 @@ export function RoomProvider({ seatNs, title, phase, children }: { seatNs: numbe
   const code = saved?.code ?? null;
   const [meta, setMeta] = useState<RoomMeta | null>(null);
   const [seats, setSeats] = useState<Record<string, SeatInfo>>({});
-  const [acks, setAcks] = useState<Record<string, Record<string, number>>>({});
+  const [acks, setAcks] = useState<Acks | null>(null);
+  const [msgs, setMsgs] = useState<Record<string, Record<string, RoomMsg>> | null>(null);
   const [online, setOnline] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -85,6 +95,7 @@ export function RoomProvider({ seatNs, title, phase, children }: { seatNs: numbe
         api.watchMeta(code, (m) => (m ? setMeta(m) : save(null)), fail),
         api.watchSeats(code, setSeats, fail),
         api.watchAcks(code, setAcks),
+        api.watchMsgs(code, setMsgs),
         api.watchConnected(setOnline),
       ];
     });
@@ -93,7 +104,8 @@ export function RoomProvider({ seatNs, title, phase, children }: { seatNs: numbe
       offs.forEach((off) => off());
       setMeta(null);
       setSeats({});
-      setAcks({});
+      setAcks(null);
+      setMsgs(null);
     };
   }, [code, save]);
 
@@ -127,7 +139,9 @@ export function RoomProvider({ seatNs, title, phase, children }: { seatNs: numbe
       code,
       meta,
       seats,
-      acks,
+      acks: acks ?? {},
+      msgs: msgs ?? {},
+      ready: !!acks && !!msgs,
       online,
       err,
       busy,
@@ -171,8 +185,23 @@ export function RoomProvider({ seatNs, title, phase, children }: { seatNs: numbe
           return false;
         }
       },
+      send: async (n, id, body) => {
+        if (!code) return;
+        const api = await loadApi();
+        await api.sendMsg(code, n, id, body).catch((e) => setErr(api.roomError(e)));
+      },
+      unsend: async (n, id) => {
+        if (!code) return;
+        const api = await loadApi();
+        await api.clearMsg(code, n, id).catch(() => {});
+      },
+      setRole: async (n, card) => {
+        if (!code) return;
+        const api = await loadApi();
+        await api.setRoleCard(code, n, card).catch((e) => setErr(api.roomError(e)));
+      },
     }),
-    [code, meta, seats, acks, online, err, busy, saved, seatNs, title, save],
+    [code, meta, seats, acks, msgs, online, err, busy, saved, seatNs, title, save],
   );
   return <RoomCtx.Provider value={value}>{children}</RoomCtx.Provider>;
 }

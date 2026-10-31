@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { clearMsg, closeRoom, createRoom, freeSeat, ownsRoom, roomError, sendCard, setPhase, setRoleCard, watchAcks, watchConnected, watchMeta, watchSeats } from '../../room/api';
-import { gotKey, isRoomCode, roomLink, type RoomMeta, type SeatInfo } from '../../room/protocol';
+import { gotKey, isRoomCode, roomLink, type Acks, type RoomMeta, type SeatInfo } from '../../room/protocol';
 import { ROLES } from '../../engine/roles';
 import { Qr } from './Qr';
 
@@ -89,7 +89,7 @@ interface Times {
 function Room({ code, onClosed }: { code: string; onClosed: () => void }) {
   const [meta, setMeta] = useState<RoomMeta | null>(null);
   const [seats, setSeats] = useState<Record<string, SeatInfo>>({});
-  const [acks, setAcks] = useState<Record<string, Record<string, number>>>({});
+  const [acks, setAcks] = useState<Acks>({});
   const [online, setOnline] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const sent = useRef<Sent[]>([]);

@@ -240,6 +240,18 @@ const LEGEND: Record<string, string> = {
   monk: '僧侣保护', master: '管家主人', rh: '占卜干扰项', used: '能力已用', became: '中途换了角色',
 };
 
+/** 发到间谍手机上的魔典：一行一个座位，后面是标记；最后是伪装、酒鬼以为的角色 */
+export function spyRows(s: GameState): string[] {
+  return [
+    ...s.seats.map((x) =>
+      [seatName(x.n), roleName(x.role), x.alive ? null : x.left ? '离场' : '已死亡', ...seatMarks(s, x.n).map((m) => LEGEND[m.key] ?? m.text)].filter(Boolean).join(' · '),
+    ),
+    s.bluffs.length ? `恶魔伪装：${s.bluffs.map(roleName).join('、')}` : '',
+    s.drunkFake && s.seats.some((x) => x.role === 'drunk') ? `酒鬼以为是：${roleName(s.drunkFake)}` : '',
+    s.lunaticFake ? `疯子以为是：${roleName(s.lunaticFake)}` : '',
+  ].filter(Boolean);
+}
+
 function MarkLegend({ s }: { s: GameState }) {
   const seen = new Map<string, string>();
   for (const x of s.seats) for (const m of seatMarks(s, x.n)) if (!seen.has(m.key)) seen.set(m.key, `${m.short}=${LEGEND[m.key] ?? m.text}`);

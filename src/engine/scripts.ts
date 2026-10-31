@@ -521,19 +521,27 @@ export function slotLines(slot: SlotId, style: 'simple' | 'atmo'): string[] {
   return SLOT_LINES[slot]?.[style] ?? [];
 }
 
+/** 房间里玩：夜里不闭眼，各自看手机 */
+export function phoneDuskLines(style: 'simple' | 'atmo'): string[] {
+  return style === 'simple'
+    ? ['入夜了。请大家看自己的手机，屏幕别给别人看。']
+    : ['夜幕降临，钟楼敲响了午夜的钟声。', '请大家低头看自己的手机，别让旁人看到屏幕……', '黑暗里，有人醒着。'];
+}
+
 export function librarianZeroLines(style: 'simple' | 'atmo'): string[] {
   return style === 'simple' ? ['场上没有外来者。'] : ['书架深处的名单上……一个外来者也没有。'];
 }
 
 export function dawnLines(
   deaths: number[], style: 'simple' | 'atmo',
-  extra: { fear?: boolean; leviathanDay?: number; hadikhia?: { picks: number[]; alive: boolean[] }; banshee?: number; revived?: number[] } = {},
+  extra: { fear?: boolean; leviathanDay?: number; hadikhia?: { picks: number[]; alive: boolean[] }; banshee?: number; revived?: number[]; phones?: boolean } = {},
 ): string[] {
   const list = deaths.map((n) => `${seatName(n)}`).join('、');
+  // 房间里玩夜里没人闭眼：不说"睁眼"
   const out =
     style === 'simple'
-      ? ['天亮了，大家请睁眼。', deaths.length ? `昨晚，${list} 死了。` : '昨晚是平安夜，没有人死亡。']
-      : ['晨光刺破了黑夜，大家请睁开眼睛。', deaths.length ? `可惜，昨夜 ${list} 再也没有醒来……` : '昨夜，钟楼小镇平安无事。'];
+      ? [extra.phones ? '天亮了，大家可以放下手机了。' : '天亮了，大家请睁眼。', deaths.length ? `昨晚，${list} 死了。` : '昨晚是平安夜，没有人死亡。']
+      : [extra.phones ? '晨光刺破了黑夜，大家抬起头来。' : '晨光刺破了黑夜，大家请睁开眼睛。', deaths.length ? `可惜，昨夜 ${list} 再也没有醒来……` : '昨夜，钟楼小镇平安无事。'];
   if (extra.fear) out.push('恐惧之灵选择了一名新的目标。');
   if (extra.hadikhia?.picks.length)
     out.push(`恶魔昨晚选择了 ${extra.hadikhia.picks.map((n) => seatName(n)).join('、')}：${extra.hadikhia.picks.map((n, i) => `${seatName(n)}${extra.hadikhia!.alive[i] ? '活着' : '死了'}`).join('，')}。`);

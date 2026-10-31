@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { seeded } from '../engine/rng';
-import { gotKey, isRoomCode, metaSeats, msgStatus, newRoomCode, roomLink, roomPath, seatLabel, sortMsgs } from './protocol';
+import {
+  gotKey, hashUnit, idleMsgId, isNightMsg, isRoomCode, metaSeats, msgStatus, newRoomCode, nightMsgId, pickKey, pickOf, roomLink, roomPath, sameBody, seatLabel, sortMsgs,
+} from './protocol';
 
 describe('房间', () => {
   it('房间号是 4 个大写字母，不含 I、O', () => {
@@ -39,5 +41,37 @@ describe('房间', () => {
     expect(msgStatus({ 3: { [gotKey('m1')]: 1 } }, 3, 'm1')).toBe('got');
     expect(msgStatus({ 3: { [gotKey('m1')]: 1, m1: 2 } }, 3, 'm1')).toBe('read');
     expect(msgStatus({ 4: { m1: 2 } }, 3, 'm1')).toBe('sent');
+  });
+
+  it('夜里的消息 id：同一晚同一步同一人同一条是固定的；能认出是哪一晚的', () => {
+    expect(nightMsgId(2, 5, 3, 'pick')).toBe('N2-5-3-pick');
+    expect(idleMsgId(2, 101)).toBe('N2-idle-101');
+    expect(isNightMsg('N2-5-3-pick', 2)).toBe(true);
+    expect(isNightMsg('N12-5-3-pick', 1)).toBe(false);
+    expect(isNightMsg('-Nabc', 1)).toBe(false);
+  });
+
+  it('他在手机上选的人：存的是数组，没选是 undefined', () => {
+    expect(pickOf({ 3: { [pickKey('a')]: [5, 7] } }, 3, 'a')).toEqual([5, 7]);
+    expect(pickOf({ 3: { a: 1 } }, 3, 'a')).toBeUndefined();
+    expect(pickOf({}, 3, 'a')).toBeUndefined();
+  });
+
+  it('消息内容比较：数据库去掉的空字段、键的顺序不算改动', () => {
+    const sent = { card: { title: 'x', big: ['3 号'], lines: ['a'] }, ask: { count: 1, seats: [1, 2, 3], disabled: [] } };
+    const back = { ask: { seats: [1, 2, 3], count: 1 }, card: { lines: ['a'], big: ['3 号'], title: 'x', note: undefined } };
+    expect(sameBody(back, sent)).toBe(true);
+    expect(sameBody(back, { ...sent, card: { ...sent.card, big: ['4 号'] } })).toBe(false);
+    expect(sameBody(undefined, sent)).toBe(false);
+  });
+
+  it('随机分到哪一步：同样的输入结果一样，落在 0..1', () => {
+    expect(hashUnit('ABCD|1|3|x')).toBe(hashUnit('ABCD|1|3|x'));
+    const xs = Array.from({ length: 200 }, (_, i) => hashUnit(`ABCD|1|${i}|x`));
+    expect(Math.min(...xs)).toBeGreaterThanOrEqual(0);
+    expect(Math.max(...xs)).toBeLessThan(1);
+    // 不会全挤在一头
+    expect(xs.filter((x) => x < 0.5).length).toBeGreaterThan(60);
+    expect(xs.filter((x) => x >= 0.5).length).toBeGreaterThan(60);
   });
 });

@@ -23,14 +23,16 @@ import {
   SEATS_COUNT, choirboyChoices, farmerChoices, kingChoices, knightChoices, nobleChoices, priestessChoices, seatsVerdict, shugenjaChoices, shugenjaSteps,
   stewardChoices, type SeatsKind, huntsmanBecomeChoices, legionChoices, viChoices,
 } from '../engine/info';
-import { SLOT_TITLE, dawnLines, librarianZeroLines, slotLines } from '../engine/scripts';
+import { SLOT_TITLE, dawnLines, librarianZeroLines, phoneDuskLines, slotLines } from '../engine/scripts';
 import type { GameState, Seat, SlotId } from '../engine/types';
 import { stepRng, type Game } from '../store';
 import { BottomBar, ChoicePanel, ConfirmButton, DoBox, SayBox, SeatPicker, Sheet, TableCtx, TwoChoice, drunkWhy, roleCard, seatMarks, usePoint, useUi } from './common';
 import { shuffle } from '../engine/rng';
-import { GrimoirePanel } from './Grimoire';
+import { GrimoirePanel, spyRows } from './Grimoire';
 import { Icon } from './icons';
 import { KlutzPrompt, MoonchildPrompt, PixiePrompt, promptPending } from './Prompts';
+import { useRoom } from './room/hostRoom';
+import { NightPhones, PhoneBar, PhoneMissing, phonesOn, useNightUnread, usePhoneAsk, usePhoneOn, usePhoneSend } from './room/nightRoom';
 
 interface StepProps {
   g: Game;
@@ -68,9 +70,11 @@ export function NightScreen({ g }: { g: Game }) {
           </h2>
           {actor && !(slot === 'lunatic' && s.night === 1) && slot !== 'farmer' && slot !== 'barista' && !(slot === 'king' && s.night === 1) && <ActorLine s={s} actor={actor} slot={eff} />}
         </div>
+        <PhoneMissing slot={eff} actor={actor?.n} />
         <SlotBody g={g} s={s} slot={eff} actor={actor} />
       </div>
       {s.ns!.goonInform && <GoonInformSheet g={g} />}
+      <NightPhones s={s} />
     </main>
   );
 }
@@ -473,14 +477,18 @@ function SkipStep({ g }: { g: Game }) {
 
 function DuskStep({ g, s }: { g: Game; s: GameState }) {
   const done = useDone(g);
+  const room = useRoom();
+  const phones = phonesOn(room);
   const sleepers = notWakingTonight(s);
+  const away = phones ? s.seats.filter((x) => !x.left && !room.seats[x.n]?.online).map((x) => x.n) : [];
   return (
     <>
-      <SayBox lines={slotLines('dusk', s.style)} title="对所有人说" />
+      <SayBox lines={phones ? phoneDuskLines(s.style) : slotLines('dusk', s.style)} title="对所有人说" />
       <DoBox
         items={[
-          '等所有人都闭上眼睛、低下头。',
-          '接下来按网页顺序，一个一个轻拍肩膀叫醒。不要出声叫名字。',
+          ...(phones
+            ? ['不用闭眼：每个人看自己的手机。今晚每个人都会收到消息（没有行动的人收到"今晚你没有行动"），看完点"看完了"。', '接下来按网页顺序一步一步走，要选人的会直接发到他手机上。']
+            : ['等所有人都闭上眼睛、低下头。', '接下来按网页顺序，一个一个轻拍肩膀叫醒。不要出声叫名字。']),
           s.night === 1 ? '第一晚恶魔不杀人。' : null,
           s.night === 1 && s.fabled.includes('stormcatcher') && s.stormRole
             ? `暴风捕手：叫醒所有邪恶玩家，告诉他们【${roleName(s.stormRole)}】是谁（在场的话指给他们看）。`
@@ -496,9 +504,10 @@ function DuskStep({ g, s }: { g: Game; s: GameState }) {
           ))}
         </div>
       )}
+      {away.length > 0 && <p className="card card-warn">{seatsText(away)} 的手机现在不在线：让他点亮屏幕、打开网页，会自动接上。</p>}
       <BottomBar wide>
         <button className="btn btn-primary btn-block" onClick={() => done({ kind: 'none' })}>
-          所有人都闭眼了
+          {phones ? '开始' : '所有人都闭眼了'}
         </button>
       </BottomBar>
     </>
@@ -515,6 +524,24 @@ function MinionInfoStep({ g, s }: { g: Game; s: GameState }) {
   // 魔术师：爪牙以为他也是恶魔，两人一起指，顺序打乱
   const both = useMemo(() => (mg ? shuffle([d.n, mg.n], stepRng(s, 2)) : [d.n]), [s, d.n, mg]);
   usePoint(both);
+  const phone = usePhoneSend(
+    s,
+    minions.map((x) => ({
+      n: x.n,
+      tag: 'info',
+      body: {
+        card: { big: both.map(seatName), note: one ? undefined : `爪牙：${ms}`, lines: slotLines('minionInfo', s.style) },
+      },
+    })),
+  );
+  if (phone.on)
+    return (
+      <>
+        <DoBox items={[`点「发给 ${ms}」：爪牙的手机上会显示恶魔是谁${one ? '' : '、其他爪牙是谁'}。`, mg ? `${seatName(mg.n)} 是魔术师：爪牙会看到两个"恶魔"，别说出来。` : null]} />
+        <p className="dim">7 人及以上才有这一步。</p>
+        <PhoneBar send={phone} onDone={() => done({ kind: 'none' })} />
+      </>
+    );
   return (
     <>
       <DoBox
@@ -557,6 +584,22 @@ function DemonInfoStep({ g, s }: { g: Game; s: GameState }) {
   const ms = seatsText(shown);
   const d = demonSeat(s)!;
   usePoint(shown);
+  const lines = slotLines('demonInfo', s.style);
+  const phone = usePhoneSend(s, [
+    ...(ms ? [{ n: d.n, tag: 'info', body: { card: { big: shown.map(seatName), lines: lines.slice(0, 1) } } }] : []),
+    { n: d.n, tag: 'info2', body: { card: { big: s.bluffs.map(roleName), lines: lines.slice(1) } } },
+  ]);
+  if (phone.on)
+    return (
+      <>
+        <DoBox items={[`点「发给 ${seatName(d.n)}」：恶魔的手机上会先显示${ms ? `他的爪牙（${ms}），再显示` : ''}三个伪装角色。`]} />
+        {!ms && !poppy && <p className="dim">唯一的爪牙是提线木偶，下一步再单独告诉恶魔。</p>}
+        {poppy && <p className="dim">罂粟种植者在场：恶魔不知道爪牙是谁，只给他看三个伪装。</p>}
+        {mg && !poppy && <p className="dim">{seatName(mg.n)} 是魔术师：恶魔会以为他也是爪牙，别说出来。</p>}
+        <p className="muted">伪装角色：{s.bluffs.map(roleName).join('、') || '没有（板子上的善良角色都在场）'}</p>
+        <PhoneBar send={phone} onDone={() => done({ kind: 'none' })} />
+      </>
+    );
   return (
     <>
       <DoBox
@@ -594,10 +637,13 @@ function DawnStep({ g, s }: { g: Game; s: GameState }) {
   const bs = s.bansheeActive ? seatOf(s, s.bansheeActive) : null;
   const banshee = bs?.death?.when === 'night' && bs.death.night === s.night ? bs.n : undefined;
   const fakeZ = s.zombuulFake ? s.seats.find((x) => x.role === 'zombuul' && deaths.includes(x.n)) : undefined;
+  // 房间：所有人都点完了手机上的消息才天亮（没收到东西的人这时会收到"今晚你没有行动"）
+  const unread = useNightUnread(s);
+  const waiting = !s.winner && !!unread?.length;
   return (
     <>
       <SayBox
-        lines={dawnLines(deaths, s.style, { fear: s.fearAnnounce, leviathanDay: lev ? s.night : undefined, hadikhia: s.ns!.hadikhia, banshee, revived: s.ns!.revived })}
+        lines={dawnLines(deaths, s.style, { fear: s.fearAnnounce, leviathanDay: lev ? s.night : undefined, hadikhia: s.ns!.hadikhia, banshee, revived: s.ns!.revived, phones: !!unread })}
         title="对所有人说"
       />
       <DoBox
@@ -619,9 +665,10 @@ function DawnStep({ g, s }: { g: Game; s: GameState }) {
           </p>
         </div>
       )}
+      {unread && <p className="dim">天亮前要等每个人都点完手机上的消息{unread.length ? `：还剩 ${seatsText(unread)}` : '（都点完了）'}。</p>}
       <BottomBar wide>
-        <button className="btn btn-primary btn-block" disabled={!s.winner && promptPending(s)} onClick={() => done({ kind: 'none' })}>
-          {s.winner ? '宣布结果' : promptPending(s) ? '先处理上面的提示' : '进入白天'}
+        <button className="btn btn-primary btn-block" disabled={(!s.winner && promptPending(s)) || waiting} onClick={() => done({ kind: 'none' })}>
+          {s.winner ? '宣布结果' : promptPending(s) ? '先处理上面的提示' : waiting ? `等 ${seatsText(unread!)} 点完手机` : '进入白天'}
         </button>
       </BottomBar>
     </>
@@ -685,14 +732,33 @@ function TargetStep({
           : slot === 'fearmonger'
           ? `现在的目标：${s.fearTarget ? `${seatName(s.fearTarget)}` : '还没有'}。选了新目标，天亮时要公开宣布"恐惧之灵选择了一名新的目标"。`
           : '明天白天提醒自己：只有主人投票时，管家才能投票。';
+  const phone = usePhoneAsk(s, actor.n, { count: 1, title: roleName(slot), lines: slotLines(slot, s.style), disabled: blocked }, setT);
+  const extra = usePhoneSend(
+    s,
+    exorcisedDemon
+      ? [{ n: exorcisedDemon, tag: 'info', body: { card: { title: `${seatName(actor.n)} 是`, big: ['驱魔人'], note: '他选中了你：今晚你不用醒了。' } } }]
+      : preachedMinion
+        ? [{ n: preachedMinion, tag: 'info', body: { card: { title: '这个角色选中了你', big: ['传教士'], note: '你失去了能力。' } } }]
+        : [],
+  );
   return (
     <>
-      <DoBox items={[wake(actor.n), `让他用手指向一名玩家${notSelf ? '（不能指自己）' : ''}，你在下面点出同一个人。`, sleep]} />
-      <SayBox lines={slotLines(slot, s.style)} title="小声说" />
-      <SeatPicker s={s} selected={t} max={1} onChange={setT} disabled={blocked} label="他指了谁？" />
+      {phone.on ? phone.view : <DoBox items={[wake(actor.n), `让他用手指向一名玩家${notSelf ? '（不能指自己）' : ''}，你在下面点出同一个人。`, sleep]} />}
+      {!phone.on && <SayBox lines={slotLines(slot, s.style)} title="小声说" />}
+      <SeatPicker s={s} selected={t} max={1} onChange={setT} disabled={blocked} label={phone.on ? '他选了谁？' : '他指了谁？'} />
       <GoonNote s={s} actor={actor} picks={t} slot={slot} />
       <p className="dim">{note}</p>
-      {exorcisedDemon && (
+      {exorcisedDemon && extra.on && (
+        <Reveal key={exorcisedDemon}>
+          <DoBox title="他选中了恶魔" items={[`点「发给 ${seatName(exorcisedDemon)}」：恶魔手机上会显示驱魔人是 ${seatName(actor.n)}，今晚他不用醒。`]} />
+        </Reveal>
+      )}
+      {preachedMinion && extra.on && (
+        <Reveal key={preachedMinion}>
+          <DoBox title="他选中了爪牙" items={[`点「发给 ${seatName(preachedMinion)}」：那个爪牙手机上会显示传教士选中了他，他从现在起没有能力。`]} />
+        </Reveal>
+      )}
+      {exorcisedDemon && !extra.on && (
         <Reveal key={exorcisedDemon}>
           <DoBox
             title="他选中了恶魔：接着叫醒恶魔"
@@ -707,19 +773,29 @@ function TargetStep({
           />
         </Reveal>
       )}
-      {preachedMinion && (
+      {preachedMinion && !extra.on && (
         <Reveal key={preachedMinion}>
           <DoBox title="他选中了爪牙：接着叫醒那个爪牙" items={[wake(preachedMinion), '点「给爪牙看」：传教士选中了你。告诉他从现在起他没有能力了。', sleep]} />
         </Reveal>
       )}
       <Tips role={slot === 'fearmonger' || slot === 'devilsadvocate' || slot === 'witch' ? slot : believedRole(s, actor)} drunk={actor.role === 'drunk'} />
-      <BottomBar wide>
-        {exorcisedDemon && <CardButton label="给恶魔看" onClick={() => ui.showCard({ title: '这名玩家是', big: ['驱魔人'] })} />}
-        {preachedMinion && <CardButton label="给爪牙看" onClick={() => ui.showCard({ title: '这个角色选中了你', big: ['传教士'], note: '你失去了能力。' })} />}
-        <button className="btn btn-primary grow" disabled={!t.length} onClick={() => done({ kind: 'target', target: t[0] })}>
-          {t.length ? `确认：${seatName(t[0])}，下一步` : '先点出他指的人'}
-        </button>
-      </BottomBar>
+      {phone.on && (extra.on || (!exorcisedDemon && !preachedMinion)) ? (
+        <PhoneBar
+          send={extra}
+          wait={phone.wait}
+          ready={t.length > 0}
+          doneLabel={t.length ? `确认：${seatName(t[0])}，下一步` : '先点出他选的人'}
+          onDone={() => done({ kind: 'target', target: t[0] })}
+        />
+      ) : (
+        <BottomBar wide>
+          {exorcisedDemon && <CardButton label="给恶魔看" onClick={() => ui.showCard({ title: '这名玩家是', big: ['驱魔人'] })} />}
+          {preachedMinion && <CardButton label="给爪牙看" onClick={() => ui.showCard({ title: '这个角色选中了你', big: ['传教士'], note: '你失去了能力。' })} />}
+          <button className="btn btn-primary grow" disabled={!t.length || !!phone.wait} onClick={() => done({ kind: 'target', target: t[0] })}>
+            {phone.wait ?? (t.length ? `确认：${seatName(t[0])}，下一步` : '先点出他指的人')}
+          </button>
+        </BottomBar>
+      )}
     </>
   );
 }
@@ -769,6 +845,25 @@ function PairStep({ g, s, actor, kind }: StepProps & { kind: PairKind }) {
     </div>
   );
 
+  const phoneOn = usePhoneOn(actor.n);
+  const phone = usePhoneSend(
+    s,
+    value
+      ? [
+          {
+            n: actor.n,
+            tag: 'info',
+            body: {
+              card:
+                value.role && value.seats
+                  ? { title: `${seatName(value.seats[0])}和${seatName(value.seats[1])}之中有一人是`, big: [roleName(value.role)], lines: slotLines(kind, s.style) }
+                  : { title: '场上没有外来者', big: ['0'], lines: librarianZeroLines(s.style) },
+            },
+          },
+        ]
+      : [],
+  );
+
   const items: ReactNode[] = [wake(actor.n)];
   if (value && value.role && value.seats) {
     items.push(
@@ -785,15 +880,25 @@ function PairStep({ g, s, actor, kind }: StepProps & { kind: PairKind }) {
   return (
     <>
       <ChoicePanel s={s} choices={choices} sel={sel} rec={rec} onSel={setSel} manual={manual} />
-      <DoBox items={items} />
-      <SayBox lines={value && value.role === null ? librarianZeroLines(s.style) : slotLines(kind, s.style)} title="小声说" />
+      {phoneOn ? (
+        <DoBox items={[`确认上面的信息，点「发给 ${seatName(actor.n)}」：他手机上会显示${value?.role ? '这两个座位号和角色' : '"场上没有外来者"'}。`]} />
+      ) : (
+        <>
+          <DoBox items={items} />
+          <SayBox lines={value && value.role === null ? librarianZeroLines(s.style) : slotLines(kind, s.style)} title="小声说" />
+        </>
+      )}
       <Tips role={kind} drunk={actor.role === 'drunk'} />
-      <BottomBar wide>
-        {value?.role && <CardButton onClick={() => ui.showCard(roleCard(value.role!, '这两人中有一人是'))} />}
-        <button className="btn btn-primary grow" disabled={!value || illegal} onClick={() => value && done({ kind: 'pair', info: value, truth, twist })}>
-          完成，下一步
-        </button>
-      </BottomBar>
+      {phoneOn ? (
+        <PhoneBar send={phone} ready={!!value && !illegal} onDone={() => value && done({ kind: 'pair', info: value, truth, twist })} />
+      ) : (
+        <BottomBar wide>
+          {value?.role && <CardButton onClick={() => ui.showCard(roleCard(value.role!, '这两人中有一人是'))} />}
+          <button className="btn btn-primary grow" disabled={!value || illegal} onClick={() => value && done({ kind: 'pair', info: value, truth, twist })}>
+            完成，下一步
+          </button>
+        </BottomBar>
+      )}
     </>
   );
 }
@@ -814,6 +919,8 @@ function NumberStep({ g, s, actor, kind }: StepProps & { kind: 'chef' | 'empath'
   const truth = sel >= 0 ? choices[sel].truth : mNum !== null && legal.includes(mNum);
   const twist = sel >= 0 ? !!choices[sel].twist : truth && mNum !== base;
   const nb = aliveNeighbors(s, actor.n);
+  const phoneOn = usePhoneOn(actor.n);
+  const phone = usePhoneSend(s, value !== null && value !== undefined ? [{ n: actor.n, tag: 'info', body: { card: { big: [String(value)], lines: slotLines(kind, s.style) } } }] : []);
 
   const manual = (
     <div className="big-num-grid">
@@ -838,24 +945,34 @@ function NumberStep({ g, s, actor, kind }: StepProps & { kind: 'chef' | 'empath'
         </p>
       )}
       <ChoicePanel s={s} choices={choices} sel={sel} rec={rec} onSel={setSel} manual={manual} manualLabel="手动选数字" />
-      <DoBox
-        items={[
-          wake(actor.n),
-          value !== null && value !== undefined ? (
-            <>
-              伸出 <b>{value}</b> 根手指{value === 0 ? '（握拳）' : ''}。
-            </>
-          ) : null,
-          sleep,
-        ]}
-      />
-      <SayBox lines={slotLines(kind, s.style)} title="小声说" />
+      {phoneOn ? (
+        <DoBox items={[`确认上面的数字，点「发给 ${seatName(actor.n)}」：他手机上会显示这个数字。`]} />
+      ) : (
+        <>
+          <DoBox
+            items={[
+              wake(actor.n),
+              value !== null && value !== undefined ? (
+                <>
+                  伸出 <b>{value}</b> 根手指{value === 0 ? '（握拳）' : ''}。
+                </>
+              ) : null,
+              sleep,
+            ]}
+          />
+          <SayBox lines={slotLines(kind, s.style)} title="小声说" />
+        </>
+      )}
       <Tips role={kind} drunk={actor.role === 'drunk'} />
-      <BottomBar wide>
-        <button className="btn btn-primary btn-block" disabled={value === null || value === undefined} onClick={() => done({ kind: 'number', num: value!, truth, twist })}>
-          完成，下一步
-        </button>
-      </BottomBar>
+      {phoneOn ? (
+        <PhoneBar send={phone} ready={value !== null && value !== undefined} onDone={() => done({ kind: 'number', num: value!, truth, twist })} />
+      ) : (
+        <BottomBar wide>
+          <button className="btn btn-primary btn-block" disabled={value === null || value === undefined} onClick={() => done({ kind: 'number', num: value!, truth, twist })}>
+            完成，下一步
+          </button>
+        </BottomBar>
+      )}
     </>
   );
 }
@@ -864,41 +981,59 @@ function NumberStep({ g, s, actor, kind }: StepProps & { kind: 'chef' | 'empath'
 
 function FortuneStep({ g, s, actor }: StepProps) {
   const [picks, setPicks] = useState<number[]>([]);
+  const phone = usePhoneAsk(s, actor.n, { count: 2, title: roleName('fortuneteller'), lines: slotLines('fortuneteller', s.style) }, setPicks);
   return (
     <>
-      <DoBox items={[wake(actor.n), '让他用手指向两名玩家，你在下面点出这两个人。']} />
-      <SayBox lines={slotLines('fortuneteller', s.style)} title="小声说" />
-      <SeatPicker s={s} selected={picks} max={2} onChange={setPicks} label="他指了哪两个人？" />
+      {phone.on ? (
+        phone.view
+      ) : (
+        <>
+          <DoBox items={[wake(actor.n), '让他用手指向两名玩家，你在下面点出这两个人。']} />
+          <SayBox lines={slotLines('fortuneteller', s.style)} title="小声说" />
+        </>
+      )}
+      <SeatPicker s={s} selected={picks} max={2} onChange={setPicks} label={phone.on ? '他选了哪两个人？' : '他指了哪两个人？'} />
       {picks.length === 2 ? (
         <Reveal key={[...picks].sort().join()}>
-          <FortuneAnswer g={g} s={s} actor={actor} picks={picks as [number, number]} />
+          <FortuneAnswer g={g} s={s} actor={actor} picks={picks as [number, number]} wait={phone.wait} />
         </Reveal>
       ) : (
         <>
           <Tips role="fortuneteller" drunk={actor.role === 'drunk'} />
-          <Pending text="先点出他指的两个人" />
+          <Pending text={phone.wait ?? '先点出他指的两个人'} />
         </>
       )}
     </>
   );
 }
 
-function FortuneAnswer({ g, s, actor, picks }: StepProps & { picks: [number, number] }) {
+function FortuneAnswer({ g, s, actor, picks, wait }: StepProps & { picks: [number, number]; wait: string | null }) {
   const done = useDone(g);
   const choices = useMemo(() => fortuneChoices(s, actor.n, picks), [s, actor.n, picks]);
   const rec = useMemo(() => recommend(choices, balance(s).score, stepRng(s, picks[0] * 31 + picks[1])), [choices, s, picks]);
   const [sel, setSel] = useState(rec);
   const c = choices[sel];
+  const phoneOn = usePhoneOn(actor.n);
+  const phone = usePhoneSend(s, [{ n: actor.n, tag: 'info', body: { card: { title: `${seatName(picks[0])}和${seatName(picks[1])}之中`, big: [c.value ? '有恶魔' : '没有恶魔'] } } }]);
+  const finish = () => done({ kind: 'fortune', picks, yes: c.value, truth: c.truth, twist: c.twist });
   return (
     <>
       <ChoicePanel s={s} choices={choices} sel={sel} rec={rec} onSel={(i) => i >= 0 && setSel(i)} />
-      <DoBox items={[c.value ? <><b>点头</b>：有恶魔。</> : <><b>摇头</b>：没有恶魔。</>, sleep]} />
+      {phoneOn ? (
+        <DoBox items={[<>点「发给 {seatName(actor.n)}」：他手机上会显示<b>{c.value ? '有恶魔' : '没有恶魔'}</b>。</>]} />
+      ) : (
+        <DoBox items={[c.value ? <><b>点头</b>：有恶魔。</> : <><b>摇头</b>：没有恶魔。</>, sleep]} />
+      )}
       <Tips role="fortuneteller" drunk={actor.role === 'drunk'} />
-      <BottomBar wide>
-        <button className="btn btn-primary btn-block" onClick={() => done({ kind: 'fortune', picks, yes: c.value, truth: c.truth, twist: c.twist })}>
-          完成，下一步
-        </button>
-      </BottomBar>
+      {phoneOn ? (
+        <PhoneBar send={phone} wait={wait} onDone={finish} />
+      ) : (
+        <BottomBar wide>
+          <button className="btn btn-primary btn-block" onClick={finish}>
+            完成，下一步
+          </button>
+        </BottomBar>
+      )}
     </>
   );
 }
@@ -908,6 +1043,15 @@ function FortuneAnswer({ g, s, actor, picks }: StepProps & { picks: [number, num
 function SpyStep({ g, s, actor }: StepProps) {
   const done = useDone(g);
   const ui = useUi();
+  const phone = usePhoneSend(s, [{ n: actor.n, tag: 'info', body: { card: { big: [], rows: spyRows(s), lines: slotLines('spy', s.style) } } }]);
+  if (phone.on)
+    return (
+      <>
+        <DoBox items={[`点「发给 ${seatName(actor.n)}」：间谍手机上会显示整本魔典（每个座位的角色和状态、恶魔伪装），他看完点"看完了"。`]} />
+        <Tips role="spy" />
+        <PhoneBar send={phone} onDone={() => done({ kind: 'none' })} />
+      </>
+    );
   return (
     <>
       <DoBox items={[wake(actor.n), '点「给间谍看」，把屏幕交给他。', '他看完会点「看完了」，收回屏幕。', sleep]} />
@@ -928,6 +1072,14 @@ function NewDemonStep({ g, s, actor }: StepProps) {
   const done = useDone(g);
   const ui = useUi();
   const r = actor.role;
+  const phone = usePhoneSend(s, [{ n: actor.n, tag: 'info', body: { card: { ...roleCard(r, '你现在是', true), lines: slotLines('scarletwoman', s.style) } }, role: roleCard(r, '你的角色', true) }]);
+  if (phone.on)
+    return (
+      <>
+        <DoBox items={[`点「发给 ${seatName(actor.n)}」：他手机上会显示"你现在是${roleName(r)}"，"看我的角色"也换成${roleName(r)}。`, '下一步就是恶魔这一步（他今晚就可以杀人）。']} />
+        <PhoneBar send={phone} onDone={() => done({ kind: 'none' })} />
+      </>
+    );
   return (
     <>
       <DoBox items={[wake(actor.n), `点「给他看」：你现在是${roleName(r)}。`, '马上进入恶魔这一步（他今晚就可以杀人）。']} />
@@ -946,26 +1098,33 @@ function NewDemonStep({ g, s, actor }: StepProps) {
 
 function ImpStep({ g, s, actor, slot }: StepProps & { slot: 'imp' | 'vortox' }) {
   const [t, setT] = useState<number[]>([]);
+  const phone = usePhoneAsk(s, actor.n, { count: 1, title: roleName(slot), lines: slotLines(slot, s.style) }, setT);
   return (
     <>
-      <DoBox items={[wake(actor.n), '让他用手指向一名玩家（可以指自己），你在下面点出来。']} />
-      <SayBox lines={slotLines(slot, s.style)} title="小声说" />
+      {phone.on ? (
+        phone.view
+      ) : (
+        <>
+          <DoBox items={[wake(actor.n), '让他用手指向一名玩家（可以指自己），你在下面点出来。']} />
+          <SayBox lines={slotLines(slot, s.style)} title="小声说" />
+        </>
+      )}
       <SeatPicker s={s} selected={t} max={1} onChange={setT} label="他要杀谁？" />
       {t.length ? (
         <Reveal key={t[0]}>
-          <ImpOutcome g={g} s={s} actor={actor} target={t[0]} slot={slot} />
+          <ImpOutcome g={g} s={s} actor={actor} target={t[0]} slot={slot} wait={phone.wait} />
         </Reveal>
       ) : (
         <>
           <Tips role={slot} />
-          <Pending text="先点出他指的人" />
+          <Pending text={phone.wait ?? '先点出他指的人'} />
         </>
       )}
     </>
   );
 }
 
-function ImpOutcome({ g, s, actor, target, slot }: StepProps & { target: number; slot: 'imp' | 'vortox' }) {
+function ImpOutcome({ g, s, actor, target, slot, wait }: StepProps & { target: number; slot: 'imp' | 'vortox'; wait: string | null }) {
   const done = useDone(g);
   const ui = useUi();
   const pv = previewImp(s, target);
@@ -991,6 +1150,10 @@ function ImpOutcome({ g, s, actor, target, slot }: StepProps & { target: number;
 
   const pay: SlotPayload =
     pv.kind === 'mayor' ? { kind: 'imp', target, bounce: picked } : pv.kind === 'starpass' ? { kind: 'imp', target, starpassTo: picked } : { kind: 'imp', target };
+  const passTo = pv.kind === 'starpass' && picked ? picked : null;
+  const phoneOn = usePhoneOn(actor.n);
+  const phone = usePhoneSend(s, passTo ? [{ n: passTo, tag: 'info', body: { card: roleCard(actor.role, '你现在是', true) }, role: roleCard(actor.role, '你的角色', true) }] : []);
+  const phoneBar = phoneOn && (phone.on || !passTo);
 
   return (
     <>
@@ -1003,14 +1166,22 @@ function ImpOutcome({ g, s, actor, target, slot }: StepProps & { target: number;
           <ChoicePanel s={s} choices={choices} sel={sel} rec={rec} onSel={(i) => i >= 0 && setSel(i)} />
         </>
       )}
-      <DoBox items={items} />
+      {phoneBar ? (
+        <DoBox items={[passTo ? `点「发给 ${seatName(passTo)}」：他手机上会显示"你现在是${dname}"，"看我的角色"也换成${dname}。` : null, '天亮时再统一宣布死讯。']} />
+      ) : (
+        <DoBox items={items} />
+      )}
       <Tips role={slot} />
-      <BottomBar wide>
-        {pv.kind === 'starpass' && picked && <CardButton onClick={() => ui.showCard(roleCard(actor.role, '你现在是', true))} />}
-        <button className="btn btn-primary grow" onClick={() => done(pay)}>
-          完成，下一步
-        </button>
-      </BottomBar>
+      {phoneBar ? (
+        <PhoneBar send={phone} wait={wait} onDone={() => done(pay)} />
+      ) : (
+        <BottomBar wide>
+          {pv.kind === 'starpass' && picked && <CardButton onClick={() => ui.showCard(roleCard(actor.role, '你现在是', true))} />}
+          <button className="btn btn-primary grow" disabled={!!wait} onClick={() => done(pay)}>
+            {wait ?? '完成，下一步'}
+          </button>
+        </BottomBar>
+      )}
     </>
   );
 }
@@ -1020,12 +1191,19 @@ function ImpOutcome({ g, s, actor, target, slot }: StepProps & { target: number;
 function RevealStep({ g, s, actor, kind }: StepProps & { kind: 'ravenkeeper' | 'undertaker' }) {
   const [pick, setPick] = useState<number[]>(kind === 'undertaker' && s.lastExecution ? [s.lastExecution.seat] : []);
   const subject = pick[0];
+  const phone = usePhoneAsk(s, actor.n, { count: 1, title: roleName('ravenkeeper'), lines: slotLines('ravenkeeper', s.style), off: kind !== 'ravenkeeper' }, setPick);
   return (
     <>
       {kind === 'ravenkeeper' ? (
         <>
-          <DoBox items={[wake(actor.n), '让他用手指向一名玩家，你在下面点出来。']} />
-          <SayBox lines={slotLines(kind, s.style)} title="小声说" />
+          {phone.on ? (
+            phone.view
+          ) : (
+            <>
+              <DoBox items={[wake(actor.n), '让他用手指向一名玩家，你在下面点出来。']} />
+              <SayBox lines={slotLines(kind, s.style)} title="小声说" />
+            </>
+          )}
           <SeatPicker s={s} selected={pick} max={1} onChange={setPick} label="他想看谁的角色？" />
         </>
       ) : (
@@ -1035,16 +1213,16 @@ function RevealStep({ g, s, actor, kind }: StepProps & { kind: 'ravenkeeper' | '
       )}
       {subject ? (
         <Reveal key={subject} enabled={kind === 'ravenkeeper'}>
-          <RevealAnswer g={g} s={s} actor={actor} kind={kind} subject={subject} />
+          <RevealAnswer g={g} s={s} actor={actor} kind={kind} subject={subject} wait={phone.wait} />
         </Reveal>
       ) : (
-        <Pending text="先点出他指的人" />
+        <Pending text={phone.wait ?? '先点出他指的人'} />
       )}
     </>
   );
 }
 
-function RevealAnswer({ g, s, actor, kind, subject }: StepProps & { kind: 'ravenkeeper' | 'undertaker'; subject: number }) {
+function RevealAnswer({ g, s, actor, kind, subject, wait }: StepProps & { kind: 'ravenkeeper' | 'undertaker'; subject: number; wait: string | null }) {
   const done = useDone(g);
   const ui = useUi();
   const choices = useMemo(() => revealChoices(s, actor.n, subject, stepRng(s, subject), kind), [s, actor.n, subject, kind]);
@@ -1058,6 +1236,10 @@ function RevealAnswer({ g, s, actor, kind, subject }: StepProps & { kind: 'raven
   const value = sel >= 0 ? choices[sel].value : mRole;
   const truth = sel >= 0 ? choices[sel].truth : verdict !== 'false';
   const twist = sel >= 0 ? !!choices[sel].twist : verdict === 'twist';
+  const phoneOn = usePhoneOn(actor.n);
+  const title = kind === 'undertaker' ? `今天被处决的 ${seatName(subject)} 是` : `${seatName(subject)} 的角色是`;
+  const phone = usePhoneSend(s, value ? [{ n: actor.n, tag: 'info', body: { card: { ...roleCard(value, title), lines: kind === 'undertaker' ? slotLines(kind, s.style) : undefined } } }] : []);
+  const finish = () => value && done({ kind: 'reveal', pick: subject, role: value, truth, twist });
 
   const manual = (
     <div className="stack" style={{ gap: 8 }}>
@@ -1082,15 +1264,25 @@ function RevealAnswer({ g, s, actor, kind, subject }: StepProps & { kind: 'raven
   return (
     <>
       <ChoicePanel s={s} choices={choices} sel={sel} rec={rec} onSel={setSel} manual={manual} />
-      <DoBox items={[kind === 'undertaker' ? wake(actor.n) : null, '点「给他看」展示角色。', sleep]} />
-      {kind === 'undertaker' && <SayBox lines={slotLines(kind, s.style)} title="小声说" />}
+      {phoneOn ? (
+        <DoBox items={[`确认上面的角色，点「发给 ${seatName(actor.n)}」：他手机上会显示"${title}……"。`]} />
+      ) : (
+        <>
+          <DoBox items={[kind === 'undertaker' ? wake(actor.n) : null, '点「给他看」展示角色。', sleep]} />
+          {kind === 'undertaker' && <SayBox lines={slotLines(kind, s.style)} title="小声说" />}
+        </>
+      )}
       <Tips role={kind} drunk={actor.role === 'drunk'} />
-      <BottomBar wide>
-        {value && <CardButton onClick={() => ui.showCard(roleCard(value, kind === 'undertaker' ? '今天被处决的玩家是' : '这名玩家的角色是'))} />}
-        <button className="btn btn-primary grow" disabled={!value || illegal} onClick={() => value && done({ kind: 'reveal', pick: subject, role: value, truth, twist })}>
-          完成，下一步
-        </button>
-      </BottomBar>
+      {phoneOn ? (
+        <PhoneBar send={phone} wait={wait} ready={!!value && !illegal} onDone={finish} />
+      ) : (
+        <BottomBar wide>
+          {value && <CardButton onClick={() => ui.showCard(roleCard(value, kind === 'undertaker' ? '今天被处决的玩家是' : '这名玩家的角色是'))} />}
+          <button className="btn btn-primary grow" disabled={!value || illegal || !!wait} onClick={finish}>
+            {wait ?? '完成，下一步'}
+          </button>
+        </BottomBar>
+      )}
     </>
   );
 }

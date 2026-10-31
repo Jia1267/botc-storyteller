@@ -61,6 +61,10 @@ export interface CardContent {
   /** 卡片最下面的一句重点（例如邪恶旅行者得知恶魔是谁） */
   note?: string;
   ability?: string;
+  /** 发到手机上时附带的"小声说"那几句 */
+  lines?: string[];
+  /** 一行一行的小字（给间谍看的魔典） */
+  rows?: string[];
 }
 
 export interface Ui {
@@ -508,13 +512,27 @@ export function ShowCard({ c, onDone }: { c: CardContent; onDone: () => void }) 
   const side = c.team ? ((c.alignment ? c.alignment === 'evil' : isEvilTeam(c.team)) ? 'evil' : 'good') : null;
   return (
     <div className={`showcard${side ? ` v3${side === 'evil' ? ' win-evil' : ''}` : ''}`} role="dialog" aria-label="给玩家看">
+      {c.lines?.map((l, i) => (
+        <div key={i} className="ab say-line">
+          {l}
+        </div>
+      ))}
       {c.title && <div className="ttl">{c.title}</div>}
       {side && <Emblem team={side} />}
-      <div className={`big${c.big.length > 1 ? ' many' : ''}`}>
-        {c.big.map((b) => (
-          <div key={b}>{b}</div>
-        ))}
-      </div>
+      {c.big.length > 0 && (
+        <div className={`big${c.big.length > 1 ? ' many' : ''}`}>
+          {c.big.map((b) => (
+            <div key={b}>{b}</div>
+          ))}
+        </div>
+      )}
+      {c.rows && (
+        <div className="rows">
+          {c.rows.map((r) => (
+            <div key={r}>{r}</div>
+          ))}
+        </div>
+      )}
       {c.team && side && (
         <div className="team">
           {TEAM_NAME[c.team]} · {side === 'evil' ? '邪恶阵营' : '善良阵营'}
