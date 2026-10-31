@@ -510,6 +510,8 @@ export function ShowCard({ c, onDone }: { c: CardContent; onDone: () => void }) 
   }, []);
   // 带阵营的身份卡：上面一个阵营徽记，背景一点阵营色的光
   const side = c.team ? ((c.alignment ? c.alignment === 'evil' : isEvilTeam(c.team)) ? 'evil' : 'good') : null;
+  // 从房间数据库来的卡片：空的大字列表会被数据库去掉（例如间谍的魔典卡）
+  const big = c.big ?? [];
   return (
     <div className={`showcard${side ? ` v3${side === 'evil' ? ' win-evil' : ''}` : ''}`} role="dialog" aria-label="给玩家看">
       {c.lines?.map((l, i) => (
@@ -519,9 +521,9 @@ export function ShowCard({ c, onDone }: { c: CardContent; onDone: () => void }) 
       ))}
       {c.title && <div className="ttl">{c.title}</div>}
       {side && <Emblem team={side} />}
-      {c.big.length > 0 && (
-        <div className={`big${c.big.length > 1 ? ' many' : ''}`}>
-          {c.big.map((b) => (
+      {big.length > 0 && (
+        <div className={`big${big.length > 1 ? ' many' : ''}`}>
+          {big.map((b) => (
             <div key={b}>{b}</div>
           ))}
         </div>
