@@ -76,7 +76,7 @@ function ScriptStep({ g }: { g: Game }) {
           </button>
         </div>
         <h2 style={{ fontSize: 22, marginTop: 8 }}>没有说书人？</h2>
-        <p className="dim">让网页当说书人：一台平板放在桌子中间念台词、倒计时、数票，大家用自己的手机看身份、夜里选人、白天提名投票。目前支持暗流涌动、暗月初升。</p>
+        <p className="dim">让网页当说书人：一台平板放在桌子中间念台词、倒计时、数票，大家用自己的手机看身份、夜里选人、白天提名投票。目前支持暗流涌动、暗月初升、梦殒春宵。</p>
         <button
           className="btn btn-outline btn-block"
           onClick={() =>

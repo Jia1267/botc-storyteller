@@ -1,9 +1,10 @@
 // AI 说书人的后台主持：每次看一眼现在该做什么，只做一件事（发一条消息、记一步、改一下公开进度）。
 // 不依赖 React：平板上由 useAiHost 每半秒调一次；测试里用假的房间一局一局地跑。
 import { AI_DEFAULTS, aiPlan, aiSlayer, aiVirgin, tallyHands, voteOrder, type AiAnswer, type AiAsk, type AiMsg } from '../../engine/ai';
-import { clone, seatName, seatOf } from '../../engine/core';
+import { clone, isDemonSeat, seatName, seatOf, teamOf } from '../../engine/core';
 import {
-  completeSlot, currentSlot, execute, finishDay, goonInformed, moonchildChoose, moonchildNeedsChoice, nomResults, nominateVirgin, pacifistCanSave, slayerShoot, voteNeed,
+  completeSlot, currentSlot, execute, finishDay, goonInformed, klutzChoose, klutzNeedsChoice, moonchildChoose, moonchildNeedsChoice, nomResults, nominateVirgin, pacifistCanSave,
+  slayerShoot, voteNeed, witchActive, witchStrikes,
 } from '../../engine/flow';
 import { balance, recommend } from '../../engine/balance';
 import { pacifistChoices } from '../../engine/info';
@@ -179,6 +180,25 @@ export async function aiStep(c: AiCtx): Promise<void> {
     await speak(`${seatName(moon.n)}（月之子）选择了 ${seatName(pick)}。`);
     return;
   }
+  // 呆瓜得知自己死了：公开选一名活着的玩家，选到邪恶的善良落败
+  const klutz = klutzNeedsChoice(s);
+  if (klutz && ai?.stage !== 'vote') {
+    const id = `D${s.night}-klutz-${klutz.n}`;
+    const dead = s.seats.filter((x) => !x.alive).map((x) => x.n);
+    if (!room.msgs[klutz.n]?.[id]) {
+      await room.send(klutz.n, id, {
+        card: { title: '呆瓜：你死了。公开选一名活着的玩家', big: [], lines: ['可以先和大家商量。如果你选到邪恶玩家，善良阵营落败。'] },
+        ask: { count: 1, seats: s.seats.filter((x) => !x.left).map((x) => x.n), dead, disabled: [...dead, klutz.n] },
+      });
+      say(`${seatName(klutz.n)} 是呆瓜：请在手机上公开选一名活着的玩家。`);
+      return;
+    }
+    const pick = answerOf(room.acks, klutz.n, id)?.seats?.[0] ?? (takeSkip() ? s.seats.find((x) => x.alive && x.n !== klutz.n)?.n : undefined);
+    if (pick === undefined) return;
+    commit((st) => klutzChoose(st, pick));
+    await speak(`${seatName(klutz.n)}（呆瓜）选择了 ${seatName(pick)}。`);
+    return;
+  }
   // 新的一天：念死讯，开始私聊倒计时
   if (!ai || ai.day !== s.night || ai.stage === 'night' || ai.stage === 'wait') {
     const deaths = dawnLines(s.ns?.deaths ?? [], s.style, { phones: true }).join('');
@@ -241,6 +261,15 @@ export async function aiStep(c: AiCtx): Promise<void> {
       const target = noms[0].a!.target;
       const i = (ai.results ?? []).length;
       const base = { nominators: [...(ai.nominators ?? []), by], nominees: [...(ai.nominees ?? []), target], nom: { i, by, target } };
+      // 城镇公告员要知道今天有没有爪牙提名过
+      if (teamOf(seatOf(s, by).role) === 'minion') commit((st) => (st.minionNominatedDay = st.night));
+      // 被女巫诅咒的人一提名就死（提名照常投票）
+      const curse = s.witchCurse;
+      if (curse && curse.seat === by && curse.night === s.night && witchActive(s) && seatOf(s, by).alive) {
+        commit((st) => witchStrikes(st));
+        await speak(`${seatName(by)} 提名了 ${seatName(target)}。${seatName(by)} 死了。请 ${seatName(by)} 说明理由，说完在手机上点"发言结束"。`, { ...base, stage: 'speech1' });
+        return;
+      }
       const v = aiVirgin(s, target, by);
       if (v.virgin) {
         // 先在副本上试：贞洁者会不会把提名者处决
@@ -287,7 +316,11 @@ export async function aiStep(c: AiCtx): Promise<void> {
       // 数票：死人用掉一票、管家看主人
       const handsN: Record<number, boolean> = Object.fromEntries(Object.entries(hands).map(([k, v]) => [Number(k), !!v]));
       const t = tallyHands(s, vote.order, handsN, ai.spent ?? []);
-      commit((st) => void st.noms.push({ day: st.night, seat: nom.target, votes: t.votes, need: vote.need }));
+      commit((st) => {
+        st.noms.push({ day: st.night, seat: nom.target, votes: t.votes, need: vote.need });
+        // 卖花女孩要知道今天恶魔有没有投票
+        if (t.counted.some((n) => isDemonSeat(st, n))) st.demonVotedDay = st.night;
+      });
       const after = nomResults({ ...s, noms: [...s.noms, { day: s.night, seat: nom.target, votes: t.votes, need: vote.need }] });
       const text =
         after.block === nom.target

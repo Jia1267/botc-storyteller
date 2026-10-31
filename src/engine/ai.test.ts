@@ -1,18 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import { aiBoardOk, aiPlan, aiSlayer, aiVirgin, tallyHands, voteOrder, type AiAnswer, type AiAsk } from './ai';
+import { aiBoardOk, aiFixBoard, aiPlan, aiSlayer, aiVirgin, tallyHands, voteOrder, type AiAnswer, type AiAsk } from './ai';
 import { completeSlot, currentSlot, execute, finishDay, nomResults, voteNeed } from './flow';
 import { seeded, type Rng } from './rng';
-import { newGame, rerollRoles, setCount, setScript, shuffleSeats, startDeal } from './setup';
+import { newGame, setCount, setScript, shuffleSeats, startDeal } from './setup';
 import { finishDeal } from './flow';
 import type { GameState } from './types';
 
 /** 一局 AI：网页配板（不配 AI 带不了的角色）、随机坐、发完身份进第 1 夜 */
-function aiGame(count: number, seed: number, script: 'tb' | 'bmr' = 'tb'): GameState {
+function aiGame(count: number, seed: number, script: 'tb' | 'bmr' | 'sv' = 'tb'): GameState {
   const rng = seeded(seed);
   const s = newGame();
   setScript(s, script);
   setCount(s, count, rng);
-  for (let i = 0; i < 60 && !aiBoardOk(s.seats.map((x) => x.role)); i++) rerollRoles(s, rng);
+  aiFixBoard(s, rng);
   shuffleSeats(s, rng);
   startDeal(s);
   finishDeal(s);
@@ -71,6 +71,22 @@ describe('AI 说书人（暗流涌动）', () => {
       const rng = seeded(seed * 53);
       const s = aiGame(7 + (seed % 9), seed, 'bmr');
       expect(s.seats.some((x) => x.role === 'gossip')).toBe(false);
+      for (let round = 0; round < 12 && s.phase !== 'end'; round++) {
+        runNight(s, rng);
+        if (s.phase !== 'day') break;
+        const alive = s.seats.filter((x) => x.alive);
+        execute(s, rng() < 0.6 ? alive[Math.floor(rng() * alive.length)].n : null);
+        if (s.phase === 'day') finishDay(s);
+      }
+      expect(['end', 'night', 'day']).toContain(s.phase);
+    }
+  });
+
+  it('梦殒春宵：夜里每一步都有处理办法，一局能走到结束；不配要靠人判断的角色', () => {
+    for (let seed = 1; seed <= 40; seed++) {
+      const rng = seeded(seed * 71);
+      const s = aiGame(5 + (seed % 11), seed, 'sv');
+      expect(aiBoardOk(s.seats.map((x) => x.role))).toBe(true);
       for (let round = 0; round < 12 && s.phase !== 'end'; round++) {
         runNight(s, rng);
         if (s.phase !== 'day') break;

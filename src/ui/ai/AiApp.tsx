@@ -2,7 +2,7 @@
 // 屏幕是公共面板（谁坐哪、谁死了、倒计时、投票），台词用系统自带的中文语音念，同时显示文字；
 // 夜里按官方顺序在后台处理，选人、给信息都走各人的手机。平板上不显示任何人的身份。
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AI_DEFAULTS, AI_SCRIPTS, aiBoardOk } from '../../engine/ai';
+import { AI_DEFAULTS, AI_SCRIPTS, aiFixBoard } from '../../engine/ai';
 import { scriptOf } from '../../engine/core';
 import { SCRIPTS } from '../../engine/editions';
 import type { Rng } from '../../engine/rng';
@@ -11,7 +11,7 @@ import { seatName } from '../../engine/core';
 import { finishDeal } from '../../engine/flow';
 import { seeded } from '../../engine/rng';
 import { endLines } from '../../engine/scripts';
-import { rerollRoles, setCount, setScript, shuffleSeats, startDeal } from '../../engine/setup';
+import { setCount, setScript, shuffleSeats, startDeal } from '../../engine/setup';
 import { watchOffset } from '../../room/api';
 import { msgStatus, type AiPublic } from '../../room/protocol';
 import type { Game } from '../../store';
@@ -201,7 +201,7 @@ function AiSetup({ g, onStart, onExit }: { g: Game; onStart: () => void; onExit:
 /** AI 局配板：均衡，并且不配要靠人判断的角色 */
 function aiCount(s: GameState, n: number, rng: Rng) {
   setCount(s, n, rng);
-  for (let i = 0; i < 60 && !aiBoardOk(s.seats.map((x) => x.role)); i++) rerollRoles(s, rng);
+  aiFixBoard(s, rng);
 }
 
 /* ---------------- 发身份 ---------------- */
