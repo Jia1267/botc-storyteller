@@ -1,7 +1,7 @@
 // 说书人这边的房间：开房、看谁入座、把身份发到每个人手机上。
 // Firebase 只在开过房间时才加载（import('../../room/api')），不开房的人主页面不变大。
 import { Suspense, createContext, lazy, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { metaSeats, msgStatus, roomLink, seatLabel, type Acks, type MsgBody, type RoomMeta, type RoomMsg, type SeatInfo } from '../../room/protocol';
+import { metaSeats, msgStatus, roomLink, seatLabel, tallyMvp, type Acks, type AiPublic, type EndInfo, type MsgBody, type RoomMeta, type RoomMsg, type SeatInfo } from '../../room/protocol';
 import type { CardContent } from '../common';
 import { BottomBar, ConfirmButton, Sheet } from '../common';
 
@@ -56,6 +56,10 @@ export interface HostRoom {
   unsend(n: number, id: string): Promise<void>;
   /** 他手机上"看我的角色"换成新角色（红唇女郎接任、小恶魔传刀） */
   setRole(n: number, card: CardContent): Promise<void>;
+  /** 游戏结束：复盘发到每个人手机上 */
+  publishEnd(end: EndInfo): Promise<void>;
+  /** AI 说书人局：更新公开的进度 */
+  setAi(ai: AiPublic): Promise<void>;
 }
 
 const RoomCtx = createContext<HostRoom | null>(null);
@@ -134,6 +138,14 @@ export function RoomProvider({ seatNs, title, phase, children }: { seatNs: numbe
     });
   }, [code, meta, want, save]);
 
+  // 结束后：数 MVP 票，只公开票数
+  useEffect(() => {
+    if (!code || meta?.phase !== 'end' || !meta.end || !acks) return;
+    const { mvp, voters } = tallyMvp(acks, metaSeats(meta));
+    if (JSON.stringify(mvp) === JSON.stringify(meta.end.mvp ?? {}) && voters === (meta.end.voters ?? 0)) return;
+    loadApi().then((api) => api.setMvp(code, mvp, voters).catch((e) => setErr(api.roomError(e))));
+  }, [code, meta, acks]);
+
   const value = useMemo<HostRoom>(
     () => ({
       code,
@@ -200,6 +212,16 @@ export function RoomProvider({ seatNs, title, phase, children }: { seatNs: numbe
         const api = await loadApi();
         await api.setRoleCard(code, n, card).catch((e) => setErr(api.roomError(e)));
       },
+      publishEnd: async (end) => {
+        if (!code) return;
+        const api = await loadApi();
+        await api.setEnd(code, end).catch((e) => setErr(api.roomError(e)));
+      },
+      setAi: async (ai) => {
+        if (!code) return;
+        const api = await loadApi();
+        await api.setAi(code, ai).catch((e) => setErr(api.roomError(e)));
+      },
     }),
     [code, meta, seats, acks, msgs, online, err, busy, saved, seatNs, title, save],
   );
@@ -236,6 +258,26 @@ export function RoomCard({ seatNs }: { seatNs: number[] }) {
       {!room.online && <p className="dim">这台设备断线了，正在重连…</p>}
       {room.err && <p className="card card-warn">{room.err}</p>}
       {sheet && <RoomSheet seatNs={seatNs} onClose={() => setSheet(false)} />}
+    </div>
+  );
+}
+
+/** 扫码入座：二维码、链接、每个座位谁坐了（AI 局的平板直接摆在桌上给大家扫） */
+export function RoomJoin({ seatNs }: { seatNs: number[] }) {
+  const room = useRoom();
+  if (!room.code) return null;
+  const link = roomLink(room.code);
+  return (
+    <div className="stack">
+      <div className="stack" style={{ alignItems: 'center', gap: 8 }}>
+        <Suspense fallback={<div style={{ width: 220, height: 220 }} />}>
+          <Qr text={link} />
+        </Suspense>
+        <b style={{ fontSize: 22, letterSpacing: '0.1em' }}>房间 {room.code}</b>
+        <input className="input" readOnly value={link} onFocus={(e) => e.target.select()} />
+        {/^(localhost|127\.)/.test(location.hostname) && <p className="card card-warn">这台设备是用 localhost 打开的，手机扫码进不来。</p>}
+      </div>
+      <SeatList seatNs={seatNs} />
     </div>
   );
 }

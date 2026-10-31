@@ -7,6 +7,10 @@
 //   rooms/{code}/acks/{n}/{id}   n 号点了"看完了"（只有坐 n 号的人能写，开房设备读）
 //   rooms/{code}/acks/{n}/{id}_got  消息到了 n 号手机上（自动写，说书人能看到"已送达"）
 //   rooms/{code}/acks/{n}/{id}_pick 夜里让他选人：他选的座位
+//   rooms/{code}/acks/{n}/mvp    结束后他投的 MVP（只有开房设备读得到，公开的只有票数）
+//   rooms/{code}/meta/end        结束后的复盘（所有人可读）：胜负、每个人的身份、时间线、MVP 票数
+//   rooms/{code}/meta/ai         AI 说书人局：白天进行到哪（倒计时、谁提名、投票、谁举手），所有人可读
+//   rooms/{code}/acks/{n}/nom|spoke|hand|nomore|slay  AI 局里玩家在手机上的操作（只有开房设备读）
 import type { CardContent } from '../ui/common';
 
 export interface RoomMeta {
@@ -16,6 +20,65 @@ export interface RoomMeta {
   title: string;
   phase: 'lobby' | 'game' | 'end';
   createdAt: number;
+  /** 游戏结束后的复盘 */
+  end?: EndInfo;
+  /** AI 说书人局：公开的进度 */
+  ai?: AiPublic;
+}
+
+/** AI 说书人局：所有人都能看到的进度（开房的平板写，手机读） */
+export interface AiPublic {
+  /** 私聊、公聊、每人投票的秒数 */
+  settings: { priv: number; pub: number; vote: number };
+  stage: 'wait' | 'night' | 'private' | 'public' | 'nominate' | 'speech1' | 'speech2' | 'vote' | 'result';
+  day: number;
+  /** 倒计时到什么时候（服务器时间，毫秒） */
+  until?: number;
+  /** 刚念的话（手机上也显示，听不清的人看字） */
+  say?: string;
+  alive: number[];
+  /** 死了、还剩一票的人 */
+  ghost: number[];
+  /** 死人已经用掉那一票的 */
+  spent?: number[];
+  /** 今天提名过的人、被提名过的人 */
+  nominators?: number[];
+  nominees?: number[];
+  /** 现在这次提名（i = 今天第几次） */
+  nom?: { i: number; by: number; target: number };
+  /** 投票：顺序、轮到第几个、谁举了手 */
+  vote?: { order: number[]; at: number; hands?: Record<string, boolean>; need: number };
+  /** 今天点了"不再提名"的人 */
+  noMore?: number[];
+  /** 今天宣称猎手开过枪的人 */
+  shots?: number[];
+  /** 今天每次提名的结果 */
+  results?: { by: number; target: number; votes: number; text: string }[];
+}
+
+/** AI 局里玩家的操作：都写在自己座位下面（acks/{n}/…），只有开房的平板读得到 */
+export interface AiActs {
+  nom?: { day: number; target: number; at: number };
+  spoke?: { day: number; i: number };
+  hand?: { day: number; i: number; up: boolean };
+  nomore?: number;
+  slay?: { day: number; target: number };
+}
+
+/** 结束后发到每个人手机上的复盘（都是写好的文字，手机上不用再算） */
+export interface EndInfo {
+  /** 这一局结束的时间：用来区分是哪一局的投票 */
+  at: number;
+  winner: 'good' | 'evil';
+  reason: string;
+  /** 每个座位：角色（变过的写"A → B"）、阵营、死活 */
+  seats: { n: number; role: string; evil: boolean; fate: string; note?: string }[];
+  moments: { when: string; text: string }[];
+  /** 按"开局 / 第N夜 / 第N天"分好组的记录；f = 假信息 */
+  log: { title: string; items: { text: string; f?: boolean }[] }[];
+  /** MVP 票数：{ 座位: 票数 }；只公开票数，不公开谁投了谁 */
+  mvp?: Record<string, number>;
+  voters?: number;
 }
 
 export interface SeatInfo {
@@ -136,6 +199,19 @@ export function hashUnit(key: string): number {
   let h = 2166136261;
   for (let i = 0; i < key.length; i++) h = Math.imul(h ^ key.charCodeAt(i), 16777619);
   return ((h >>> 0) % 100000) / 100000;
+}
+
+/** 数 MVP 票：每人一票，投自己、投不存在的座位都不算 */
+export function tallyMvp(acks: Acks, seatNs: number[]): { mvp: Record<string, number>; voters: number } {
+  const mvp: Record<string, number> = {};
+  let voters = 0;
+  for (const n of seatNs) {
+    const v = acks[n]?.mvp;
+    if (typeof v !== 'number' || v === n || !seatNs.includes(v)) continue;
+    mvp[v] = (mvp[v] ?? 0) + 1;
+    voters++;
+  }
+  return { mvp, voters };
 }
 
 /** 按消息发出的先后排：玩家一条一条看 */

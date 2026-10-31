@@ -1248,3 +1248,16 @@ export function legionChoices(s: GameState, rng: Rng): Choice<number | null>[] {
   if (g) out.push({ key: 'good', label: `${seatName(g.n)}（${roleName(g.role)}）死亡`, value: g.n, lean: -2, truth: true, reason: '杀一个好人：好人本来就少，通常不公平，只在最后一晚用。' });
   return out;
 }
+
+/** 贞洁者被间谍提名、猎手射中陌客：要不要把他"当成"镇民/恶魔 */
+export function twistChoices(kind: 'spyTownsfolk' | 'recluseDemon'): Choice<boolean>[] {
+  if (kind === 'spyTownsfolk')
+    return [
+      { key: 'yes', label: '把间谍当成镇民：他被处决', value: true, lean: 1, truth: true, twist: true, reason: '邪恶少一个爪牙，帮善良。' },
+      { key: 'no', label: '不当成镇民：什么都不发生', value: false, lean: -1, truth: true, reason: '间谍活下来，帮邪恶。' },
+    ];
+  return [
+    { key: 'yes', label: '把陌客当成恶魔：陌客死亡', value: true, lean: -1, truth: true, twist: true, reason: '好人白白少一个人，帮邪恶。' },
+    { key: 'no', label: '不当成恶魔：什么都不发生', value: false, lean: 1, truth: true, reason: '陌客活下来，帮善良。' },
+  ];
+}

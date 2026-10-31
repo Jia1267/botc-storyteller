@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { ackMsg, answerPick, claimSeat, gotMsg, keepOnline, leaveSeat, roomError, signIn, watchConnected, watchMeta, watchPrivate, watchSeats } from '../../room/api';
-import { metaSeats, seatLabel, sortMsgs, type PickAnswer, type RoomMeta, type RoomMsg, type SeatInfo } from '../../room/protocol';
+import { ackMsg, answerPick, claimSeat, gotMsg, keepOnline, leaveSeat, roomError, signIn, voteMvp, watchConnected, watchMeta, watchPrivate, watchSeats } from '../../room/api';
+import { metaSeats, seatLabel, sortMsgs, type EndInfo, type PickAnswer, type RoomMeta, type RoomMsg, type SeatInfo } from '../../room/protocol';
 import { MIN_PAGE_MS, ShowCard, type CardContent } from '../common';
 
 const NAME_KEY = 'botc-room-name';
@@ -166,6 +166,8 @@ function Seated({ code, seat, name, meta, seats }: { code: string; seat: number;
     });
     send.catch((e) => setErr(roomError(e)));
   };
+  // 游戏结束：复盘和 MVP 投票（没看完的夜里消息不用再看了）
+  if (meta.phase === 'end' && meta.end) return <EndView code={code} seat={seat} end={meta.end} seats={seats} />;
   if (next?.ask) return <PickCard key={msgKey(next)} m={next} me={seat} seats={seats} onPick={(ans) => finish(next, answerPick(code, seat, next.id, ans))} />;
   if (next) return <ShowCard key={msgKey(next)} c={next.card} onDone={() => finish(next, ackMsg(code, seat, next.id))} />;
   if (showRole && role) return <ShowCard c={{ ...role, title: '你的角色' }} onDone={() => setShowRole(false)} />;
@@ -176,7 +178,9 @@ function Seated({ code, seat, name, meta, seats }: { code: string; seat: number;
         你是 {seatLabel(seat)}
         {name ? `（${name}）` : ''}
       </h2>
-      <p className="muted">{meta.phase === 'lobby' ? '等其他人坐好，说书人开始以后你的角色会自动出现在这里。' : '有消息会自动弹出来。看完点"看完了"。'}</p>
+      <p className="muted">
+        {meta.phase === 'lobby' ? '等其他人坐好，说书人开始以后你的角色会自动出现在这里。' : meta.phase === 'end' ? '游戏结束了，复盘马上发过来……' : '有消息会自动弹出来。看完点"看完了"。'}
+      </p>
       {role && (
         <button className="btn btn-primary btn-block" onClick={() => setShowRole(true)}>
           看我的角色
@@ -259,6 +263,130 @@ function PickCard({ m, me, seats, onPick }: { m: RoomMsg; me: number; seats: Rec
           {a.skip}
         </button>
       )}
+    </div>
+  );
+}
+
+/** 结束后：胜负、所有人的身份、匿名选 MVP、关键时刻、每晚发生了什么 */
+function EndView({ code, seat, end, seats }: { code: string; seat: number; end: EndInfo; seats: Record<string, SeatInfo> }) {
+  // 自己投了谁只记在本机（数据库里的票别人看不到，自己也读不回来）
+  const key = `botc-room-mvp-${code}-${end.at}`;
+  const [vote, setVote] = useState<number | null>(() => {
+    try {
+      const v = localStorage.getItem(key);
+      return v ? Number(v) : null;
+    } catch {
+      return null;
+    }
+  });
+  const [pick, setPick] = useState<number | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const cast = async (n: number) => {
+    setBusy(true);
+    try {
+      await voteMvp(code, seat, n);
+      setVote(n);
+      setPick(null);
+      try {
+        localStorage.setItem(key, String(n));
+      } catch {
+        /* 存不了只是刷新后要重新投 */
+      }
+    } catch (e) {
+      setErr(roomError(e));
+    }
+    setBusy(false);
+  };
+  const name = (n: number) => `${seatLabel(n)}${n === seat ? '（你）' : seats[n]?.name ? `（${seats[n].name}）` : ''}`;
+  const ranked = Object.entries(end.mvp ?? {}).sort((a, b) => b[1] - a[1]);
+  const evil = end.winner === 'evil';
+  return (
+    <div className="stack">
+      <div className={`card stack${evil ? ' card-evil' : ''}`} style={{ gap: 6, textAlign: 'center' }}>
+        <h2 style={{ margin: 0 }} className={evil ? 'evil' : 'good'}>
+          {evil ? '邪恶阵营获胜' : '善良阵营获胜'}
+        </h2>
+        <p>{end.reason}</p>
+      </div>
+      <div className="card stack" style={{ gap: 4 }}>
+        <h3>所有人的身份</h3>
+        {end.seats.map((x) => (
+          <div key={x.n} className="row" style={{ justifyContent: 'space-between', flexWrap: 'nowrap', gap: 8, borderBottom: '1px solid var(--line)', padding: '6px 0' }}>
+            <span>
+              <b>{name(x.n)}</b> <span className={x.evil ? 'evil' : 'good'}>{x.role}</span>
+              {x.note && <span className="dim">（{x.note}）</span>}
+            </span>
+            <span className="dim" style={{ flex: 'none' }}>
+              {x.fate}
+            </span>
+          </div>
+        ))}
+      </div>
+      <div className="card stack" style={{ gap: 8 }}>
+        <h3>选 MVP（匿名，不能投自己）</h3>
+        {vote !== null && pick === null ? (
+          <>
+            <p>
+              你投给了 <b>{name(vote)}</b>。谁投了谁不会公开，只公开票数。
+            </p>
+            <p className="dim">
+              {end.voters ?? 0} 人已投{ranked.length > 0 && `：${ranked.map(([n, v]) => `${seatLabel(Number(n))} ${v} 票`).join('，')}`}
+            </p>
+            <button className="btn btn-ghost btn-sm" onClick={() => setPick(vote)}>
+              改票
+            </button>
+          </>
+        ) : (
+          <>
+            <div className="role-grid">
+              {end.seats
+                .filter((x) => x.n !== seat)
+                .map((x) => (
+                  <button key={x.n} className="role-chip" style={pick === x.n ? { boxShadow: '0 0 0 2px var(--gold) inset' } : undefined} onClick={() => setPick(x.n)}>
+                    {seatLabel(x.n)}
+                    {seats[x.n]?.name && <small>{seats[x.n].name}</small>}
+                  </button>
+                ))}
+            </div>
+            <button className="btn btn-primary btn-block" disabled={pick === null || busy} onClick={() => pick !== null && cast(pick)}>
+              {pick === null ? '点一个人' : `投给 ${name(pick)}`}
+            </button>
+          </>
+        )}
+        {err && <p className="card card-warn">{err}</p>}
+      </div>
+      <div className="card">
+        <h3>这一局的关键时刻</h3>
+        <ul className="moments">
+          {end.moments.map((m, i) => (
+            <li key={i}>
+              <span>{m.when}</span>
+              <span>{m.text}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+      <div className="card">
+        <h3>复盘：每晚发生了什么</h3>
+        <p className="dim" style={{ marginBottom: 8 }}>
+          红色的是说书人给的假信息。
+        </p>
+        <div className="timeline">
+          {end.log.map((g, i) => (
+            <div key={i}>
+              <h4>{g.title}</h4>
+              <ul>
+                {g.items.map((e, j) => (
+                  <li key={j} className={e.f ? 'f' : ''}>
+                    {e.text}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }

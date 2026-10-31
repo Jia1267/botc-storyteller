@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { seeded } from '../engine/rng';
 import {
-  gotKey, hashUnit, idleMsgId, isNightMsg, isRoomCode, metaSeats, msgStatus, newRoomCode, nightMsgId, pickKey, pickOf, roomLink, roomPath, sameBody, seatLabel, sortMsgs,
+  gotKey, hashUnit, idleMsgId, isNightMsg, isRoomCode, metaSeats, msgStatus, newRoomCode, nightMsgId, pickKey, pickOf, roomLink, roomPath, sameBody, seatLabel, sortMsgs, tallyMvp,
 } from './protocol';
 
 describe('房间', () => {
@@ -63,6 +63,12 @@ describe('房间', () => {
     expect(sameBody(back, sent)).toBe(true);
     expect(sameBody(back, { ...sent, card: { ...sent.card, big: ['4 号'] } })).toBe(false);
     expect(sameBody(undefined, sent)).toBe(false);
+  });
+
+  it('MVP：每人一票，投自己、投不在这局的座位不算；只数票数', () => {
+    const acks = { 1: { mvp: 3 }, 2: { mvp: 3 }, 3: { mvp: 3 }, 4: { mvp: 9 }, 5: { mvp: 1, m1: 5 }, 6: { m1: 2 } };
+    expect(tallyMvp(acks, [1, 2, 3, 4, 5, 6])).toEqual({ mvp: { 3: 2, 1: 1 }, voters: 3 });
+    expect(tallyMvp({}, [1, 2])).toEqual({ mvp: {}, voters: 0 });
   });
 
   it('随机分到哪一步：同样的输入结果一样，落在 0..1', () => {

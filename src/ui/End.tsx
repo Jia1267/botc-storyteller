@@ -5,16 +5,18 @@ import { SCRIPT_LIST, type ScriptDef } from '../engine/editions';
 import { endLines } from '../engine/scripts';
 import { balance } from '../engine/balance';
 import { rulesFor } from '../engine/rulesSpeech';
-import type { GameState, LogEntry } from '../engine/types';
+import type { GameState, LogEntry, Seat } from '../engine/types';
 import type { Game } from '../store';
 import { BottomBar, ConfirmButton, SayBox, useEscape } from './common';
+import { useRoom } from './room/hostRoom';
+import type { EndInfo } from '../room/protocol';
 import { GrimoireCircle } from './Grimoire';
 import { Icon } from './icons';
 import { Emblem } from './Emblem';
 import { drawResult, drawScriptSheet, endWhen, keyMoments } from './result';
 
-/** 按"开局 / 第N夜 / 第N天"分组的时间线 */
-export function Timeline({ log }: { log: LogEntry[] }) {
+/** 记录按"开局 / 第N夜 / 第N天"分组 */
+function logGroups(log: LogEntry[]) {
   const groups: { title: string; items: LogEntry[] }[] = [];
   for (const e of log) {
     const title = e.phase === 'setup' ? '开局' : e.phase === 'night' ? `第 ${e.night} 夜` : e.phase === 'day' ? `第 ${e.night} 天` : '结束';
@@ -22,6 +24,12 @@ export function Timeline({ log }: { log: LogEntry[] }) {
     if (last && last.title === title) last.items.push(e);
     else groups.push({ title, items: [e] });
   }
+  return groups;
+}
+
+/** 按"开局 / 第N夜 / 第N天"分组的时间线 */
+export function Timeline({ log }: { log: LogEntry[] }) {
+  const groups = logGroups(log);
   if (!groups.length) return <p className="dim">还没有记录。开局以后，每晚谁做了什么、白天谁被提名和处决，都会按顺序记在这里，复盘时可以对着看。</p>;
   return (
     <div className="timeline">
@@ -91,6 +99,7 @@ export function EndScreen({ g }: { g: Game }) {
           </div>
         </div>
         <SayBox lines={endLines(win, s.style)} title="对所有人说" />
+        <EndRoom s={s} />
         {(() => {
           const pol = s.seats.find((x) => x.role === 'politician');
           if (!pol || (isEvil(pol) ? 'evil' : 'good') === win) return null;
@@ -117,16 +126,10 @@ export function EndScreen({ g }: { g: Game }) {
               <div key={x.n} className="row" style={{ justifyContent: 'space-between', borderBottom: '1px solid var(--line)', padding: '6px 0' }}>
                 <span>
                   <b>{seatName(x.n)}</b>{' '}
-                  <span className={isEvil(x) ? 'evil' : 'good'}>
-                    {x.startRole !== x.role ? `${roleName(x.startRole)} → ${roleName(x.role)}` : roleName(x.role)}
-                  </span>
-                  {x.role === 'drunk' && s.drunkFake && <span className="dim">（以为是{roleName(s.drunkFake)}）</span>}
-                  {x.role === 'lunatic' && s.lunaticFake && <span className="dim">（以为是{roleName(s.lunaticFake)}）</span>}
-                  {x.role === 'marionette' && s.marionetteFake && <span className="dim">（以为是{roleName(s.marionetteFake)}）</span>}
-                  {!x.traveller && x.alignment && <span className="dim">（{x.alignment === 'evil' ? '邪恶' : '善良'}阵营）</span>}
-                  {x.traveller && <span className="dim">（旅行者，{x.traveller.alignment === 'evil' ? '邪恶' : '善良'}）</span>}
+                  <span className={isEvil(x) ? 'evil' : 'good'}>{roleText(x)}</span>
+                  {seatNote(s, x) && <span className="dim">（{seatNote(s, x)}）</span>}
                 </span>
-                <span className="dim">{x.alive ? '存活' : `第${x.death?.night}${x.death?.when === 'night' ? '夜' : '天'} ${x.death?.cause}`}</span>
+                <span className="dim">{fateText(x)}</span>
               </div>
             ))}
           </div>
@@ -166,6 +169,58 @@ export function EndScreen({ g }: { g: Game }) {
       </BottomBar>
       {result && <ResultImage s={s} onClose={() => setResult(false)} />}
     </main>
+  );
+}
+
+/** 复盘里一个座位的角色：中途换过的写"原来 → 现在" */
+const roleText = (x: Seat) => (x.startRole !== x.role ? `${roleName(x.startRole)} → ${roleName(x.role)}` : roleName(x.role));
+/** 复盘里的补充：以为自己是谁、阵营和角色类型不同、旅行者的阵营 */
+function seatNote(s: GameState, x: Seat): string {
+  if (x.role === 'drunk' && s.drunkFake) return `以为是${roleName(s.drunkFake)}`;
+  if (x.role === 'lunatic' && s.lunaticFake) return `以为是${roleName(s.lunaticFake)}`;
+  if (x.role === 'marionette' && s.marionetteFake) return `以为是${roleName(s.marionetteFake)}`;
+  if (x.traveller) return `旅行者，${x.traveller.alignment === 'evil' ? '邪恶' : '善良'}`;
+  if (x.alignment) return `${x.alignment === 'evil' ? '邪恶' : '善良'}阵营`;
+  return '';
+}
+const fateText = (x: Seat) => (x.alive ? '存活' : `第${x.death?.night}${x.death?.when === 'night' ? '夜' : '天'} ${x.death?.cause}`);
+
+/** 发到每个玩家手机上的复盘 */
+export function endInfo(s: GameState): EndInfo {
+  return {
+    at: s.endedAt ?? 0,
+    winner: s.winner ?? 'good',
+    reason: s.winReason ?? '',
+    seats: s.seats.map((x) => ({ n: x.n, role: roleText(x), evil: isEvil(x), fate: fateText(x), note: seatNote(s, x) || undefined })),
+    moments: keyMoments(s),
+    log: logGroups(s.log).map((g) => ({ title: g.title, items: g.items.map((e) => ({ text: e.text, f: e.truth === 'false' || undefined })) })),
+  };
+}
+
+/** 房间开着：结束时把复盘发到每个人手机上，并显示 MVP 票数 */
+function EndRoom({ s }: { s: GameState }) {
+  const room = useRoom();
+  const live = !!room.code && room.meta?.phase === 'end';
+  const at = s.endedAt ?? 0;
+  const published = room.meta?.end?.at;
+  const latest = useRef({ room, s });
+  latest.current = { room, s };
+  useEffect(() => {
+    if (live && published !== at) latest.current.room.publishEnd(endInfo(latest.current.s));
+  }, [live, published, at]);
+  if (!room.code) return null;
+  const end = room.meta?.end;
+  const ranked = Object.entries(end?.mvp ?? {}).sort((a, b) => b[1] - a[1]);
+  const total = s.seats.filter((x) => room.seats[x.n]).length;
+  return (
+    <div className="card stack" style={{ gap: 6 }}>
+      <b>房间 {room.code}：{end ? '复盘已经发到每个人手机上' : '正在把复盘发到每个人手机上…'}</b>
+      <p className="dim">每个人手机上能看到所有人的身份、关键时刻和每晚发生了什么，还可以匿名投一票 MVP（不能投自己）。</p>
+      <p>
+        MVP 投票：{end?.voters ?? 0} / {total} 人已投
+        {ranked.length > 0 && <>　{ranked.map(([n, v]) => `${seatName(Number(n))} ${v} 票`).join('，')}</>}
+      </p>
+    </div>
   );
 }
 

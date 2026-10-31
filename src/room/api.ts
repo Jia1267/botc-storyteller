@@ -1,7 +1,7 @@
 import { get, onDisconnect, onValue, push, ref, remove, runTransaction, set } from 'firebase/database';
 import type { CardContent } from '../ui/common';
 import { db, signIn } from './firebase';
-import { gotKey, newRoomCode, pickKey, roomPath, type Acks, type MsgBody, type PickAnswer, type RoomMeta, type RoomMsg, type SeatInfo } from './protocol';
+import { gotKey, newRoomCode, pickKey, roomPath, type Acks, type AiActs, type AiPublic, type EndInfo, type MsgBody, type PickAnswer, type RoomMeta, type RoomMsg, type SeatInfo } from './protocol';
 
 export { signIn };
 
@@ -50,11 +50,23 @@ export const setSeats = (code: string, seatNs: number[], title: string) =>
     set(ref(db, roomPath(code, 'meta', 'title')), title),
   ]);
 
-/** 新开一局：收回所有人的角色和没看的消息（座位保留） */
+/** 新开一局：收回所有人的角色和没看的消息、上一局的复盘和 MVP 投票（座位保留） */
 export async function clearPrivate(code: string) {
   await remove(ref(db, roomPath(code, 'priv')));
   await remove(ref(db, roomPath(code, 'acks')));
+  await remove(ref(db, roomPath(code, 'meta', 'end')));
+  await remove(ref(db, roomPath(code, 'meta', 'ai')));
 }
+
+/** AI 局：更新公开的进度 */
+export const setAi = (code: string, ai: AiPublic) => set(ref(db, roomPath(code, 'meta', 'ai')), clean(ai));
+
+/** 游戏结束：把复盘公开给所有人 */
+export const setEnd = (code: string, end: EndInfo) => set(ref(db, roomPath(code, 'meta', 'end')), clean(end));
+
+/** 更新公开的 MVP 票数 */
+export const setMvp = (code: string, mvp: Record<string, number>, voters: number) =>
+  Promise.all([set(ref(db, roomPath(code, 'meta', 'end', 'mvp')), mvp), set(ref(db, roomPath(code, 'meta', 'end', 'voters')), voters)]);
 
 /** 发身份：每个人的角色卡放到他手机上（随时能看），同时弹一条"你的角色"等他点看完了。返回每个座位那条消息的 id */
 export async function dealRoles(code: string, cards: Record<number, CardContent>): Promise<Record<number, string>> {
@@ -117,6 +129,9 @@ export const watchMeta = (code: string, cb: (m: RoomMeta | null) => void, onErr?
 export const watchSeats = (code: string, cb: (seats: Record<string, SeatInfo>) => void, onErr?: (e: Error) => void) =>
   onValue(ref(db, roomPath(code, 'seats')), (s) => cb(s.val() ?? {}), onErr);
 
+/** 本机时钟和服务器差多少毫秒（倒计时大家按服务器时间算，手机时间不准也不怕） */
+export const watchOffset = (cb: (ms: number) => void) => onValue(ref(db, '.info/serverTimeOffset'), (s) => cb(Number(s.val()) || 0));
+
 /** 这台设备和数据库连着没有（锁屏回来会自动重连） */
 export const watchConnected = (cb: (on: boolean) => void) => onValue(ref(db, '.info/connected'), (s) => cb(s.val() === true));
 
@@ -153,6 +168,12 @@ export const watchPrivate = (
 ) => onValue(ref(db, roomPath(code, 'priv', n)), (s) => cb(s.val() ?? {}), onErr);
 
 export const ackMsg = (code: string, n: number, id: string) => set(ref(db, roomPath(code, 'acks', n, id)), Date.now());
+
+/** AI 局：玩家在手机上提名、发言结束、举手、不再提名、开枪 */
+export const aiAct = <K extends keyof AiActs>(code: string, n: number, key: K, value: AiActs[K]) => set(ref(db, roomPath(code, 'acks', n, key)), value);
+
+/** 投 MVP（可以改票；只有开房设备读得到） */
+export const voteMvp = (code: string, n: number, target: number) => set(ref(db, roomPath(code, 'acks', n, 'mvp')), target);
 
 /** 夜里选好了：先写回答，再写"看完了" */
 export async function answerPick(code: string, n: number, id: string, ans: PickAnswer) {

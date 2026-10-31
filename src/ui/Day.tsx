@@ -15,7 +15,7 @@ import {
 } from '../engine/flow';
 import { activeTravellers, beggarLearns, exile, gunslingerPreview, gunslingerShoot, leave, swapPlayers } from '../engine/travellers';
 import { clone } from '../engine/core';
-import { harpyPunishChoices, killPreview, pacifistChoices, puzzleShowChoices, scarletCanTakeOver } from '../engine/info';
+import { harpyPunishChoices, killPreview, pacifistChoices, puzzleShowChoices, scarletCanTakeOver, twistChoices } from '../engine/info';
 import { AMNESIAC_ANSWERS, artistMode, fishermanChoices, savantChoices } from '../engine/daytime';
 import type { GameState, Seat } from '../engine/types';
 import { dayStartLines, endLines, executionLines, nominationLines } from '../engine/scripts';
@@ -773,18 +773,6 @@ function CannibalNotice({ g }: { g: Game }) {
 }
 
 /* ---------------- 贞洁者 / 猎手 ---------------- */
-
-function twistChoices(kind: 'spyTownsfolk' | 'recluseDemon'): Choice<boolean>[] {
-  if (kind === 'spyTownsfolk')
-    return [
-      { key: 'yes', label: '把间谍当成镇民：他被处决', value: true, lean: 1, truth: true, twist: true, reason: '邪恶少一个爪牙，帮善良。' },
-      { key: 'no', label: '不当成镇民：什么都不发生', value: false, lean: -1, truth: true, reason: '间谍活下来，帮邪恶。' },
-    ];
-  return [
-    { key: 'yes', label: '把陌客当成恶魔：陌客死亡', value: true, lean: -1, truth: true, twist: true, reason: '好人白白少一个人，帮邪恶。' },
-    { key: 'no', label: '不当成恶魔：什么都不发生', value: false, lean: 1, truth: true, reason: '陌客活下来，帮善良。' },
-  ];
-}
 
 function TwistPick({ g, kind, onValue }: { g: Game; kind: 'spyTownsfolk' | 'recluseDemon'; onValue: (v: boolean) => void }) {
   const s = g.s;

@@ -304,6 +304,8 @@ export interface GameState {
   winReason: string;
   /** 分出胜负的时间（毫秒时间戳），结果图上的日期用它 */
   endedAt?: number;
+  /** AI 说书人局（网页当说书人，平板放桌子中间）：私聊、公聊、每人投票的秒数 */
+  ai?: { priv: number; pub: number; vote: number };
   /** 真实信息指向某个座位的次数（平衡用） */
   exposure: Record<number, number>;
   infoTrue: number;
