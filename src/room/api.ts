@@ -1,7 +1,7 @@
 import { get, onDisconnect, onValue, push, ref, remove, runTransaction, set } from 'firebase/database';
 import type { CardContent } from '../ui/common';
 import { db, signIn } from './firebase';
-import { newRoomCode, roomPath, type RoomMeta, type RoomMsg, type SeatInfo } from './protocol';
+import { gotKey, newRoomCode, roomPath, type RoomMeta, type RoomMsg, type SeatInfo } from './protocol';
 
 export { signIn };
 
@@ -112,3 +112,6 @@ export const watchPrivate = (
 ) => onValue(ref(db, roomPath(code, 'priv', n)), (s) => cb(s.val() ?? {}), onErr);
 
 export const ackMsg = (code: string, n: number, id: string) => set(ref(db, roomPath(code, 'acks', n, id)), Date.now());
+
+/** 消息到手机上了（还没看）：让说书人知道已送达 */
+export const gotMsg = (code: string, n: number, id: string) => set(ref(db, roomPath(code, 'acks', n, gotKey(id))), Date.now());

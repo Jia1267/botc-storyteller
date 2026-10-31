@@ -4,7 +4,8 @@
 //   rooms/{code}/seats/{n}       谁坐了 n 号（玩家自己占座、改名、离开）
 //   rooms/{code}/priv/{n}/role   n 号自己的角色卡（只有坐 n 号的人能读）
 //   rooms/{code}/priv/{n}/msgs   发给 n 号的消息（只有坐 n 号的人能读）
-//   rooms/{code}/acks/{n}/{id}   n 号点了"看好了"（只有坐 n 号的人能写，开房设备读）
+//   rooms/{code}/acks/{n}/{id}   n 号点了"看完了"（只有坐 n 号的人能写，开房设备读）
+//   rooms/{code}/acks/{n}/{id}_got  消息到了 n 号手机上（自动写，说书人能看到"已送达"）
 import type { CardContent } from '../ui/common';
 
 export interface RoomMeta {
@@ -39,6 +40,8 @@ export const roomPath = (code: string, ...rest: (string | number)[]) => ['rooms'
 
 /** 发给玩家的链接：当前网页地址 + ?room=房间号 */
 export const roomLink = (code: string, loc: { origin: string; pathname: string } = location) => `${loc.origin}${loc.pathname}?room=${code}`;
+
+export const gotKey = (id: string) => `${id}_got`;
 
 /** 按消息发出的先后排：玩家一条一条看 */
 export const sortMsgs = (msgs: Record<string, RoomMsg> | null | undefined): RoomMsg[] =>

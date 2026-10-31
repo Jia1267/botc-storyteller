@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { ackMsg, claimSeat, keepOnline, leaveSeat, roomError, signIn, watchConnected, watchMeta, watchPrivate, watchSeats } from '../../room/api';
+import { useEffect, useRef, useState } from 'react';
+import { ackMsg, claimSeat, gotMsg, keepOnline, leaveSeat, roomError, signIn, watchConnected, watchMeta, watchPrivate, watchSeats } from '../../room/api';
 import { sortMsgs, type RoomMeta, type RoomMsg, type SeatInfo } from '../../room/protocol';
 import { ShowCard, type CardContent } from '../common';
 
@@ -106,6 +106,7 @@ function Seated({ code, seat, name, meta }: { code: string; seat: number; name?:
   const [seen, setSeen] = useState<string[]>([]);
   const [showRole, setShowRole] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const got = useRef(new Set<string>());
 
   useEffect(() => keepOnline(code, seat), [code, seat]);
   useEffect(
@@ -115,7 +116,14 @@ function Seated({ code, seat, name, meta }: { code: string; seat: number; name?:
         seat,
         (p) => {
           setRole(p.role);
-          setMsgs(sortMsgs(p.msgs));
+          const ms = sortMsgs(p.msgs);
+          setMsgs(ms);
+          // 收到就回一声"已送达"（每条只回一次）
+          for (const m of ms)
+            if (!got.current.has(m.id)) {
+              got.current.add(m.id);
+              gotMsg(code, seat, m.id).catch(() => got.current.delete(m.id));
+            }
         },
         (e) => setErr(roomError(e)),
       ),

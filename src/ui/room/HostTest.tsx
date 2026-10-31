@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { clearMsg, closeRoom, createRoom, freeSeat, ownsRoom, roomError, sendCard, setPhase, setRoleCard, watchAcks, watchConnected, watchMeta, watchSeats } from '../../room/api';
-import { isRoomCode, roomLink, type RoomMeta, type SeatInfo } from '../../room/protocol';
+import { gotKey, isRoomCode, roomLink, type RoomMeta, type SeatInfo } from '../../room/protocol';
 import { ROLES } from '../../engine/roles';
 import { Qr } from './Qr';
 
@@ -76,6 +76,14 @@ interface Sent {
   n: number;
   id: string;
   at: number;
+  got?: boolean;
+}
+
+interface Times {
+  /** 发出 → 到手机上（网络延迟） */
+  got: number[];
+  /** 发出 → 点"看完了"（含人看的时间） */
+  read: number[];
 }
 
 function Room({ code, onClosed }: { code: string; onClosed: () => void }) {
@@ -85,7 +93,7 @@ function Room({ code, onClosed }: { code: string; onClosed: () => void }) {
   const [online, setOnline] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const sent = useRef<Sent[]>([]);
-  const [rtt, setRtt] = useState<Record<number, number[]>>({});
+  const [times, setTimes] = useState<Record<number, Times>>({});
   const [k, setK] = useState(1);
   const link = roomLink(code);
 
@@ -95,19 +103,29 @@ function Room({ code, onClosed }: { code: string; onClosed: () => void }) {
     return () => offs.forEach((off) => off());
   }, [code]);
 
-  // 收到"看完了"：记下来回用了多久，并从他的信箱里删掉
+  // 到手机上、点了"看完了"：各记一次用了多久；看完的从他的信箱里删掉
   useEffect(() => {
-    const got: Sent[] = [];
-    for (const x of sent.current) if (acks[x.n]?.[x.id]) got.push(x);
-    if (!got.length) return;
-    sent.current = sent.current.filter((x) => !got.includes(x));
     const now = Date.now();
-    setRtt((r) => {
-      const out = { ...r };
-      for (const x of got) out[x.n] = [...(out[x.n] ?? []), now - x.at];
+    const add: { n: number; k: keyof Times; ms: number }[] = [];
+    for (const x of sent.current) {
+      if (!x.got && acks[x.n]?.[gotKey(x.id)]) {
+        x.got = true;
+        add.push({ n: x.n, k: 'got', ms: now - x.at });
+      }
+      if (acks[x.n]?.[x.id]) add.push({ n: x.n, k: 'read', ms: now - x.at });
+    }
+    const done = sent.current.filter((x) => acks[x.n]?.[x.id]);
+    sent.current = sent.current.filter((x) => !done.includes(x));
+    for (const x of done) clearMsg(code, x.n, x.id).catch(() => {});
+    if (!add.length) return;
+    setTimes((t) => {
+      const out = { ...t };
+      for (const a of add) {
+        const cur = out[a.n] ?? { got: [], read: [] };
+        out[a.n] = { ...cur, [a.k]: [...cur[a.k], a.ms] };
+      }
       return out;
     });
-    for (const x of got) clearMsg(code, x.n, x.id).catch(() => {});
   }, [acks, code]);
 
   const seated = Object.keys(seats).map(Number).sort((a, b) => a - b);
@@ -147,7 +165,7 @@ function Room({ code, onClosed }: { code: string; onClosed: () => void }) {
         </b>
         {Array.from({ length: meta?.count ?? 0 }, (_, i) => i + 1).map((n) => {
           const x = seats[n];
-          const r = rtt[n] ?? [];
+          const t = times[n];
           return (
             <div key={n} className="row" style={{ flexWrap: 'nowrap', gap: 8 }}>
               <span style={{ width: 10, height: 10, borderRadius: 5, background: x ? (x.online ? 'var(--good)' : 'var(--text-3)') : 'transparent', border: '1px solid var(--text-3)' }} />
@@ -155,9 +173,9 @@ function Room({ code, onClosed }: { code: string; onClosed: () => void }) {
                 {n} 号 {x ? x.name || '（没填名字）' : <span className="dim">空</span>}
                 {x && !x.online && <span className="dim"> · 断线</span>}
               </span>
-              {r.length > 0 && (
+              {t && t.got.length > 0 && (
                 <span className="dim">
-                  {r.length} 条 · 平均 {avg(r)}ms · 最近 {r[r.length - 1]}ms
+                  送达 {avg(t.got)}ms（{t.got.length} 条）{t.read.length > 0 && ` · 看完 ${(avg(t.read) / 1000).toFixed(1)}s`}
                 </span>
               )}
               {x && (
