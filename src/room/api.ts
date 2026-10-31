@@ -1,7 +1,7 @@
 import { get, onDisconnect, onValue, push, ref, remove, runTransaction, set } from 'firebase/database';
 import type { CardContent } from '../ui/common';
 import { db, signIn } from './firebase';
-import { gotKey, newRoomCode, pickKey, roomPath, type Acks, type MsgBody, type RoomMeta, type RoomMsg, type SeatInfo } from './protocol';
+import { gotKey, newRoomCode, pickKey, roomPath, type Acks, type MsgBody, type PickAnswer, type RoomMeta, type RoomMsg, type SeatInfo } from './protocol';
 
 export { signIn };
 
@@ -154,9 +154,9 @@ export const watchPrivate = (
 
 export const ackMsg = (code: string, n: number, id: string) => set(ref(db, roomPath(code, 'acks', n, id)), Date.now());
 
-/** 夜里选好了人：先写选了谁，再写"看完了" */
-export async function answerPick(code: string, n: number, id: string, seats: number[]) {
-  await set(ref(db, roomPath(code, 'acks', n, pickKey(id))), seats);
+/** 夜里选好了：先写回答，再写"看完了" */
+export async function answerPick(code: string, n: number, id: string, ans: PickAnswer) {
+  await set(ref(db, roomPath(code, 'acks', n, pickKey(id))), clean(ans));
   await ackMsg(code, n, id);
 }
 

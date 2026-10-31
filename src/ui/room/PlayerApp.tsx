@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { ackMsg, answerPick, claimSeat, gotMsg, keepOnline, leaveSeat, roomError, signIn, watchConnected, watchMeta, watchPrivate, watchSeats } from '../../room/api';
-import { metaSeats, seatLabel, sortMsgs, type RoomMeta, type RoomMsg, type SeatInfo } from '../../room/protocol';
+import { metaSeats, seatLabel, sortMsgs, type PickAnswer, type RoomMeta, type RoomMsg, type SeatInfo } from '../../room/protocol';
 import { MIN_PAGE_MS, ShowCard, type CardContent } from '../common';
 
 const NAME_KEY = 'botc-room-name';
@@ -166,7 +166,7 @@ function Seated({ code, seat, name, meta, seats }: { code: string; seat: number;
     });
     send.catch((e) => setErr(roomError(e)));
   };
-  if (next?.ask) return <PickCard key={msgKey(next)} m={next} me={seat} seats={seats} onPick={(ns) => finish(next, answerPick(code, seat, next.id, ns))} />;
+  if (next?.ask) return <PickCard key={msgKey(next)} m={next} me={seat} seats={seats} onPick={(ans) => finish(next, answerPick(code, seat, next.id, ans))} />;
   if (next) return <ShowCard key={msgKey(next)} c={next.card} onDone={() => finish(next, ackMsg(code, seat, next.id))} />;
   if (showRole && role) return <ShowCard c={{ ...role, title: '你的角色' }} onDone={() => setShowRole(false)} />;
 
@@ -192,18 +192,28 @@ function Seated({ code, seat, name, meta, seats }: { code: string; seat: number;
   );
 }
 
-/** 夜里选人：点座位，选够了点确定 */
-function PickCard({ m, me, seats, onPick }: { m: RoomMsg; me: number; seats: Record<string, SeatInfo>; onPick: (ns: number[]) => void }) {
+/** 点一下选中、再点取消；只能选一个时点别的就换过去 */
+const toggle = <T,>(xs: T[], x: T, max: number) => (xs.includes(x) ? xs.filter((y) => y !== x) : max === 1 ? [x] : xs.length < max ? [...xs, x] : xs);
+
+/** 夜里选人（有的还要选角色或是/否）：选够了点确定；一次性能力可以点"不用" */
+function PickCard({ m, me, seats, onPick }: { m: RoomMsg; me: number; seats: Record<string, SeatInfo>; onPick: (ans: PickAnswer) => void }) {
   const a = m.ask!;
+  const optCount = a.opts?.length ? (a.optCount ?? 1) : 0;
+  const optMin = a.opts?.length ? (a.optMin ?? optCount) : 0;
   const [sel, setSel] = useState<number[]>([]);
+  const [opts, setOpts] = useState<string[]>([]);
+  const [text, setText] = useState('');
   const [ready, setReady] = useState(false);
   // 和看卡片一样：至少停 1 秒，免得上一张"看完了"连点到这里
   useEffect(() => {
     const t = setTimeout(() => setReady(true), MIN_PAGE_MS);
     return () => clearTimeout(t);
   }, []);
-  const tap = (n: number) => setSel((xs) => (xs.includes(n) ? xs.filter((x) => x !== n) : a.count === 1 ? [n] : xs.length < a.count ? [...xs, n] : xs));
-  const full = sel.length === a.count;
+  const full = sel.length === a.count && opts.length >= optMin && opts.length <= optCount && (!a.text || !!text.trim());
+  const label = (id: string) => a.opts?.find((o) => o.id === id)?.label ?? id;
+  const need = [a.count > sel.length ? `选 ${a.count - sel.length} 个人` : '', optMin > opts.length ? `选 ${optMin - opts.length} 项` : '', a.text && !text.trim() ? '写一句话' : '']
+    .filter(Boolean)
+    .join('、');
   return (
     <div className="showcard pick" role="dialog" aria-label="选人">
       {m.card.lines?.map((l, i) => (
@@ -212,17 +222,43 @@ function PickCard({ m, me, seats, onPick }: { m: RoomMsg; me: number; seats: Rec
         </div>
       ))}
       {m.card.title && <div className="ttl">{m.card.title}</div>}
-      <div className="pick-grid">
-        {a.seats.map((n) => (
-          <button key={n} className={`pick-seat${sel.includes(n) ? ' sel' : ''}`} disabled={a.disabled?.includes(n)} aria-pressed={sel.includes(n)} onClick={() => tap(n)}>
-            <b>{seatLabel(n)}</b>
-            <small>{[n === me ? '你' : seats[n]?.name, a.dead?.includes(n) && '已死'].filter(Boolean).join(' · ')}</small>
-          </button>
-        ))}
-      </div>
-      <button className="btn btn-primary btn-block pick-ok" disabled={!full || !ready} onClick={() => onPick(sel)}>
-        {full ? `确定：${sel.map(seatLabel).join('、')}` : `选 ${a.count} 个人${sel.length ? `（还差 ${a.count - sel.length} 个）` : ''}`}
+      {m.card.ability && <div className="ab">{m.card.ability}</div>}
+      {m.card.rows && (
+        <div className="rows">
+          {m.card.rows.map((r) => (
+            <div key={r}>{r}</div>
+          ))}
+        </div>
+      )}
+      {a.count > 0 && (
+        <div className="pick-grid">
+          {a.seats.map((n) => (
+            <button key={n} className={`pick-seat${sel.includes(n) ? ' sel' : ''}`} disabled={a.disabled?.includes(n)} aria-pressed={sel.includes(n)} onClick={() => setSel((xs) => toggle(xs, n, a.count))}>
+              {a.ordered && sel.includes(n) && <i className="ord">{sel.indexOf(n) + 1}</i>}
+              <b>{seatLabel(n)}</b>
+              <small>{[n === me ? '你' : seats[n]?.name, a.dead?.includes(n) && '已死'].filter(Boolean).join(' · ')}</small>
+            </button>
+          ))}
+        </div>
+      )}
+      {a.opts && a.opts.length > 0 && (
+        <div className="pick-grid opts">
+          {a.opts.map((o) => (
+            <button key={o.id} className={`pick-seat${opts.includes(o.id) ? ' sel' : ''}${o.evil ? ' evil' : ''}`} aria-pressed={opts.includes(o.id)} onClick={() => setOpts((xs) => toggle(xs, o.id, optCount))}>
+              <b>{o.label}</b>
+            </button>
+          ))}
+        </div>
+      )}
+      {a.text && <input className="input pick-ok" value={text} maxLength={60} placeholder={a.text} onChange={(e) => setText(e.target.value)} />}
+      <button className="btn btn-primary btn-block pick-ok" disabled={!full || !ready} onClick={() => onPick({ seats: sel, opts, text: text.trim() || undefined })}>
+        {full ? `确定${sel.length || opts.length ? `：${[...sel.map(seatLabel), ...opts.map(label)].join('、')}` : ''}` : `还要${need}`}
       </button>
+      {a.skip && (
+        <button className="btn btn-ghost btn-block pick-ok" disabled={!ready} onClick={() => onPick({ skip: true })}>
+          {a.skip}
+        </button>
+      )}
     </div>
   );
 }

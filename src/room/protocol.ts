@@ -24,15 +24,35 @@ export interface SeatInfo {
   online?: boolean;
 }
 
-/** 夜里让玩家在手机上选人 */
+/** 夜里让玩家在手机上选人（也可以选角色、选是或否） */
 export interface PickAsk {
-  /** 要选几个人 */
+  /** 要选几个人（0 = 不选人） */
   count: number;
   /** 能看到的座位（按座位顺序） */
   seats: number[];
   dead?: number[];
   /** 按规则不能选的（例如僧侣不能选自己） */
   disabled?: number[];
+  /** 选人要分先后（例如鹰身女妖：第一个是要疯狂的人） */
+  ordered?: boolean;
+  /** 还要选的选项（角色、是或否……），选 optCount 个（默认 1） */
+  opts?: { id: string; label: string; evil?: boolean }[];
+  optCount?: number;
+  /** 选项最少选几个（默认和 optCount 一样） */
+  optMin?: number;
+  /** 要他写一句话（例如巫师的愿望）：输入框里的提示 */
+  text?: string;
+  /** 可以不选（例如一次性能力今晚不用）：按钮上的字 */
+  skip?: string;
+}
+
+/** 玩家的回答 */
+export interface PickAnswer {
+  seats?: number[];
+  opts?: string[];
+  text?: string;
+  /** 点了"不用" */
+  skip?: boolean;
 }
 
 export interface RoomMsg {
@@ -69,7 +89,7 @@ export const nightMsgId = (night: number, step: number, n: number, tag: string) 
 export const idleMsgId = (night: number, n: number) => `N${night}-idle-${n}`;
 export const isNightMsg = (id: string, night: number) => id.startsWith(`N${night}-`);
 
-export type Acks = Record<string, Record<string, number | number[]>>;
+export type Acks = Record<string, Record<string, number | number[] | PickAnswer>>;
 
 /** 房间里的座位号 */
 export const metaSeats = (m: RoomMeta): number[] => m.seatNs ?? Array.from({ length: m.count }, (_, i) => i + 1);
@@ -84,11 +104,16 @@ export function msgStatus(acks: Acks, n: number, id: string | undefined): 'none'
   return a[id] ? 'read' : a[gotKey(id)] ? 'got' : 'sent';
 }
 
-/** 他在手机上选的座位（还没选是 undefined） */
-export function pickOf(acks: Acks, n: number, id: string): number[] | undefined {
+/** 他在手机上的回答（还没选是 undefined）。数据库会去掉空数组，缺的当成空的 */
+export function answerOf(acks: Acks, n: number, id: string): PickAnswer | undefined {
   const v = acks[n]?.[pickKey(id)];
-  return Array.isArray(v) ? v.map(Number) : undefined;
+  if (Array.isArray(v)) return { seats: v.map(Number), opts: [] };
+  if (v && typeof v === 'object') return { seats: (v.seats ?? []).map(Number), opts: v.opts ?? [], text: v.text, skip: !!v.skip };
+  return undefined;
 }
+
+/** 他在手机上选的座位（还没选是 undefined） */
+export const pickOf = (acks: Acks, n: number, id: string): number[] | undefined => answerOf(acks, n, id)?.seats;
 
 /** 比较两条消息内容是否一样：数据库会去掉空数组、空字段，键的顺序也可能变 */
 export function sameBody(a: MsgBody | undefined, b: MsgBody | undefined): boolean {

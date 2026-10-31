@@ -1,22 +1,14 @@
 // 夜里接到玩家手机上：
-// - 要选人的步骤：一进这一步就把"选几个人"发到他手机上，他选的人自动填到这一步（说书人可以改），选完才能下一步；
+// - 要选人的步骤：一进这一步就把"选几个人"（或选角色、是否、写一句话）发到他手机上，他选的人自动填到这一步（说书人可以改），选完才能下一步；
 // - 要给信息的步骤：说书人确认后点「发给 N 号」，他点了"看完了"才能下一步；
 // - 今晚没有行动的人：在夜里随机某一步收到"今晚你没有行动"，这样谁也看不出谁有行动。天亮要等所有人都点完。
-import { useEffect, useRef, useState } from 'react';
-import { demonSeat, seatName, wakesAs } from '../../engine/core';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { demonSeat, seatName, teamOf, wakesAs } from '../../engine/core';
 import { minionSeats, pendingActors, shouldRun, slotsFor } from '../../engine/flow';
-import { SLOT_TITLE } from '../../engine/scripts';
 import type { GameState, SlotId } from '../../engine/types';
-import { hashUnit, idleMsgId, isNightMsg, msgStatus, nightMsgId, pickOf, sameBody, type MsgBody } from '../../room/protocol';
+import { answerOf, hashUnit, idleMsgId, isNightMsg, msgStatus, nightMsgId, sameBody, type MsgBody, type PickAnswer, type PickAsk } from '../../room/protocol';
 import { BottomBar, ConfirmButton, type CardContent } from '../common';
 import { useRoom, type HostRoom } from './hostRoom';
-
-/** 已经接到手机上的步骤（先接暗流涌动；"选一个人"那一类步骤是同一个界面，一起接上） */
-export const PHONE_SLOTS: SlotId[] = [
-  'dusk', 'minionInfo', 'demonInfo', 'dawn',
-  'poisoner', 'washerwoman', 'librarian', 'investigator', 'chef', 'empath', 'fortuneteller', 'butler', 'spy', 'monk', 'scarletwoman', 'imp', 'ravenkeeper', 'undertaker',
-  'fearmonger', 'bureaucrat', 'thief', 'devilsadvocate', 'exorcist', 'witch', 'acrobat', 'preacher', 'ogre', 'qutler', 'lycanthrope',
-];
 
 /** 房间开着、在游戏中：夜里走手机 */
 export const phonesOn = (room: HostRoom) => !!room.code && room.meta?.phase === 'game';
@@ -56,21 +48,52 @@ const names = (ns: number[]) => [...new Set(ns)].map(seatName).join('、');
 
 /* ---------------- 让他在手机上选人 ---------------- */
 
+export interface AskOpts extends Pick<PickAsk, 'count' | 'disabled' | 'ordered' | 'opts' | 'optCount' | 'optMin' | 'text' | 'skip'> {
+  title: string;
+  lines: string[];
+  /** 卡片上附带的一段说明（例如他现在拥有什么能力） */
+  ability?: string;
+  /** 卡片上附带的魔典（寡妇先看魔典再选人） */
+  rows?: string[];
+  /** 这一步不问他（例如送葬者不用选人） */
+  off?: boolean;
+  /** 同一步问他第二件事时区分 */
+  tag?: string;
+}
+
+/** 他的回答念给说书人听：选了谁、选了什么、还是不用 */
+const answerText = (o: AskOpts, a: PickAnswer) =>
+  a.skip
+    ? `点了"${o.skip ?? '不用'}"`
+    : `选了 ${[...(a.seats ?? []).map(seatName), ...(a.opts ?? []).map((id) => o.opts?.find((x) => x.id === id)?.label ?? id), ...(a.text ? [`"${a.text}"`] : [])].join('、')}`;
+
 /**
- * 一进这一步就把"选几个人"发到 n 号手机上；他选好了调用 onPick（填到说书人的选人格子里，说书人可以改）。
+ * 一进这一步就把"选几个人"（或选角色、是否）发到 n 号手机上；他选好了调用 onPick（填到说书人这一步，说书人可以改）。
  * wait：还在等他选（下一步按钮要等）。view：放在选人格子上面的状态条。
  */
-export function usePhoneAsk(s: GameState, n: number, o: { count: number; title: string; lines: string[]; disabled?: number[]; off?: boolean }, onPick: (ns: number[]) => void) {
+export function usePhoneAsk(s: GameState, n: number, o: AskOpts, onPick: (seats: number[], ans: PickAnswer) => void) {
   const room = useRoom();
   const on = !o.off && phoneOf(room, n);
-  const id = stepId(s, n, 'pick');
+  const id = stepId(s, n, o.tag ?? 'pick');
   const [manual, setManual] = useState(false);
   const st = on ? statusOf(room, n, id) : 'none';
-  const pick = on ? pickOf(room.acks, n, id) : undefined;
+  const pick = on ? answerOf(room.acks, n, id) : undefined;
   const body = (): MsgBody => ({
-    card: { title: o.title, big: [], lines: o.lines },
-    // 今晚刚死的人天亮才公布：选人的格子上不能先标出来
-    ask: { count: o.count, seats: s.seats.filter((x) => !x.left).map((x) => x.n), dead: s.seats.filter((x) => !x.alive && !s.ns!.deaths.includes(x.n)).map((x) => x.n), disabled: o.disabled },
+    card: { title: o.title, big: [], lines: o.lines, ability: o.ability, rows: o.rows },
+    ask: {
+      count: o.count,
+      seats: s.seats.filter((x) => !x.left).map((x) => x.n),
+      // 今晚刚死的人天亮才公布：选人的格子上不能先标出来
+      dead: s.seats.filter((x) => !x.alive && !s.ns!.deaths.includes(x.n)).map((x) => x.n),
+      // 同理：不能因为今晚刚死的人选不了，就让他猜到谁死了
+      disabled: o.disabled?.filter((n) => !s.ns!.deaths.includes(n)),
+      ordered: o.ordered,
+      opts: o.opts,
+      optCount: o.optCount,
+      optMin: o.optMin,
+      text: o.text,
+      skip: o.skip,
+    },
   });
   const latest = useRef({ room, body, onPick });
   latest.current = { room, body, onPick };
@@ -79,14 +102,16 @@ export function usePhoneAsk(s: GameState, n: number, o: { count: number; title: 
     if (on && room.ready && !manual && st === 'none') sendOnce(latest.current.room, n, id, latest.current.body());
   }, [on, room.ready, manual, st, n, id]);
 
-  const pk = pick?.join(',') ?? '';
+  const pk = pick ? JSON.stringify(pick) : '';
   useEffect(() => {
-    if (pk) latest.current.onPick(pk.split(',').map(Number));
+    if (!pk) return;
+    const a: PickAnswer = JSON.parse(pk);
+    latest.current.onPick(a.seats ?? [], a);
   }, [pk]);
 
   const who = seatName(n);
   const text = pick
-    ? `${who} 在手机上选了 ${pick.map(seatName).join('、')}（已填到下面，可以改）`
+    ? `${who} 在手机上${answerText(o, pick)}（已填到下面，可以改）`
     : manual
       ? `已从 ${who} 手机上收回，你直接在下面点`
       : st === 'got'
@@ -117,7 +142,7 @@ export function usePhoneAsk(s: GameState, n: number, o: { count: number; title: 
       )}
     </div>
   );
-  return { on, view, wait: on && !pick && !manual ? `等 ${who} 在手机上选` : null };
+  return { on, view, ans: pick, wait: on && !pick && !manual ? `等 ${who} 在手机上选` : null };
 }
 
 /* ---------------- 发信息给他 ---------------- */
@@ -164,6 +189,38 @@ export function usePhoneSend(s: GameState, items: PhoneItem[]) {
 
 export type PhoneSend = ReturnType<typeof usePhoneSend>;
 
+/** 发给 n 号的一张卡（附带"小声说"的话） */
+export const infoTo = (n: number, card: CardContent, lines?: string[], tag = 'info', role?: CardContent): PhoneItem => ({
+  n,
+  tag,
+  body: { card: lines?.length ? { ...card, lines } : card },
+  role,
+});
+
+/**
+ * 步骤底部的主按钮：手机模式走 PhoneBar（等他选 → 发给他 → 等他看完 → 完成）；
+ * 当面模式照旧，children 放"给他看"之类的按钮。
+ */
+export function StepBar({ phone, send, wait, ready = true, label = '完成，下一步', onDone, children }: {
+  phone: boolean;
+  send?: PhoneSend;
+  wait?: string | null;
+  ready?: boolean;
+  label?: string;
+  onDone: () => void;
+  children?: ReactNode;
+}) {
+  if (phone) return <PhoneBar send={send} wait={wait} ready={ready} doneLabel={label} onDone={onDone} />;
+  return (
+    <BottomBar wide>
+      {children}
+      <button className="btn btn-primary grow" disabled={!ready || !!wait} onClick={onDone}>
+        {wait ?? label}
+      </button>
+    </BottomBar>
+  );
+}
+
 /**
  * 手机步骤的底部按钮：先等他选 → 发给他 → 等他看完 → 完成，下一步。
  * ready=false 时（还没定下来给什么）按钮显示 doneLabel 但点不了。
@@ -206,11 +263,24 @@ function mayWakeFrom(s: GameState, n: number, from: number): boolean {
 function wakers(s: GameState, slot: SlotId): number[] {
   if (slot === 'dusk' || slot === 'dawn') return [];
   if (slot === 'minionInfo' || slot === 'lilmonsta') return shouldRun(s, slot) ? minionSeats(s).filter((x) => x.alive).map((x) => x.n) : [];
-  if (slot === 'demonInfo') return shouldRun(s, slot) ? [demonSeat(s)?.n ?? 0] : [];
-  // 守鸦人今晚被杀才醒：恶魔行动前不知道他会不会醒
-  if (slot === 'ravenkeeper') return s.seats.filter((x) => (x.alive || s.ns!.deaths.includes(x.n)) && wakesAs(s, x, 'ravenkeeper')).map((x) => x.n);
-  return shouldRun(s, slot) ? pendingActors(s, slot).map((x) => x.n) : [];
+  if (slot === 'demonInfo') {
+    if (!shouldRun(s, slot)) return [];
+    const legion = s.seats.filter((x) => x.role === 'legion').map((x) => x.n);
+    return legion.length ? legion : [demonSeat(s)?.n ?? 0];
+  }
+  // 一次叫醒好几个人的步骤
+  if (!shouldRun(s, slot)) return slot === 'ravenkeeper' ? ravens(s) : [];
+  const evil = s.seats.filter((x) => x.alive && (teamOf(x.role) === 'minion' || teamOf(x.role) === 'demon')).map((x) => x.n);
+  if (slot === 'duchess') return s.duchessVisitors;
+  if (slot === 'damsel' || slot === 'snitch' || slot === 'riot') return minionSeats(s).filter((x) => x.alive).map((x) => x.n);
+  if (slot === 'poppygrower' || slot === 'hatter') return evil;
+  if (slot === 'eviltwin') return [...pendingActors(s, slot).map((x) => x.n), ...(s.twin ? [s.twin] : [])];
+  if (slot === 'boffin' || slot === 'king' || slot === 'marionette') return [...pendingActors(s, slot).map((x) => x.n), demonSeat(s)?.n ?? 0];
+  return pendingActors(s, slot).map((x) => x.n);
 }
+
+/** 守鸦人今晚被杀才醒：恶魔行动前不知道他会不会醒 */
+const ravens = (s: GameState) => s.seats.filter((x) => (x.alive || s.ns!.deaths.includes(x.n)) && wakesAs(s, x, 'ravenkeeper')).map((x) => x.n);
 
 const hasNightMsg = (room: HostRoom, s: GameState, n: number) => Object.keys(room.msgs[n] ?? {}).some((id) => isNightMsg(id, s.night));
 
@@ -265,15 +335,4 @@ export function NightPhones({ s }: { s: GameState }) {
     }
   }, [live, s, cur, room.msgs, room.acks, room.seats]);
   return null;
-}
-
-/** 这一步还没接到手机上（其他剧本的角色）：提醒说书人照旧当面处理 */
-export function PhoneMissing({ slot, actor }: { slot: SlotId; actor?: number }) {
-  const room = useRoom();
-  if (!phonesOn(room) || PHONE_SLOTS.includes(slot) || actor === undefined) return null;
-  return (
-    <p className="card card-warn">
-      {SLOT_TITLE[slot]}这一步还没接到手机上：照旧用你自己的屏幕给 {seatName(actor)} 看（把他叫到一边）。
-    </p>
-  );
 }
