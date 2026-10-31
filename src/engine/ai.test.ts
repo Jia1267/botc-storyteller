@@ -1,31 +1,35 @@
 import { describe, expect, it } from 'vitest';
-import { aiPlan, aiSlayer, aiVirgin, tallyHands, voteOrder } from './ai';
+import { aiBoardOk, aiPlan, aiSlayer, aiVirgin, tallyHands, voteOrder, type AiAnswer, type AiAsk } from './ai';
 import { completeSlot, currentSlot, execute, finishDay, nomResults, voteNeed } from './flow';
 import { seeded, type Rng } from './rng';
-import { newGame, setCount, shuffleSeats, startDeal } from './setup';
+import { newGame, rerollRoles, setCount, setScript, shuffleSeats, startDeal } from './setup';
 import { finishDeal } from './flow';
 import type { GameState } from './types';
 
-/** 一局 AI 暗流涌动：网页配板、随机坐、发完身份进第 1 夜 */
-function aiGame(count: number, seed: number): GameState {
+/** 一局 AI：网页配板（不配 AI 带不了的角色）、随机坐、发完身份进第 1 夜 */
+function aiGame(count: number, seed: number, script: 'tb' | 'bmr' = 'tb'): GameState {
   const rng = seeded(seed);
   const s = newGame();
+  setScript(s, script);
   setCount(s, count, rng);
+  for (let i = 0; i < 60 && !aiBoardOk(s.seats.map((x) => x.role)); i++) rerollRoles(s, rng);
   shuffleSeats(s, rng);
   startDeal(s);
   finishDeal(s);
   return s;
 }
 
-/** 手机上的玩家：随机选能选的人 */
-function pick(s: GameState, count: number, disabled: number[], rng: Rng): number[] {
-  const pool = s.seats.map((x) => x.n).filter((n) => !disabled.includes(n));
+/** 手机上的玩家：随机选能选的人和角色，能"不用"时偶尔不用 */
+function pick(s: GameState, a: AiAsk, rng: Rng): AiAnswer {
+  if (a.skip && rng() < 0.3) return { seats: [], opts: [], skip: true };
+  const pool = s.seats.map((x) => x.n).filter((n) => !(a.disabled ?? []).includes(n));
   const out: number[] = [];
-  while (out.length < count && out.length < pool.length) {
+  while (out.length < a.count && out.length < pool.length) {
     const n = pool[Math.floor(rng() * pool.length)];
     if (!out.includes(n)) out.push(n);
   }
-  return out;
+  const opts = a.opts?.length ? [a.opts[Math.floor(rng() * a.opts.length)].id] : [];
+  return { seats: out, opts, skip: false };
 }
 
 /** 走完一整晚，返回走过的步骤 */
@@ -37,8 +41,7 @@ function runNight(s: GameState, rng: Rng): string[] {
     const plan = aiPlan(s, { spyRows: () => ['1号 · 间谍'] });
     expect(plan, `第 ${s.night} 夜 ${slot} 没有处理办法`).not.toBeNull();
     if ('ask' in plan!) {
-      const picks = pick(s, plan.ask.count, plan.ask.disabled ?? [], rng);
-      const r = plan.then(picks);
+      const r = plan.then(pick(s, plan.ask, rng));
       for (const m of r.send) expect(m.card.big.length + (m.card.rows?.length ?? 0)).toBeGreaterThan(0);
       completeSlot(s, r.payload);
     } else completeSlot(s, plan!.payload);
@@ -63,13 +66,29 @@ describe('AI 说书人（暗流涌动）', () => {
     }
   });
 
+  it('暗月初升：夜里每一步都有处理办法，一局能走到结束；不配造谣者', () => {
+    for (let seed = 1; seed <= 40; seed++) {
+      const rng = seeded(seed * 53);
+      const s = aiGame(7 + (seed % 9), seed, 'bmr');
+      expect(s.seats.some((x) => x.role === 'gossip')).toBe(false);
+      for (let round = 0; round < 12 && s.phase !== 'end'; round++) {
+        runNight(s, rng);
+        if (s.phase !== 'day') break;
+        const alive = s.seats.filter((x) => x.alive);
+        execute(s, rng() < 0.6 ? alive[Math.floor(rng() * alive.length)].n : null);
+        if (s.phase === 'day') finishDay(s);
+      }
+      expect(['end', 'night', 'day']).toContain(s.phase);
+    }
+  });
+
   it('信息步骤给的卡片和记下的结果一致', () => {
     const s = aiGame(8, 3);
     const rng = seeded(5);
     for (let guard = 0; guard < 30 && s.phase === 'night'; guard++) {
       const plan = aiPlan(s, { spyRows: () => [] })!;
       if ('ask' in plan) {
-        const r = plan.then(pick(s, plan.ask.count, plan.ask.disabled ?? [], rng));
+        const r = plan.then(pick(s, plan.ask, rng));
         if (r.payload.kind === 'fortune') expect(r.send[0].card.big[0]).toBe(r.payload.yes ? '有恶魔' : '没有恶魔');
         completeSlot(s, r.payload);
       } else {

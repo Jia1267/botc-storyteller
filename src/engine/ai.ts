@@ -2,16 +2,28 @@
 // 要选人的步骤去问他（手机上选），要给信息的步骤按"让局势最均衡"的推荐给法给；
 // 和真人说书人模式用同一套引擎，只是把说书人点的那一下换成了推荐的那个选项。
 import { balance, recommend } from './balance';
-import { actorFor, believedRole, circleOrder, demonSeat, hasAbility, seatName, seatOf } from './core';
-import { currentSlot, effectiveSlot, minionSeats, previewImp, previewSlayer, previewVirgin, slotActor, type SlotPayload } from './flow';
-import { fortuneChoices, mayorBounceChoices, numberChoices, pairChoices, revealChoices, starpassChoices, twistChoices } from './info';
+import { actorFor, believedRole, circleOrder, demonSeat, hasAbility, isDemonSeat, lilMonsta, malfunction, scriptOf, seatName, seatOf, teamOf } from './core';
+import { currentSlot, effectiveSlot, godfatherOutsiders, goonTriggered, minionSeats, previewImp, previewSlayer, previewVirgin, slotActor, type SlotPayload } from './flow';
+import {
+  chambermaidChoices, fortuneChoices, grandmotherChoices, innkeeperDrunkChoices, mayorBounceChoices, numberChoices, pairChoices, revealChoices, sailorDrunkChoices,
+  shabalothReviveChoices, starpassChoices, tinkerChoices, twistChoices,
+} from './info';
 import { ROLES, roleName, type RoleId, type Team } from './roles';
-import { seeded, type Rng } from './rng';
+import { seeded, shuffle, type Rng } from './rng';
 import { librarianZeroLines, phoneDuskLines, slotLines } from './scripts';
 import type { GameState, SlotId } from './types';
 
 /** AI 说书人能带的剧本 */
-export const AI_SCRIPTS = ['tb'] as const;
+export const AI_SCRIPTS = ['tb', 'bmr'] as const;
+
+/**
+ * AI 局不配的角色：要靠人判断的（造谣者的话是不是真的、"疯狂"像不像、巫师的愿望……），
+ * 以及网页还没接到 AI 白天流程里的。
+ */
+export const AI_EXCLUDED: RoleId[] = ['gossip'];
+
+/** 这个板子 AI 能带吗 */
+export const aiBoardOk = (roles: RoleId[]) => !roles.some((r) => AI_EXCLUDED.includes(r));
 
 /** 开房时的设置（秒） */
 export interface AiSettings {
@@ -46,19 +58,31 @@ export interface AiMsg {
   role?: AiCard;
 }
 
-/** 要问他：选几个人 */
+/** 要问他：选几个人（有的还要选角色，或者可以不用） */
 export interface AiAsk {
   n: number;
   count: number;
   title: string;
   lines: string[];
   disabled?: number[];
+  opts?: { id: string; label: string; evil?: boolean }[];
+  skip?: string;
 }
 
-/** 这一步要做什么：直接处理，或者先问他、拿到他的选择再处理 */
+/** 他在手机上的回答 */
+export interface AiAnswer {
+  seats: number[];
+  opts: string[];
+  skip: boolean;
+}
+
+/** 这一步要做什么：直接处理，或者先问他、拿到他的选择再处理（处理时可能还要发信息给别人） */
 export type AiPlan =
   | { say?: string[]; send: AiMsg[]; payload: SlotPayload }
-  | { ask: AiAsk; then: (picks: number[]) => { send: AiMsg[]; payload: SlotPayload } };
+  | { ask: AiAsk; send?: AiMsg[]; then: (a: AiAnswer) => { send: AiMsg[]; payload: SlotPayload } };
+
+const roleOpts = (rs: RoleId[]) => rs.map((r) => ({ id: r, label: roleName(r), evil: teamOf(r) === 'minion' || teamOf(r) === 'demon' }));
+const deadSeats = (s: GameState) => s.seats.filter((x) => !x.alive).map((x) => x.n);
 
 /** 和真人模式的"推荐"用同一个随机数：同一步算出来的推荐一样 */
 const rngOf = (s: GameState, extra = 0): Rng => seeded(s.log.length * 7919 + s.night * 131 + (s.ns?.slot ?? 0) * 17 + extra);
@@ -123,7 +147,7 @@ export function aiPlan(s: GameState, deps: { spyRows: (s: GameState) => string[]
     case 'butler':
       return {
         ask: { n: me, count: 1, title: roleName(eff), lines: lines(eff), disabled: eff === 'poisoner' ? [] : [me] },
-        then: ([t]) => ({ send: [], payload: { kind: 'target', target: t } }),
+        then: ({ seats: [t] }) => ({ send: [], payload: { kind: 'target', target: t } }),
       };
     case 'washerwoman':
     case 'librarian':
@@ -146,7 +170,7 @@ export function aiPlan(s: GameState, deps: { spyRows: (s: GameState) => string[]
     case 'fortuneteller':
       return {
         ask: { n: me, count: 2, title: roleName('fortuneteller'), lines: lines('fortuneteller') },
-        then: (picks) => {
+        then: ({ seats: picks }) => {
           const p = [picks[0], picks[1]] as [number, number];
           const choices = fortuneChoices(s, me, p);
           const c = choices[recommend(choices, balance(s).score, rngOf(s, p[0] * 31 + p[1]))];
@@ -163,7 +187,7 @@ export function aiPlan(s: GameState, deps: { spyRows: (s: GameState) => string[]
     case 'imp':
       return {
         ask: { n: me, count: 1, title: roleName(actor.role), lines: lines('imp') },
-        then: ([t]) => {
+        then: ({ seats: [t] }) => {
           const pv = previewImp(s, t);
           if (pv.kind === 'mayor') {
             const choices = mayorBounceChoices(s, t, rngOf(s, t));
@@ -180,7 +204,7 @@ export function aiPlan(s: GameState, deps: { spyRows: (s: GameState) => string[]
     case 'ravenkeeper':
       return {
         ask: { n: me, count: 1, title: roleName('ravenkeeper'), lines: lines('ravenkeeper') },
-        then: ([t]) => {
+        then: ({ seats: [t] }) => {
           const choices = revealChoices(s, me, t, rngOf(s, t), 'ravenkeeper');
           const c = choices[recommend(choices, balance(s).score, rngOf(s, t + 1))];
           return { send: [{ n: me, tag: 'info', card: { title: `${seatName(t)} 的角色是`, big: [roleName(c.value)] } }], payload: { kind: 'reveal', pick: t, role: c.value, truth: c.truth, twist: !!c.twist } };
@@ -195,6 +219,151 @@ export function aiPlan(s: GameState, deps: { spyRows: (s: GameState) => string[]
         payload: { kind: 'reveal', pick: t, role: c.value, truth: c.truth, twist: !!c.twist },
       };
     }
+  }
+  return bmrPlan(s, eff, actor.n, lines);
+}
+
+/* ---------------- 暗月初升 ---------------- */
+
+function bmrPlan(s: GameState, eff: SlotId, me: number, lines: (sl: SlotId) => string[]): AiPlan | null {
+  const none: SlotPayload = { kind: 'none' };
+  const target = (t: number): SlotPayload => ({ kind: 'target', target: t });
+  const pickOne = (title: string, l: string[], disabled: number[] = []): AiPlan => ({
+    ask: { n: me, count: 1, title, lines: l, disabled },
+    then: ({ seats: [t] }) => ({ send: [], payload: target(t) }),
+  });
+  const d = demonSeat(s);
+  switch (eff) {
+    case 'lunatic': {
+      const fake = s.lunaticFake ?? 'imp';
+      const tell = (note?: string): AiMsg[] => (d && !lilMonsta(s) ? [{ n: d.n, tag: 'info', card: { title: '这名玩家是疯子', big: [seatName(me)], note } }] : []);
+      if (s.night === 1 && s.count < 7) return { send: tell(), payload: none };
+      if (s.night === 1) {
+        // 像真恶魔一样给他假的爪牙和伪装
+        const nMin = minionSeats(s).length;
+        const fakeMinions = shuffle(s.seats.filter((x) => x.n !== me && !x.traveller).map((x) => x.n), rngOf(s, 21)).slice(0, nMin).sort((a, b) => a - b);
+        const fakeBluffs = shuffle(scriptOf(s).roles.filter((r) => (teamOf(r) === 'townsfolk' || teamOf(r) === 'outsider') && r !== 'lunatic' && r !== 'drunk'), rngOf(s, 22)).slice(0, 3);
+        const l = lines('demonInfo');
+        const info: AiMsg[] = [
+          ...(nMin ? [{ n: me, tag: 'info', card: { big: fakeMinions.map(seatName), lines: l.slice(0, 1) } }] : []),
+          { n: me, tag: 'info2', card: { big: fakeBluffs.map(roleName), lines: l.slice(1) } },
+        ];
+        if (fake !== 'pukka') return { send: [...info, ...tell()], payload: none };
+        return {
+          ask: { n: me, count: 1, title: roleName(fake), lines: lines('pukka') },
+          send: info,
+          then: ({ seats: [t] }) => ({ send: tell(`今晚他选了 ${seatName(t)}`), payload: target(t) }),
+        };
+      }
+      const l = lines(fake as SlotId).length ? lines(fake as SlotId) : lines('lunatic');
+      return { ask: { n: me, count: 1, title: roleName(fake), lines: l }, then: ({ seats: [t] }) => ({ send: tell(`今晚他选了 ${seatName(t)}`), payload: target(t) }) };
+    }
+    case 'sailor':
+      return {
+        ask: { n: me, count: 1, title: roleName('sailor'), lines: lines('sailor'), disabled: deadSeats(s) },
+        then: ({ seats: [t] }) => {
+          const choices = sailorDrunkChoices(s, me, t);
+          const c = choices[recommend(choices, balance(s).score, rngOf(s, t))] ?? choices[0];
+          return { send: [], payload: { kind: 'sailor', target: t, drunk: c.value } };
+        },
+      };
+    case 'courtier':
+      return {
+        ask: { n: me, count: 0, title: roleName('courtier'), lines: lines('courtier'), opts: roleOpts(scriptOf(s).roles), skip: '今晚不用（整局一次）' },
+        then: (a) => ({ send: [], payload: { kind: 'courtier', role: a.skip ? null : ((a.opts[0] as RoleId) ?? null) } }),
+      };
+    case 'godfather': {
+      if (s.night > 1) return pickOne(roleName('godfather'), ['今天有外来者死了。请选择一名玩家，他会死亡。']);
+      const outs = godfatherOutsiders(s);
+      const card: AiCard = outs.length ? { title: '这些外来者在场', big: outs.map(roleName), lines: lines('godfather') } : { title: '场上没有外来者', big: ['0'] };
+      return { send: [{ n: me, tag: 'info', card }], payload: none };
+    }
+    case 'devilsadvocate': {
+      const last = s.advocate?.night === s.night - 1 ? [s.advocate.seat] : [];
+      return pickOne(roleName('devilsadvocate'), lines('devilsadvocate'), [...deadSeats(s), ...last]);
+    }
+    case 'exorcist': {
+      const last = s.exorcistPick?.night === s.night - 1 ? [s.exorcistPick.seat] : [];
+      return {
+        ask: { n: me, count: 1, title: roleName('exorcist'), lines: lines('exorcist'), disabled: last },
+        then: ({ seats: [t] }) => ({
+          // 选中了恶魔：告诉恶魔驱魔人是谁，他今晚不醒
+          send: isDemonSeat(s, t) && !malfunction(s, me) && !goonTriggered(s, seatOf(s, me), [t], 'exorcist') ? [{ n: t, tag: 'info', card: { title: `${seatName(me)} 是`, big: ['驱魔人'], note: '他选中了你：今晚你不用醒了。' } }] : [],
+          payload: target(t),
+        }),
+      };
+    }
+    case 'pukka':
+      return pickOne(roleName('pukka'), lines('pukka'));
+    case 'zombuul':
+      return pickOne(roleName('zombuul'), lines('zombuul'));
+    case 'shabaloth':
+      return {
+        ask: { n: me, count: 2, title: roleName('shabaloth'), lines: lines('shabaloth') },
+        then: ({ seats }) => {
+          const choices = shabalothReviveChoices(s);
+          const revive = choices.length ? (choices[recommend(choices, balance(s).score, rngOf(s, 3))]?.value ?? null) : null;
+          return { send: [], payload: { kind: 'shabaloth', picks: seats, revive } };
+        },
+      };
+    case 'po': {
+      const need = s.poCharged ? 3 : 1;
+      const l = s.poCharged ? (s.style === 'simple' ? ['请选择三名玩家，他们会死亡。'] : ['珀积蓄了一整晚的力量……选出三个人吧。']) : lines('po');
+      return {
+        ask: { n: me, count: need, title: roleName('po'), lines: l, skip: s.poCharged ? undefined : '今晚不选（下一晚可以选三个）' },
+        then: (a) => ({ send: [], payload: { kind: 'po', picks: a.skip ? [] : a.seats } }),
+      };
+    }
+    case 'assassin':
+    case 'professor':
+      return {
+        ask: { n: me, count: 1, title: roleName(eff), lines: lines(eff), disabled: eff === 'professor' ? s.seats.filter((x) => x.alive).map((x) => x.n) : [], skip: '今晚不用（整局一次）' },
+        then: (a) => ({ send: [], payload: a.skip || !a.seats.length ? none : target(a.seats[0]) }),
+      };
+    case 'grandmother': {
+      const choices = grandmotherChoices(s, me, rngOf(s));
+      const c = choices[best(s, choices, 1)] ?? choices[0];
+      if (!c) return { send: [], payload: none };
+      return {
+        send: [{ n: me, tag: 'info', card: { title: `你的孙子是 ${seatName(c.value.seat)}，他的角色是`, big: [roleName(c.value.role)], lines: lines('grandmother') } }],
+        payload: { kind: 'grandmother', seat: c.value.seat, role: c.value.role, truth: c.truth },
+      };
+    }
+    case 'chambermaid':
+      return {
+        ask: { n: me, count: 2, title: roleName('chambermaid'), lines: lines('chambermaid'), disabled: s.seats.filter((x) => !x.alive || x.n === me).map((x) => x.n) },
+        then: ({ seats: picks }) => {
+          const choices = chambermaidChoices(s, me, picks, !!goonTriggered(s, seatOf(s, me), picks, 'chambermaid'));
+          const c = choices[recommend(choices, balance(s).score, rngOf(s, picks[0] * 13 + picks[1]))] ?? choices[0];
+          return {
+            send: [{ n: me, tag: 'info', card: { title: `${picks.map(seatName).join('、')} 中今晚因自己的能力醒来过的人数`, big: [String(c.value)] } }],
+            payload: { kind: 'number', num: c.value, truth: c.truth, twist: !!c.twist, picks },
+          };
+        },
+      };
+    case 'innkeeper':
+      return {
+        ask: { n: me, count: 2, title: roleName('innkeeper'), lines: lines('innkeeper') },
+        then: ({ seats: picks }) => {
+          const p = [picks[0], picks[1]] as [number, number];
+          const choices = innkeeperDrunkChoices(s, p);
+          const c = choices[recommend(choices, balance(s).score, rngOf(s, p[0] * 7 + p[1]))] ?? choices[0];
+          return { send: [], payload: { kind: 'innkeeper', picks: p, drunk: c.value } };
+        },
+      };
+    case 'gambler':
+      return {
+        ask: { n: me, count: 1, title: '赌徒：选一名玩家，再猜他的角色', lines: lines('gambler'), disabled: [me], opts: roleOpts(scriptOf(s).roles) },
+        then: (a) => ({ send: [], payload: { kind: 'gambler', target: a.seats[0], role: (a.opts[0] as RoleId) ?? seatOf(s, a.seats[0]).role } }),
+      };
+    case 'tinker': {
+      const choices = tinkerChoices(s);
+      const c = choices[recommend(choices, balance(s).score, rngOf(s, 7))] ?? choices[0];
+      return { send: [], payload: { kind: 'yesno', yes: c.value, truth: true } };
+    }
+    case 'gossip':
+    case 'moonchild':
+      return { send: [], payload: none };
   }
   return null;
 }

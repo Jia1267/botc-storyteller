@@ -2,12 +2,16 @@
 // 屏幕是公共面板（谁坐哪、谁死了、倒计时、投票），台词用系统自带的中文语音念，同时显示文字；
 // 夜里按官方顺序在后台处理，选人、给信息都走各人的手机。平板上不显示任何人的身份。
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AI_DEFAULTS } from '../../engine/ai';
+import { AI_DEFAULTS, AI_SCRIPTS, aiBoardOk } from '../../engine/ai';
+import { scriptOf } from '../../engine/core';
+import { SCRIPTS } from '../../engine/editions';
+import type { Rng } from '../../engine/rng';
+import type { GameState } from '../../engine/types';
 import { seatName } from '../../engine/core';
 import { finishDeal } from '../../engine/flow';
 import { seeded } from '../../engine/rng';
 import { endLines } from '../../engine/scripts';
-import { setCount, shuffleSeats, startDeal } from '../../engine/setup';
+import { rerollRoles, setCount, setScript, shuffleSeats, startDeal } from '../../engine/setup';
 import { watchOffset } from '../../room/api';
 import { msgStatus, type AiPublic } from '../../room/protocol';
 import type { Game } from '../../store';
@@ -90,7 +94,7 @@ export default function AiApp({ g, onExit }: { g: Game; onExit: () => void }) {
     <div className="app ai" onPointerDown={() => setUnlocked(true)}>
       <header className="topbar">
         <div className="title">
-          <b>AI 说书人 · 暗流涌动</b>
+          <b>AI 说书人 · {scriptOf(s).name}</b>
           <small>{room.code ? `房间 ${room.code}` : '还没开房间'}</small>
         </div>
       </header>
@@ -106,6 +110,7 @@ function AiSetup({ g, onStart, onExit }: { g: Game; onStart: () => void; onExit:
   const s = g.s;
   const room = useRoom();
   const set = s.ai ?? AI_DEFAULTS;
+  const sc = scriptOf(s);
   const seatNs = s.setupStep !== 'count' && s.seats.length ? s.seats.map((x) => x.n) : [];
   const missing = seatNs.filter((n) => !room.seats[n]);
   const tweak = (k: keyof typeof set, v: number) => g.tweak((st) => (st.ai = { ...(st.ai ?? AI_DEFAULTS), [k]: v }));
@@ -136,10 +141,18 @@ function AiSetup({ g, onStart, onExit }: { g: Game; onStart: () => void; onExit:
           这台平板放在桌子中间：大家用自己的手机扫码入座，身份、夜里的选择和信息都在各自手机上。白天平板念台词、倒计时，大家在手机上提名、举手投票，网页按规则数票、处决。配角色和给什么信息都由网页按"让局势最均衡"来定。
         </p>
         <div className="card stack" style={{ gap: 8 }}>
+          <b>玩哪个剧本？</b>
+          <div className="seg">
+            {AI_SCRIPTS.map((id) => (
+              <button key={id} className={s.script === id ? 'on' : ''} onClick={() => g.commit((st) => setScript(st, id))}>
+                {SCRIPTS[id].name}
+              </button>
+            ))}
+          </div>
           <b>几个人玩？</b>
           <div className="role-grid">
-            {Array.from({ length: 11 }, (_, i) => i + 5).map((n) => (
-              <button key={n} className="role-chip" style={s.count === n && seatNs.length ? { boxShadow: '0 0 0 2px var(--gold) inset' } : undefined} onClick={() => g.commit((st) => setCount(st, n, seeded(Date.now())))}>
+            {Array.from({ length: sc.max - sc.min + 1 }, (_, i) => i + sc.min).map((n) => (
+              <button key={n} className="role-chip" style={s.count === n && seatNs.length ? { boxShadow: '0 0 0 2px var(--gold) inset' } : undefined} onClick={() => g.commit((st) => aiCount(st, n, seeded(Date.now())))}>
                 {n} 人
               </button>
             ))}
@@ -183,6 +196,12 @@ function AiSetup({ g, onStart, onExit }: { g: Game; onStart: () => void; onExit:
       </BottomBar>
     </main>
   );
+}
+
+/** AI 局配板：均衡，并且不配要靠人判断的角色 */
+function aiCount(s: GameState, n: number, rng: Rng) {
+  setCount(s, n, rng);
+  for (let i = 0; i < 60 && !aiBoardOk(s.seats.map((x) => x.role)); i++) rerollRoles(s, rng);
 }
 
 /* ---------------- 发身份 ---------------- */

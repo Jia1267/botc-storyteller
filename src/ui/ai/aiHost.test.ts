@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { finishDeal } from '../../engine/flow';
 import { seeded, type Rng } from '../../engine/rng';
-import { newGame, setCount, shuffleSeats, startDeal } from '../../engine/setup';
+import { newGame, rerollRoles, setCount, setScript, shuffleSeats, startDeal } from '../../engine/setup';
+import { aiBoardOk } from '../../engine/ai';
 import type { GameState } from '../../engine/types';
 import { gotKey, idleMsgId, pickKey, type Acks, type AiActs, type AiPublic, type MsgBody, type RoomMeta, type RoomMsg, type SeatInfo } from '../../room/protocol';
 import { IDLE_BODY, idleDue, nightUnread, stalePicks } from '../room/nightRoom';
@@ -65,7 +66,8 @@ function phones(s: GameState, room: FakeRoom, rng: Rng, log: string[]) {
           const x = pool[Math.floor(rng() * pool.length)];
           if (!seats.includes(x)) seats.push(x);
         }
-        a[pickKey(m.id)] = { seats };
+        const opts = m.ask.opts?.length ? [m.ask.opts[Math.floor(rng() * m.ask.opts.length)].id] : [];
+        a[pickKey(m.id)] = m.ask.skip && rng() < 0.3 ? { skip: true } : { seats, opts };
       }
       a[m.id] = 1;
     }
@@ -101,11 +103,13 @@ function phones(s: GameState, room: FakeRoom, rng: Rng, log: string[]) {
 }
 
 /** 跑一局 AI 暗流涌动，直到结束 */
-async function playGame(count: number, seed: number) {
+async function playGame(count: number, seed: number, script: 'tb' | 'bmr' = 'tb') {
   const rng = seeded(seed);
   const s = newGame();
+  setScript(s, script);
   s.ai = { priv: 300, pub: 300, vote: 5 };
   setCount(s, count, rng);
+  for (let i = 0; i < 60 && !aiBoardOk(s.seats.map((x) => x.role)); i++) rerollRoles(s, rng);
   shuffleSeats(s, rng);
   startDeal(s);
   finishDeal(s);
@@ -151,6 +155,14 @@ describe('AI 说书人：一局从第 1 夜到结束（假的房间和手机）'
     }
     expect(nominations).toBeGreaterThan(10);
     expect(executions).toBeGreaterThan(5);
+  });
+
+  it('暗月初升：不同人数都能走到结束（月之子、和平主义者、莽夫等由网页处理）', async () => {
+    for (let seed = 1; seed <= 20; seed++) {
+      const { s, said, ticks, room } = await playGame(7 + (seed % 9), seed + 100, 'bmr');
+      const ai = room.meta.ai;
+      expect(s.phase, `暗月初升种子 ${seed}：${ticks} 步还没结束（第${ai?.day}天 ${ai?.stage}），最后说的是：${said.slice(-3).join(' / ')}`).toBe('end');
+    }
   });
 
   it('每晚每个人都收到至少一条消息；天亮前都点完了', async () => {
