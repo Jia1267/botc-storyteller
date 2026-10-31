@@ -1,0 +1,33 @@
+{
+  "rules": {
+    "rooms": {
+      "$code": {
+        ".read": "auth != null && data.child('host').val() === auth.uid",
+        ".write": "auth != null && data.child('host').val() === auth.uid",
+        "host": {
+          ".read": "auth != null",
+          ".write": "auth != null && !data.exists() && newData.val() === auth.uid"
+        },
+        "meta": {
+          ".read": "auth != null"
+        },
+        "seats": {
+          ".read": "auth != null",
+          "$n": {
+            ".write": "auth != null && ((!data.exists() && newData.child('uid').val() === auth.uid) || (data.child('uid').val() === auth.uid && (!newData.exists() || newData.child('uid').val() === auth.uid)))"
+          }
+        },
+        "priv": {
+          "$n": {
+            ".read": "auth != null && root.child('rooms').child($code).child('seats').child($n).child('uid').val() === auth.uid"
+          }
+        },
+        "acks": {
+          "$n": {
+            ".write": "auth != null && root.child('rooms').child($code).child('seats').child($n).child('uid').val() === auth.uid"
+          }
+        }
+      }
+    }
+  }
+}
