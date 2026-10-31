@@ -2,22 +2,21 @@
 // 屏幕是公共面板（谁坐哪、谁死了、倒计时、投票），台词用系统自带的中文语音念，同时显示文字；
 // 夜里按官方顺序在后台处理，选人、给信息都走各人的手机。平板上不显示任何人的身份。
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AI_DEFAULTS, aiPlan, aiSlayer, aiVirgin, tallyHands, voteOrder, type AiAsk } from '../../engine/ai';
-import { clone, seatName, seatOf } from '../../engine/core';
-import { completeSlot, currentSlot, execute, finishDay, finishDeal, nomResults, nominateVirgin, slayerShoot, voteNeed } from '../../engine/flow';
+import { AI_DEFAULTS } from '../../engine/ai';
+import { seatName } from '../../engine/core';
+import { finishDeal } from '../../engine/flow';
 import { seeded } from '../../engine/rng';
-import { dawnLines, endLines, executionLines } from '../../engine/scripts';
+import { endLines } from '../../engine/scripts';
 import { setCount, shuffleSeats, startDeal } from '../../engine/setup';
-import type { GameState } from '../../engine/types';
 import { watchOffset } from '../../room/api';
-import { answerOf, msgStatus, nightMsgId, type AiActs, type AiPublic, type MsgBody } from '../../room/protocol';
+import { msgStatus, type AiPublic } from '../../room/protocol';
 import type { Game } from '../../store';
 import { dealCard } from '../dealCard';
 import { EndScreen } from '../End';
-import { spyRows } from '../Grimoire';
 import { BottomBar } from '../common';
 import { NightPhones, useNightUnread } from '../room/nightRoom';
 import { RoomJoin, useRoom, type HostRoom } from '../room/hostRoom';
+import { aiStep } from './aiHost';
 
 /* ---------------- 声音 ---------------- */
 
@@ -269,7 +268,7 @@ function AiTable({ g, room, say }: { g: Game; room: HostRoom; say: (t: string) =
                 <b>{seatName(x.n)}</b>
                 <small>{name(x.n) || ''}</small>
                 <small>
-                  {x.alive ? '' : ai?.ghost.includes(x.n) ? '已死 · 还有一票' : '已死 · 没有票了'}
+                  {x.alive ? '' : (ai?.ghost ?? []).includes(x.n) ? '已死 · 还有一票' : '已死 · 没有票了'}
                   {hand ? ' ✋' : ''}
                   {ai?.nominees?.includes(x.n) ? ' · 被提名过' : ''}
                 </small>
@@ -320,40 +319,7 @@ function AiTable({ g, room, say }: { g: Game; room: HostRoom; say: (t: string) =
   );
 }
 
-/* ---------------- 后台主持：每半秒看一眼该做什么，每次只做一件事 ---------------- */
-
-const aliveOf = (s: GameState) => s.seats.filter((x) => x.alive && !x.left).map((x) => x.n);
-
-/** 公开状态里跟着死活变的部分 */
-function live(s: GameState, ai: Partial<AiPublic>): Pick<AiPublic, 'alive' | 'ghost' | 'spent'> {
-  const spent = ai.spent ?? [];
-  return { alive: aliveOf(s), ghost: s.seats.filter((x) => !x.alive && !x.left && !spent.includes(x.n)).map((x) => x.n), spent };
-}
-
-/** 选人请求发到手机上的内容（和真人说书人模式一样） */
-function askBody(s: GameState, a: AiAsk): MsgBody {
-  const deaths = s.ns?.deaths ?? [];
-  return {
-    card: { title: a.title, big: [], lines: a.lines },
-    ask: {
-      count: a.count,
-      seats: s.seats.filter((x) => !x.left).map((x) => x.n),
-      dead: s.seats.filter((x) => !x.alive && !deaths.includes(x.n)).map((x) => x.n),
-      disabled: a.disabled?.filter((n) => !deaths.includes(n)),
-    },
-  };
-}
-
-/** 他没反应、平板上点了跳过：替他随便选 */
-function randomPicks(s: GameState, a: AiAsk): number[] {
-  const pool = s.seats.filter((x) => !x.left && !(a.disabled ?? []).includes(x.n)).map((x) => x.n);
-  const out: number[] = [];
-  while (out.length < a.count && out.length < pool.length) {
-    const n = pool[Math.floor(Math.random() * pool.length)];
-    if (!out.includes(n)) out.push(n);
-  }
-  return out;
-}
+/* ---------------- 后台主持：每半秒调一次 aiStep，每次只做一件事 ---------------- */
 
 function useAiHost(g: Game, room: HostRoom, say: (t: string) => void, now: number, unread: number[], skip: { current: boolean }) {
   const latest = useRef({ g, room, now, unread });
@@ -365,222 +331,12 @@ function useAiHost(g: Game, room: HostRoom, say: (t: string) => void, now: numbe
     const t = setInterval(() => setTick((x) => x + 1), 500);
     return () => clearInterval(t);
   }, []);
-
   useEffect(() => {
     if (busy.current) return;
     busy.current = true;
-    step()
+    const { g, room, now, unread } = latest.current;
+    aiStep({ s: g.s, room, now, unread, commit: g.commit, say, skip, mark: mark.current })
       .catch((e) => console.error('AI 说书人出错', e))
       .finally(() => (busy.current = false));
-
-    async function step() {
-      const { g, room, now, unread } = latest.current;
-      const s = g.s;
-      if (!room.code || !room.ready || !room.meta) return;
-      const ai = room.meta.ai;
-      const settings = s.ai ?? AI_DEFAULTS;
-      const put = (next: Partial<AiPublic>) => room.setAi({ settings, stage: 'wait', day: s.night, ...ai, ...next, ...live(s, { ...ai, ...next }) } as AiPublic);
-      const speak = async (text: string, next: Partial<AiPublic> = {}) => {
-        say(text);
-        await put({ ...next, say: text });
-      };
-      const acts = (n: number) => (room.acks[n] ?? {}) as AiActs;
-      const takeSkip = () => {
-        const v = skip.current;
-        skip.current = false;
-        return v;
-      };
-
-      /* ---------- 夜里 ---------- */
-      if (s.phase === 'night') {
-        if (!ai || ai.stage !== 'night' || ai.day !== s.night) {
-          await put({ stage: 'night', day: s.night, until: undefined, nom: undefined, vote: undefined, say: '' });
-          return;
-        }
-        const plan = aiPlan(s, { spyRows });
-        const cur = s.ns!.slot;
-        const slot = currentSlot(s);
-        if (!plan) {
-          g.commit((st) => completeSlot(st, { kind: 'none' }));
-          return;
-        }
-        let r: Exclude<typeof plan, { ask: unknown }>;
-        if ('ask' in plan) {
-          const a = plan.ask;
-          const id = nightMsgId(s.night, cur, a.n, 'pick');
-          if (!room.msgs[a.n]?.[id]) {
-            await room.send(a.n, id, askBody(s, a));
-            return;
-          }
-          const picks = answerOf(room.acks, a.n, id)?.seats ?? (takeSkip() ? randomPicks(s, a) : null);
-          if (!picks) return;
-          r = plan.then(picks);
-        } else r = plan;
-        for (const m of r.send) {
-          const id = nightMsgId(s.night, cur, m.n, m.tag);
-          if (!room.msgs[m.n]?.[id]) {
-            await room.send(m.n, id, { card: m.card });
-            if (m.role) await room.setRole(m.n, m.role);
-            return;
-          }
-        }
-        const waiting = r.send.some((m) => !room.acks[m.n]?.[nightMsgId(s.night, cur, m.n, m.tag)]);
-        if (waiting && !takeSkip()) return;
-        if (slot === 'dusk') {
-          const k = `dusk-${s.night}`;
-          if (!mark.current[k]) {
-            mark.current[k] = now;
-            await speak(('say' in r && r.say ? r.say : []).join(''));
-            return;
-          }
-          if (now - mark.current[k] < 5000) return;
-        }
-        // 天亮前：所有人都点完手机上的消息（没行动的人会收到"今晚你没有行动"）
-        if (slot === 'dawn' && unread.length && !takeSkip()) return;
-        g.commit((st) => completeSlot(st, r.payload));
-        return;
-      }
-
-      if (s.phase !== 'day') return;
-
-      /* ---------- 白天 ---------- */
-      // 白天有人死了分出胜负（猎手打中恶魔、处决圣徒……）：直接结束
-      if (s.winner && s.executed === undefined) {
-        g.commit((st) => finishDay(st));
-        return;
-      }
-      // 新的一天：念死讯，开始私聊倒计时
-      if (!ai || ai.day !== s.night || ai.stage === 'night' || ai.stage === 'wait') {
-        const deaths = dawnLines(s.ns?.deaths ?? [], s.style, { phones: true }).join('');
-        await speak(`${deaths}现在是第 ${s.night} 天。私聊时间 ${Math.round(settings.priv / 60)} 分钟，可以离开座位找人单独聊。`, {
-          stage: 'private', day: s.night, until: now + settings.priv * 1000, nominators: [], nominees: [], noMore: [], shots: [], results: [], nom: undefined, vote: undefined,
-        });
-        return;
-      }
-      // 处决已经定了（例如刷新前刚处决）：进入"今天的处决"
-      if (s.executed !== undefined && ai.stage !== 'result') {
-        await put({ stage: 'result', until: now + 6000 });
-        return;
-      }
-      // 宣称猎手开枪：投票时不处理
-      if (ai.stage !== 'vote' && ai.stage !== 'result') {
-        const shooter = aliveOf(s).find((n) => acts(n).slay?.day === ai.day && !(ai.shots ?? []).includes(n));
-        if (shooter !== undefined) {
-          const target = acts(shooter).slay!.target;
-          const r = aiSlayer(s, shooter, target);
-          g.commit((st) => slayerShoot(st, shooter, target, r.twist));
-          await speak(`${seatName(shooter)} 宣称自己是猎手，向 ${seatName(target)} 开枪。${r.hits ? `${seatName(target)} 死了。` : '什么都没有发生。'}`, { shots: [...(ai.shots ?? []), shooter] });
-          return;
-        }
-      }
-      switch (ai.stage) {
-        case 'private':
-          if (now >= (ai.until ?? 0) || takeSkip())
-            await speak(`私聊结束，请回到座位。现在是公聊时间 ${Math.round(settings.pub / 60)} 分钟。`, { stage: 'public', until: now + settings.pub * 1000 });
-          return;
-        case 'public':
-          if (now >= (ai.until ?? 0) || takeSkip())
-            await speak('公聊结束，现在开始提名。想提名谁，就在手机上点他。每人每天只能提名一次，每人每天只能被提名一次。不想再提名了，就点"今天不再提名"。', { stage: 'nominate', until: undefined });
-          return;
-        case 'nominate': {
-          const alive = aliveOf(s);
-          const noMore = alive.filter((n) => acts(n).nomore === ai.day);
-          if (noMore.join() !== (ai.noMore ?? []).join()) {
-            await put({ noMore });
-            return;
-          }
-          const canNominate = alive.filter((n) => !(ai.nominators ?? []).includes(n));
-          // 所有活人都点了"不再提名"，或者没人还能提名：今天结束
-          if (canNominate.every((n) => noMore.includes(n)) || takeSkip()) {
-            const block = nomResults(s).block;
-            g.commit((st) => execute(st, block));
-            return;
-          }
-          const noms = canNominate
-            .map((n) => ({ by: n, a: acts(n).nom }))
-            .filter((x) => x.a?.day === ai.day && seatOf(s, x.a.target) && !(ai.nominees ?? []).includes(x.a.target))
-            .sort((p, q) => p.a!.at - q.a!.at);
-          if (!noms.length) return;
-          const { by } = noms[0];
-          const target = noms[0].a!.target;
-          const i = (ai.results ?? []).length;
-          const base = { nominators: [...(ai.nominators ?? []), by], nominees: [...(ai.nominees ?? []), target], nom: { i, by, target } };
-          const v = aiVirgin(s, target, by);
-          if (v.virgin) {
-            // 先在副本上试：贞洁者会不会把提名者处决
-            const trial = clone(s);
-            nominateVirgin(trial, target, by, v.twist);
-            const fired = trial.executed !== undefined;
-            g.commit((st) => nominateVirgin(st, target, by, v.twist));
-            if (fired) {
-              await speak(`${seatName(by)} 提名了 ${seatName(target)}。${seatName(by)} 被立刻处决了。`, { ...base, stage: 'result', until: now + 8000 });
-              return;
-            }
-          }
-          await speak(`${seatName(by)} 提名了 ${seatName(target)}。请 ${seatName(by)} 说明理由，说完在手机上点"发言结束"。`, { ...base, stage: 'speech1' });
-          return;
-        }
-        case 'speech1':
-        case 'speech2': {
-          const nom = ai.nom!;
-          const who = ai.stage === 'speech1' ? nom.by : nom.target;
-          const done = acts(who).spoke;
-          if (!(done?.day === ai.day && done.i === nom.i) && !takeSkip()) return;
-          if (ai.stage === 'speech1') {
-            await speak(`请 ${seatName(nom.target)} 辩护，说完在手机上点"发言结束"。`, { stage: 'speech2' });
-            return;
-          }
-          const order = voteOrder(s, nom.target).filter((n) => seatOf(s, n).alive || !(ai.spent ?? []).includes(n));
-          const need = voteNeed(s);
-          await speak(`开始投票，需要 ${need} 票。从 ${seatName(order[0])} 开始，按顺时针一人 ${settings.vote} 秒，轮到你时在手机上举手。`, {
-            stage: 'vote', vote: { order, at: 0, hands: {}, need }, until: now + settings.vote * 1000 + 4000,
-          });
-          return;
-        }
-        case 'vote': {
-          const nom = ai.nom!;
-          const vote = ai.vote!;
-          if (now < (ai.until ?? 0)) return;
-          const voter = vote.order[vote.at];
-          const h = acts(voter).hand;
-          const hands = { ...(vote.hands ?? {}), [voter]: !!(h?.day === ai.day && h.i === nom.i && h.up) };
-          if (vote.at + 1 < vote.order.length) {
-            await put({ vote: { ...vote, at: vote.at + 1, hands }, until: now + settings.vote * 1000 });
-            return;
-          }
-          // 数票：死人用掉一票、管家看主人
-          const handsN: Record<number, boolean> = Object.fromEntries(Object.entries(hands).map(([k, v]) => [Number(k), !!v]));
-          const t = tallyHands(s, vote.order, handsN, ai.spent ?? []);
-          g.commit((st) => void st.noms.push({ day: st.night, seat: nom.target, votes: t.votes, need: vote.need }));
-          const after = nomResults({ ...s, noms: [...s.noms, { day: s.night, seat: nom.target, votes: t.votes, need: vote.need }] });
-          const text =
-            after.block === nom.target
-              ? `${seatName(nom.target)} 现在待处决`
-              : t.votes >= vote.need && t.votes === after.top
-                ? '和最高票打平，现在没人待处决'
-                : t.votes < vote.need
-                  ? '票数不够，不上处决台'
-                  : '没有超过之前的最高票';
-          await speak(`${t.votes} 票，${text}。`, {
-            stage: 'nominate', vote: { ...vote, hands }, until: undefined, spent: [...(ai.spent ?? []), ...t.spent],
-            results: [...(ai.results ?? []), { by: nom.by, target: nom.target, votes: t.votes, text }],
-          });
-          return;
-        }
-        case 'result': {
-          const k = `exec-${s.night}`;
-          if (!mark.current[k]) {
-            mark.current[k] = now;
-            const n = s.executed ?? null;
-            const survived = n !== null && seatOf(s, n).alive;
-            await speak(`今天的提名结束。${executionLines(n, s.style, survived).join('')}`, { stage: 'result', until: now + 8000 });
-            return;
-          }
-          if (now < (ai.until ?? 0)) return;
-          g.commit((st) => finishDay(st));
-          return;
-        }
-      }
-    }
   }, [tick]); // eslint-disable-line react-hooks/exhaustive-deps
 }

@@ -37,8 +37,8 @@ export interface AiPublic {
   /** 刚念的话（手机上也显示，听不清的人看字） */
   say?: string;
   alive: number[];
-  /** 死了、还剩一票的人 */
-  ghost: number[];
+  /** 死了、还剩一票的人（数据库会去掉空数组，可能没有这一项） */
+  ghost?: number[];
   /** 死人已经用掉那一票的 */
   spent?: number[];
   /** 今天提名过的人、被提名过的人 */

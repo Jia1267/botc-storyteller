@@ -282,12 +282,16 @@ function wakers(s: GameState, slot: SlotId): number[] {
 /** 守鸦人今晚被杀才醒：恶魔行动前不知道他会不会醒 */
 const ravens = (s: GameState) => s.seats.filter((x) => (x.alive || s.ns!.deaths.includes(x.n)) && wakesAs(s, x, 'ravenkeeper')).map((x) => x.n);
 
-const hasNightMsg = (room: HostRoom, s: GameState, n: number) => Object.keys(room.msgs[n] ?? {}).some((id) => isNightMsg(id, s.night));
+const hasNightMsg = (room: Pick<HostRoom, 'msgs'>, s: GameState, n: number) => Object.keys(room.msgs[n] ?? {}).some((id) => isNightMsg(id, s.night));
 
 /** 今晚还有谁没点完（天亮前要等他们） */
 export function useNightUnread(s: GameState): number[] | null {
   const room = useRoom();
-  if (!phonesOn(room)) return null;
+  return phonesOn(room) ? nightUnread(s, room) : null;
+}
+
+/** 今晚还有谁没点完（不用 React，AI 说书人和测试也用） */
+export function nightUnread(s: GameState, room: Pick<HostRoom, 'seats' | 'msgs' | 'acks'>): number[] {
   return s.seats
     .filter((x) => !x.left && room.seats[x.n])
     .map((x) => x.n)
@@ -313,26 +317,41 @@ export function NightPhones({ s }: { s: GameState }) {
   useEffect(() => {
     if (!live) return;
     const r = latest.current;
-    const order = slotsFor(s);
-    for (const [k, box] of Object.entries(r.msgs))
-      for (const id of Object.keys(box)) {
-        const m = /^N(\d+)-(\d+)-\d+-pick$/.exec(id);
-        if (m && Number(m[1]) === s.night && Number(m[2]) < cur && !r.acks[k]?.[id]) r.unsend(Number(k), id);
-      }
-    const dawn = order[cur] === 'dawn';
-    // 今晚走过的和还要走的步骤（不算入夜、天亮），每人随机分到其中一步
-    const ran = s.ns!.ran ?? [];
-    const steps = order.map((sl, i) => ({ sl, i })).filter(({ sl, i }) => sl !== 'dusk' && sl !== 'dawn' && (i < cur ? ran.includes(i) : shouldRun(s, sl))).map(({ i }) => i);
-    const game = s.seats.map((x) => x.startRole).join();
-    for (const x of s.seats) {
-      const n = x.n;
-      if (x.left || !r.seats[n] || hasNightMsg(r, s, n) || s.ns!.woke.includes(n)) continue;
-      if (!dawn) {
-        const at = steps.length ? steps[Math.floor(hashUnit(`${r.code}|${s.night}|${n}|${game}`) * steps.length)] : cur;
-        if (cur < at || mayWakeFrom(s, n, cur)) continue;
-      }
-      sendOnce(r, n, idleMsgId(s.night, n), { card: { title: `第 ${s.night} 夜`, big: ['今晚你没有行动'] } });
-    }
+    for (const [n, id] of stalePicks(s, r)) r.unsend(n, id);
+    for (const n of idleDue(s, r)) sendOnce(r, n, idleMsgId(s.night, n), IDLE_BODY(s));
   }, [live, s, cur, room.msgs, room.acks, room.seats]);
   return null;
+}
+
+export const IDLE_BODY = (s: GameState): MsgBody => ({ card: { title: `第 ${s.night} 夜`, big: ['今晚你没有行动'] } });
+
+/** 前面步骤里没选完就被跳过的选人请求：[座位, 消息 id] */
+export function stalePicks(s: GameState, r: Pick<HostRoom, 'msgs' | 'acks'>): [number, string][] {
+  const out: [number, string][] = [];
+  for (const [k, box] of Object.entries(r.msgs))
+    for (const id of Object.keys(box)) {
+      const m = /^N(\d+)-(\d+)-\d+-pick$/.exec(id);
+      if (m && Number(m[1]) === s.night && Number(m[2]) < s.ns!.slot && !r.acks[k]?.[id]) out.push([Number(k), id]);
+    }
+  return out;
+}
+
+/** 现在该收到"今晚你没有行动"的人 */
+export function idleDue(s: GameState, r: Pick<HostRoom, 'code' | 'seats' | 'msgs'>): number[] {
+  const order = slotsFor(s);
+  const cur = s.ns!.slot;
+  const dawn = order[cur] === 'dawn';
+  // 今晚走过的和还要走的步骤（不算入夜、天亮），每人随机分到其中一步
+  const ran = s.ns!.ran ?? [];
+  const steps = order.map((sl, i) => ({ sl, i })).filter(({ sl, i }) => sl !== 'dusk' && sl !== 'dawn' && (i < cur ? ran.includes(i) : shouldRun(s, sl))).map(({ i }) => i);
+  const game = s.seats.map((x) => x.startRole).join();
+  return s.seats
+    .filter((x) => {
+      const n = x.n;
+      if (x.left || !r.seats[n] || hasNightMsg(r, s, n) || s.ns!.woke.includes(n)) return false;
+      if (dawn) return true;
+      const at = steps.length ? steps[Math.floor(hashUnit(`${r.code}|${s.night}|${n}|${game}`) * steps.length)] : cur;
+      return cur >= at && !mayWakeFrom(s, n, cur);
+    })
+    .map((x) => x.n);
 }

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ackMsg, answerPick, claimSeat, gotMsg, keepOnline, leaveSeat, roomError, signIn, voteMvp, watchConnected, watchMeta, watchPrivate, watchSeats } from '../../room/api';
 import { metaSeats, seatLabel, sortMsgs, type EndInfo, type PickAnswer, type RoomMeta, type RoomMsg, type SeatInfo } from '../../room/protocol';
 import { MIN_PAGE_MS, ShowCard, type CardContent } from '../common';
+import { AiDay } from './PlayerAi';
 
 const NAME_KEY = 'botc-room-name';
 /** 看过的消息记在本机：刷新页面不会把看过的再弹一遍（重发的消息发出时间不同，会再弹） */
@@ -174,6 +175,7 @@ function Seated({ code, seat, name, meta, seats }: { code: string; seat: number;
 
   return (
     <div className="stack">
+      {meta.ai && meta.phase === 'game' && <AiDay code={code} seat={seat} ai={meta.ai} seats={seats} />}
       <h2 style={{ margin: 0 }}>
         你是 {seatLabel(seat)}
         {name ? `（${name}）` : ''}

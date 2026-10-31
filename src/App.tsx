@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, lazy, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { currentSlot, slotActor } from './engine/flow';
 import { scriptOf } from './engine/core';
 import { SLOT_TITLE } from './engine/scripts';
@@ -16,6 +16,9 @@ import { SetupScreen } from './ui/Setup';
 import { Cover, TimerCtx, useTimerState } from './ui/Timer';
 
 type Panel = 'grimoire' | 'cover' | 'menu' | 'roles' | 'rules' | 'log' | 'sheet' | 'room' | null;
+
+// AI 说书人（平板放桌子中间）：用到时才加载
+const AiApp = lazy(() => import('./ui/ai/AiApp'));
 
 export default function App() {
   const g = useGame();
@@ -72,6 +75,26 @@ export default function App() {
   // 首页（选剧本）没有可撤销、可计时的东西
   const home = s.phase === 'setup' && s.setupStep === 'script';
 
+  // 首页、选人数页还没定座位：房间先保留上一局的座位，别让玩家以为座位没了
+  const seatNs = hasSeats ? s.seats.map((x) => x.n) : [];
+
+  // AI 说书人局：平板是公共屏幕，不显示魔典、菜单这些说书人自己看的东西
+  if (s.ai)
+    return (
+      <RoomProvider seatNs={seatNs} title={`${scriptOf(s).name} · AI 说书人`} phase={s.phase}>
+        <UiCtx.Provider value={ui}>
+          <TableCtx.Provider value={table}>
+            <TimerCtx.Provider value={timer}>
+              <Suspense fallback={<p className="dim" style={{ padding: 24 }}>正在打开 AI 说书人…</p>}>
+                <AiApp g={g} onExit={() => g.tweak((st) => delete st.ai)} />
+              </Suspense>
+              {toast && <div className="toast" role="status">{toast}</div>}
+            </TimerCtx.Provider>
+          </TableCtx.Provider>
+        </UiCtx.Provider>
+      </RoomProvider>
+    );
+
   let screen;
   if (s.phase === 'setup') screen = <SetupScreen g={g} onRules={() => setPanel('rules')} onRoles={() => setPanel('roles')} onSheet={() => setPanel('sheet')} />;
   else if (s.phase === 'deal') screen = <DealPhase g={g} />;
@@ -79,8 +102,6 @@ export default function App() {
   else if (s.phase === 'day') screen = <DayScreen g={g} />;
   else screen = <EndScreen g={g} />;
 
-  // 首页、选人数页还没定座位：房间先保留上一局的座位，别让玩家以为座位没了
-  const seatNs = hasSeats ? s.seats.map((x) => x.n) : [];
   return (
     <RoomProvider seatNs={seatNs} title={scriptOf(s).name} phase={s.phase}>
     <UiCtx.Provider value={ui}>

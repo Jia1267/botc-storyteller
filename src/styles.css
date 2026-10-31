@@ -497,3 +497,21 @@ details.more[open] summary svg { transform: rotate(180deg); }
 /* ---------- 结果图：图不超过一屏，分享/保存常驻底部 ---------- */
 .result-img { display: block; max-width: 100%; max-height: 62vh; width: auto; margin: 0 auto; border-radius: 8px; }
 .sticky-actions { position: sticky; bottom: 0; z-index: 3; margin-top: 12px; padding: 10px 0 calc(10px + var(--safe-b)); background: var(--bg); }
+
+/* AI 说书人：平板公共面板 */
+.ai-public h2 { font-size: clamp(26px, 4vw, 40px); }
+.ai-clock { font-family: var(--serif); font-weight: 900; font-size: clamp(56px, 12vw, 120px); line-height: 1; text-align: center; color: var(--gold); }
+.ai-say { font-size: clamp(18px, 2.6vw, 26px); line-height: 1.6; padding: 12px 16px; border-left: 3px solid var(--gold); background: var(--surface-2, rgba(255,255,255,0.04)); border-radius: 8px; }
+.ai-nom { font-size: clamp(17px, 2.4vw, 24px); font-weight: 700; }
+.ai-seats { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; }
+.ai-seat { display: flex; flex-direction: column; gap: 2px; padding: 10px; border-radius: 12px; border: 1.5px solid var(--line); min-height: 72px; }
+.ai-seat b { font-size: 20px; }
+.ai-seat small { color: var(--text-3); font-size: 12px; min-height: 1.2em; }
+.ai-seat.dead { opacity: 0.55; }
+.ai-seat.turn { border-color: var(--gold); box-shadow: 0 0 0 2px var(--gold) inset; }
+.ai-seat.up { background: rgba(209, 173, 102, 0.16); }
+.ai-unlock { margin: 8px 16px 0; }
+/* AI 说书人：玩家手机上的白天 */
+.ai-phone { border-color: var(--gold); }
+.ai-clock-sm { font-family: var(--serif); font-size: 22px; color: var(--gold); }
+.ai-say-sm { color: var(--text-2, #bfb1a1); font-style: italic; line-height: 1.6; }
