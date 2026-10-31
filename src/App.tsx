@@ -6,7 +6,8 @@ import { useGame } from './store';
 import type { GameState } from './engine/types';
 import { ConfirmButton, Sheet, ShowCard, TableCtx, UiCtx, useTableState, type CardContent, type Ui } from './ui/common';
 import { DayScreen } from './ui/Day';
-import { DealScreen } from './ui/Deal';
+import { DealPhase } from './ui/Deal';
+import { RoomProvider, RoomSheet, useRoom } from './ui/room/hostRoom';
 import { EndScreen, LogView, Overlay, RolesRef, RulesSpeech, ScriptSheet } from './ui/End';
 import { GrimoirePanel, SpyView, phaseText } from './ui/Grimoire';
 import { Icon } from './ui/icons';
@@ -14,7 +15,7 @@ import { MiniGrimoire, NightScreen, nightProgress } from './ui/Night';
 import { SetupScreen } from './ui/Setup';
 import { Cover, TimerCtx, useTimerState } from './ui/Timer';
 
-type Panel = 'grimoire' | 'cover' | 'menu' | 'roles' | 'rules' | 'log' | 'sheet' | null;
+type Panel = 'grimoire' | 'cover' | 'menu' | 'roles' | 'rules' | 'log' | 'sheet' | 'room' | null;
 
 export default function App() {
   const g = useGame();
@@ -73,12 +74,15 @@ export default function App() {
 
   let screen;
   if (s.phase === 'setup') screen = <SetupScreen g={g} onRules={() => setPanel('rules')} onRoles={() => setPanel('roles')} onSheet={() => setPanel('sheet')} />;
-  else if (s.phase === 'deal') screen = <DealScreen g={g} />;
+  else if (s.phase === 'deal') screen = <DealPhase g={g} />;
   else if (s.phase === 'night') screen = <NightScreen g={g} />;
   else if (s.phase === 'day') screen = <DayScreen g={g} />;
   else screen = <EndScreen g={g} />;
 
+  // 首页、选人数页还没定座位：房间先保留上一局的座位，别让玩家以为座位没了
+  const seatNs = hasSeats ? s.seats.map((x) => x.n) : [];
   return (
+    <RoomProvider seatNs={seatNs} title={scriptOf(s).name} phase={s.phase}>
     <UiCtx.Provider value={ui}>
       <TableCtx.Provider value={table}>
       <TimerCtx.Provider value={timer}>
@@ -135,6 +139,7 @@ export default function App() {
         {panel === 'rules' && <RulesSpeech sc={scriptOf(s)} fabled={s.fabled} onClose={() => setPanel(null)} />}
         {panel === 'log' && <LogView s={s} onClose={() => setPanel(null)} />}
         {panel === 'sheet' && <ScriptSheet sc={scriptOf(s)} onClose={() => setPanel(null)} />}
+        {panel === 'room' && <RoomSheet seatNs={seatNs} onClose={() => setPanel(null)} />}
         {panel === 'menu' && (
           <Sheet title="菜单" onClose={() => setPanel(null)}>
             <div className="stack">
@@ -149,6 +154,7 @@ export default function App() {
                   </button>
                 </div>
               </div>
+              <RoomMenuItem onOpen={() => setPanel('room')} />
               <button className="btn btn-ghost btn-block" onClick={() => setPanel('log')}>
                 本局记录
               </button>
@@ -188,6 +194,18 @@ export default function App() {
       </TimerCtx.Provider>
       </TableCtx.Provider>
     </UiCtx.Provider>
+    </RoomProvider>
+  );
+}
+
+/** 开着房间时，菜单里能看二维码、谁在线 */
+function RoomMenuItem({ onOpen }: { onOpen: () => void }) {
+  const room = useRoom();
+  if (!room.code) return null;
+  return (
+    <button className="btn btn-ghost btn-block" onClick={onOpen}>
+      房间 {room.code}（二维码、谁在线）
+    </button>
   );
 }
 

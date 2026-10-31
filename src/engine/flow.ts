@@ -310,6 +310,12 @@ export function dealNext(s: GameState) {
   if (s.dealIndex >= s.seats.length) startNight(s);
 }
 
+/** 房间发身份：所有人同时在自己手机上看完了，一起入夜 */
+export function finishDeal(s: GameState) {
+  s.dealIndex = s.seats.length;
+  startNight(s);
+}
+
 /* ---------------- 胜负 ---------------- */
 
 function win(s: GameState, who: 'good' | 'evil', reason: string, phase: 'night' | 'day') {

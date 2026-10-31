@@ -10,6 +10,8 @@ import type { CardContent } from '../ui/common';
 
 export interface RoomMeta {
   count: number;
+  /** 这局有哪些座位（旅行者是 101、102…）；没有就是 1..count */
+  seatNs?: number[];
   title: string;
   phase: 'lobby' | 'game' | 'end';
   createdAt: number;
@@ -42,6 +44,19 @@ export const roomPath = (code: string, ...rest: (string | number)[]) => ['rooms'
 export const roomLink = (code: string, loc: { origin: string; pathname: string } = location) => `${loc.origin}${loc.pathname}?room=${code}`;
 
 export const gotKey = (id: string) => `${id}_got`;
+
+/** 房间里的座位号 */
+export const metaSeats = (m: RoomMeta): number[] => m.seatNs ?? Array.from({ length: m.count }, (_, i) => i + 1);
+
+/** 座位怎么叫：旅行者是"旅1"（和说书人那边的 seatName 一致） */
+export const seatLabel = (n: number) => (n > 100 ? `旅${n - 100}` : `${n} 号`);
+
+/** n 号的身份卡现在什么状态：没发 / 已发出 / 已送达 / 已看 */
+export function msgStatus(acks: Record<string, Record<string, number>>, n: number, id: string | undefined): 'none' | 'sent' | 'got' | 'read' {
+  if (!id) return 'none';
+  const a = acks[n] ?? {};
+  return a[id] ? 'read' : a[gotKey(id)] ? 'got' : 'sent';
+}
 
 /** 按消息发出的先后排：玩家一条一条看 */
 export const sortMsgs = (msgs: Record<string, RoomMsg> | null | undefined): RoomMsg[] =>

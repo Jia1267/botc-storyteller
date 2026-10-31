@@ -31,7 +31,7 @@ export default function HostTest() {
     setBusy(true);
     setErr(null);
     try {
-      const c = await createRoom(count, '测试房间');
+      const c = await createRoom(Array.from({ length: count }, (_, i) => i + 1), '测试房间');
       try {
         localStorage.setItem(HOST_KEY, c);
       } catch {

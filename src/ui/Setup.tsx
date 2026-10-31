@@ -19,6 +19,8 @@ import { ScriptSheet } from './End';
 import { CustomBoard } from './Custom';
 import { Catalog } from './Catalog';
 import { Icon } from './icons';
+import { dealCard } from './dealCard';
+import { RoomCard, useRoom } from './room/hostRoom';
 
 export function SetupScreen({ g, onRules, onRoles, onSheet }: { g: Game; onRules: () => void; onRoles: () => void; onSheet: () => void }) {
   if (g.s.setupStep === 'script') return <ScriptStep g={g} />;
@@ -181,6 +183,7 @@ function RolesStep({ g }: { g: Game }) {
           );
         })}
         <SpecialGameNotes s={s} />
+        <RoomCard seatNs={s.seats.map((x) => x.n)} />
         <FabledCard g={g} />
         {godfatherModFor(s) && <GodfatherCard g={g} />}
         <button className="btn btn-outline btn-sm" onClick={() => g.commit((st) => (st.setupStep = 'count'))}>
@@ -368,6 +371,7 @@ function SeatsStep({ g, onRules }: { g: Game; onRules: () => void }) {
         <p className="muted">
           玩家按顺时针坐成一圈，1 号开始。角色已随机分好。想调换：先点一个座位，再点另一个。
         </p>
+        <RoomCard seatNs={s.seats.map((x) => x.n)} />
         <GrimoireCircle
           s={s}
           onSeat={tapSeat}
@@ -581,9 +585,7 @@ function SeatsStep({ g, onRules }: { g: Game; onRules: () => void }) {
       {edit === 'puzzle' && <PuzzleEdit g={g} onClose={() => setEdit(null)} />}
       {edit === 'boffin' && <BoffinEdit g={g} onClose={() => setEdit(null)} />}
       <BottomBar>
-        <button className="btn btn-primary btn-block" onClick={() => g.commit((st) => startDeal(st))}>
-          开始发身份
-        </button>
+        <DealButton g={g} />
       </BottomBar>
     </main>
   );
@@ -892,5 +894,27 @@ function SpecialGameNotes({ s }: { s: Game['s'] }) {
         <p className="dim">军团：除了 {s.seats.filter((x) => !x.traveller && x.role !== 'legion').length} 个好人，其余都是军团。</p>
       )}
     </>
+  );
+}
+
+/** 开始发身份：开了房间就发到每个人手机上（要所有座位都有人），不然一个一个传手机 */
+function DealButton({ g }: { g: Game }) {
+  const s = g.s;
+  const room = useRoom();
+  if (!room.code)
+    return (
+      <button className="btn btn-primary btn-block" onClick={() => g.commit((st) => startDeal(st))}>
+        开始发身份
+      </button>
+    );
+  const missing = s.seats.filter((x) => !room.seats[x.n]).map((x) => seatName(x.n));
+  const send = async () => {
+    const ok = await room.deal(Object.fromEntries(s.seats.map((x) => [x.n, dealCard(s, x)])));
+    if (ok) g.commit((st) => startDeal(st));
+  };
+  return (
+    <button className="btn btn-primary btn-block" disabled={missing.length > 0 || room.busy} onClick={send}>
+      {missing.length ? `还没入座：${missing.join('、')}` : room.busy ? '正在发…' : '把身份发到每个人手机上'}
+    </button>
   );
 }

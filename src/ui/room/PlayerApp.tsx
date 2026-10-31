@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { ackMsg, claimSeat, gotMsg, keepOnline, leaveSeat, roomError, signIn, watchConnected, watchMeta, watchPrivate, watchSeats } from '../../room/api';
-import { sortMsgs, type RoomMeta, type RoomMsg, type SeatInfo } from '../../room/protocol';
+import { metaSeats, seatLabel, sortMsgs, type RoomMeta, type RoomMsg, type SeatInfo } from '../../room/protocol';
 import { ShowCard, type CardContent } from '../common';
 
 const NAME_KEY = 'botc-room-name';
@@ -30,14 +30,18 @@ export default function PlayerApp({ code }: { code: string }) {
     return () => offs.forEach((off) => off());
   }, [uid, code]);
 
-  const mine = uid ? Object.entries(seats).find(([, x]) => x.uid === uid) : undefined;
-  const seat = mine ? Number(mine[0]) : null;
+  // 说书人改了人数，原来的座位可能不在这局里了：要重新选
+  const list = meta ? metaSeats(meta) : [];
+  const claimed = uid ? Object.entries(seats).filter(([, x]) => x.uid === uid).map(([k, x]) => [Number(k), x] as const) : [];
+  const mine = claimed.find(([n]) => list.includes(n));
+  const seat = mine ? mine[0] : null;
+  const stray = claimed.find(([n]) => !list.includes(n))?.[0] ?? null;
 
   let body;
   if (err) body = <p className="card card-warn">{err}</p>;
   else if (meta === undefined || !uid) body = <p className="dim">正在连接房间 {code}…</p>;
   else if (meta === null) body = <p className="card card-warn">房间 {code} 不存在，或者已经关了。找说书人要新的链接。</p>;
-  else if (seat === null) body = <PickSeat code={code} uid={uid} meta={meta} seats={seats} />;
+  else if (seat === null) body = <PickSeat code={code} uid={uid} meta={meta} seats={seats} stray={stray} />;
   else body = <Seated code={code} seat={seat} name={mine![1].name} meta={meta} />;
 
   return (
@@ -47,7 +51,7 @@ export default function PlayerApp({ code }: { code: string }) {
           <b>{meta?.title || '钟楼说书人'}</b>
           <small>
             房间 {code}
-            {seat !== null && ` · 你是 ${seat} 号`}
+            {seat !== null && ` · 你是 ${seatLabel(seat)}`}
             {!online && ' · 断线了，正在重连…'}
           </small>
         </div>
@@ -57,7 +61,7 @@ export default function PlayerApp({ code }: { code: string }) {
   );
 }
 
-function PickSeat({ code, uid, meta, seats }: { code: string; uid: string; meta: RoomMeta; seats: Record<string, SeatInfo> }) {
+function PickSeat({ code, uid, meta, seats, stray }: { code: string; uid: string; meta: RoomMeta; seats: Record<string, SeatInfo>; stray: number | null }) {
   const [name, setName] = useState(loadName);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
@@ -70,27 +74,35 @@ function PickSeat({ code, uid, meta, seats }: { code: string; uid: string; meta:
       /* 存不了名字也不影响坐下 */
     }
     try {
-      if (!(await claimSeat(code, n, uid, name))) setMsg(`${n} 号刚被别人坐了，换一个。`);
+      if (stray !== null) await leaveSeat(code, stray);
+      if (!(await claimSeat(code, n, uid, name))) setMsg(`${seatLabel(n)}刚被别人坐了，换一个。`);
     } catch (e) {
       setMsg(roomError(e));
     }
     setBusy(false);
   };
-  if (meta.phase !== 'lobby') return <p className="card card-warn">游戏已经开始了，不能再选座位。找说书人帮你空出座位。</p>;
+  const lobby = meta.phase === 'lobby';
   return (
     <div className="stack">
       <h2 style={{ margin: 0 }}>你坐在几号？</h2>
-      <p className="muted">说书人会告诉大家从哪里开始数 1 号。点你自己的座位。</p>
+      <p className="muted">
+        {stray !== null
+          ? `说书人改了人数，你原来的 ${seatLabel(stray)}这局没有了，重新选一个。`
+          : lobby
+            ? '说书人会告诉大家从哪里开始数 1 号。点你自己的座位。'
+            : '游戏已经开始了，只能坐空着的座位（比如说书人给你空出来的、新加的旅行者座位）。'}
+      </p>
       <label className="stack" style={{ gap: 6 }}>
         <span className="dim">你的名字（可以不填）</span>
         <input className="input" value={name} maxLength={12} placeholder="比如：小王" onChange={(e) => setName(e.target.value)} />
       </label>
       <div className="role-grid">
-        {Array.from({ length: meta.count }, (_, i) => i + 1).map((n) => {
+        {metaSeats(meta).map((n) => {
           const x = seats[n];
           return (
             <button key={n} className="role-chip" disabled={busy || !!x} style={x ? { opacity: 0.45 } : undefined} onClick={() => take(n)}>
-              {n} 号{x && <small>{x.name || '有人了'}</small>}
+              {seatLabel(n)}
+              {x && <small>{x.name || '有人了'}</small>}
             </button>
           );
         })}
@@ -148,7 +160,8 @@ function Seated({ code, seat, name, meta }: { code: string; seat: number; name?:
   return (
     <div className="stack">
       <h2 style={{ margin: 0 }}>
-        你是 {seat} 号{name ? `（${name}）` : ''}
+        你是 {seatLabel(seat)}
+        {name ? `（${name}）` : ''}
       </h2>
       <p className="muted">{meta.phase === 'lobby' ? '等其他人坐好，说书人开始以后你的角色会自动出现在这里。' : '有消息会自动弹出来。看完点"看完了"。'}</p>
       {role && (

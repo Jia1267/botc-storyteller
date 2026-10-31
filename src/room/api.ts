@@ -18,14 +18,14 @@ export function roomError(e: unknown): string {
 
 /* ---------------- 开房设备 ---------------- */
 
-export async function createRoom(count: number, title: string): Promise<string> {
+export async function createRoom(seatNs: number[], title: string): Promise<string> {
   const uid = await signIn();
   for (let i = 0; i < 8; i++) {
     const code = newRoomCode();
     const hostRef = ref(db, roomPath(code, 'host'));
     if ((await get(hostRef)).exists()) continue; // 房间号撞了，换一个
     await set(hostRef, uid);
-    const meta: RoomMeta = { count, title, phase: 'lobby', createdAt: Date.now() };
+    const meta: RoomMeta = { count: seatNs.length, seatNs, title, phase: 'lobby', createdAt: Date.now() };
     await set(ref(db, roomPath(code, 'meta')), meta);
     return code;
   }
@@ -41,6 +41,34 @@ export async function ownsRoom(code: string): Promise<boolean> {
 export const closeRoom = (code: string) => remove(ref(db, roomPath(code)));
 
 export const setPhase = (code: string, phase: RoomMeta['phase']) => set(ref(db, roomPath(code, 'meta', 'phase')), phase);
+
+/** 人数、旅行者变了：座位跟着变 */
+export const setSeats = (code: string, seatNs: number[], title: string) =>
+  Promise.all([
+    set(ref(db, roomPath(code, 'meta', 'seatNs')), seatNs),
+    set(ref(db, roomPath(code, 'meta', 'count')), seatNs.length),
+    set(ref(db, roomPath(code, 'meta', 'title')), title),
+  ]);
+
+/** 新开一局：收回所有人的角色和没看的消息（座位保留） */
+export async function clearPrivate(code: string) {
+  await remove(ref(db, roomPath(code, 'priv')));
+  await remove(ref(db, roomPath(code, 'acks')));
+}
+
+/** 发身份：每个人的角色卡放到他手机上（随时能看），同时弹一条"你的角色"等他点看完了。返回每个座位那条消息的 id */
+export async function dealRoles(code: string, cards: Record<number, CardContent>): Promise<Record<number, string>> {
+  const ids: Record<number, string> = {};
+  await Promise.all(
+    Object.entries(cards).map(async ([k, card]) => {
+      const n = Number(k);
+      await remove(ref(db, roomPath(code, 'priv', n, 'msgs')));
+      await setRoleCard(code, n, card);
+      ids[n] = (await sendCard(code, n, { ...card, title: '你的角色' })).id;
+    }),
+  );
+  return ids;
+}
 
 /** 让某个座位空出来（玩家换了手机、坐错了） */
 export async function freeSeat(code: string, n: number) {

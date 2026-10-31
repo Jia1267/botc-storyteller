@@ -2,13 +2,29 @@ import { useState } from 'react';
 import { DrunkEdit, LunaticEdit, MarionetteEdit } from './Setup';
 import { ROLES, TEAM_NAME, roleName } from '../engine/roles';
 import { believedRole, lilMonsta, seatName } from '../engine/core';
-import { dealNext } from '../engine/flow';
-import { evilTravellerInfo } from '../engine/travellers';
+import { dealNext, finishDeal } from '../engine/flow';
+import { dealCard, fakeShown } from './dealCard';
+import { RoomDealScreen, useRoom } from './room/hostRoom';
 import type { Game } from '../store';
 import { BottomBar, useUi } from './common';
 import { Icon } from './icons';
 
-export function DealScreen({ g }: { g: Game }) {
+/** 发身份：开了房间就同时发到每个人手机上，不然一个一个传手机看 */
+export function DealPhase({ g }: { g: Game }) {
+  const room = useRoom();
+  const s = g.s;
+  if (!room.code) return <DealScreen g={g} />;
+  return (
+    <RoomDealScreen
+      seatNs={s.seats.map((x) => x.n)}
+      fakes={fakeShown(s)}
+      onResend={() => room.deal(Object.fromEntries(s.seats.map((x) => [x.n, dealCard(s, x)])))}
+      onDone={() => g.commit((st) => finishDeal(st))}
+    />
+  );
+}
+
+function DealScreen({ g }: { g: Game }) {
   const s = g.s;
   const ui = useUi();
   const seat = s.seats[s.dealIndex];
@@ -18,20 +34,7 @@ export function DealScreen({ g }: { g: Game }) {
   const [edit, setEdit] = useState(false);
 
   const tv = seat.traveller;
-  const show = () =>
-    ui.showCard(
-      tv
-        ? {
-            title: '你的身份（旅行者）', big: [roleName(seat.role)], team: 'traveller', alignment: tv.alignment, ability: ROLES[seat.role].ability,
-            note: tv.alignment === 'evil' ? `你是邪恶的。${evilTravellerInfo(s)}` : undefined,
-          }
-        : {
-            title: '你的身份', big: [roleName(shown)], team: ROLES[shown].team, ability: ROLES[shown].ability,
-            // 赏金猎人的邪恶镇民：角色是镇民，阵营是邪恶
-            ...(seat.alignment === 'evil' && !fake ? { alignment: 'evil' as const, note: '你是邪恶阵营的！你不知道其他邪恶玩家是谁，他们也不知道你。' } : {}),
-          },
-      () => g.commit((st) => dealNext(st)),
-    );
+  const show = () => ui.showCard(dealCard(s, seat), () => g.commit((st) => dealNext(st)));
 
   return (
     <main className="main" key={s.dealIndex}>
