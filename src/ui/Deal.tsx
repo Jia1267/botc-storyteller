@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { msgStatus } from '../room/protocol';
 import { DrunkEdit, LunaticEdit, MarionetteEdit } from './Setup';
 import { ROLES, TEAM_NAME, roleName } from '../engine/roles';
 import { believedRole, lilMonsta, seatName } from '../engine/core';
@@ -18,7 +19,7 @@ export function DealPhase({ g }: { g: Game }) {
     <RoomDealScreen
       seatNs={s.seats.map((x) => x.n)}
       fakes={fakeShown(s)}
-      onResend={() => room.deal(Object.fromEntries(s.seats.map((x) => [x.n, dealCard(s, x)])))}
+      onResend={() => room.deal(Object.fromEntries(s.seats.filter((x) => msgStatus(room.acks, x.n, room.dealt[x.n]) !== 'read').map((x) => [x.n, dealCard(s, x)])))}
       onDone={() => g.commit((st) => finishDeal(st))}
     />
   );

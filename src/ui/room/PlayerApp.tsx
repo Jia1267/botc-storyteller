@@ -47,12 +47,16 @@ export default function PlayerApp({ code }: { code: string }) {
   const mine = claimed.find(([n]) => list.includes(n));
   const seat = mine ? mine[0] : null;
   const stray = claimed.find(([n]) => !list.includes(n))?.[0] ?? null;
+  // 刚才还坐着、现在座位没了（说书人点了"空出"）：在选座页说一声
+  const was = useRef<number | null>(null);
+  if (seat !== null) was.current = seat;
+  const kicked = seat === null && stray === null && meta?.phase === 'game' ? was.current : null;
 
   let body;
   if (err) body = <p className="card card-warn">{err}</p>;
   else if (meta === undefined || !uid) body = <p className="dim">正在连接房间 {code}…</p>;
   else if (meta === null) body = <p className="card card-warn">房间 {code} 不存在，或者已经关了。找说书人要新的链接。</p>;
-  else if (seat === null) body = <PickSeat code={code} uid={uid} meta={meta} seats={seats} stray={stray} />;
+  else if (seat === null) body = <PickSeat code={code} uid={uid} meta={meta} seats={seats} stray={stray} kicked={kicked} />;
   else body = <Seated code={code} seat={seat} name={mine![1].name} meta={meta} seats={seats} />;
 
   return (
@@ -72,7 +76,7 @@ export default function PlayerApp({ code }: { code: string }) {
   );
 }
 
-function PickSeat({ code, uid, meta, seats, stray }: { code: string; uid: string; meta: RoomMeta; seats: Record<string, SeatInfo>; stray: number | null }) {
+function PickSeat({ code, uid, meta, seats, stray, kicked }: { code: string; uid: string; meta: RoomMeta; seats: Record<string, SeatInfo>; stray: number | null; kicked: number | null }) {
   const [name, setName] = useState(loadName);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
@@ -96,6 +100,11 @@ function PickSeat({ code, uid, meta, seats, stray }: { code: string; uid: string
   return (
     <div className="stack">
       <h2 style={{ margin: 0 }}>你坐在几号？</h2>
+      {kicked !== null && (
+        <p className="card card-warn">
+          说书人把你从 {seatLabel(kicked)}移开了（可能是你的手机断线太久）。如果你还坐 {seatLabel(kicked)}，再点一下它坐回去，你的角色会自动回来。
+        </p>
+      )}
       <p className="muted">
         {stray !== null
           ? `说书人改了人数，你原来的 ${seatLabel(stray)}这局没有了，重新选一个。`
@@ -170,7 +179,14 @@ function Seated({ code, seat, name, meta, seats }: { code: string; seat: number;
   // 游戏结束：复盘和 MVP 投票（没看完的夜里消息不用再看了）
   if (meta.phase === 'end' && meta.end) return <EndView code={code} seat={seat} end={meta.end} seats={seats} />;
   if (next?.ask) return <PickCard key={msgKey(next)} m={next} me={seat} seats={seats} onPick={(ans) => finish(next, answerPick(code, seat, next.id, ans))} />;
-  if (next) return <ShowCard key={msgKey(next)} c={next.card} onDone={() => finish(next, ackMsg(code, seat, next.id))} />;
+  if (next)
+    return (
+      <ShowCard
+        key={msgKey(next)}
+        c={next.fix ? { ...next.card, lines: ['说书人更正了刚才的信息：以这条为准。', ...(next.card.lines ?? [])] } : next.card}
+        onDone={() => finish(next, ackMsg(code, seat, next.id))}
+      />
+    );
   if (showRole && role) return <ShowCard c={{ ...role, title: '你的角色' }} onDone={() => setShowRole(false)} />;
 
   return (

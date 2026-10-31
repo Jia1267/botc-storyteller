@@ -7,6 +7,7 @@ import type { GameState } from './engine/types';
 import { ConfirmButton, Sheet, ShowCard, TableCtx, UiCtx, useTableState, type CardContent, type Ui } from './ui/common';
 import { DayScreen } from './ui/Day';
 import { DealPhase } from './ui/Deal';
+import { dealCard } from './ui/dealCard';
 import { RoomProvider, RoomSheet, useRoom } from './ui/room/hostRoom';
 import { EndScreen, LogView, Overlay, RolesRef, RulesSpeech, ScriptSheet } from './ui/End';
 import { GrimoirePanel, SpyView, phaseText } from './ui/Grimoire';
@@ -77,11 +78,13 @@ export default function App() {
 
   // 首页、选人数页还没定座位：房间先保留上一局的座位，别让玩家以为座位没了
   const seatNs = hasSeats ? s.seats.map((x) => x.n) : [];
+  // 游戏中每个座位现在的角色卡：有人被"空出"后坐回来，房间自动把角色还给他
+  const roleCards = s.phase === 'night' || s.phase === 'day' ? Object.fromEntries(s.seats.map((x) => [x.n, dealCard(s, x)])) : undefined;
 
   // AI 说书人局：平板是公共屏幕，不显示魔典、菜单这些说书人自己看的东西
   if (s.ai)
     return (
-      <RoomProvider seatNs={seatNs} title={`${scriptOf(s).name} · AI 说书人`} phase={s.phase}>
+      <RoomProvider seatNs={seatNs} title={`${scriptOf(s).name} · AI 说书人`} phase={s.phase} roleCards={roleCards}>
         <UiCtx.Provider value={ui}>
           <TableCtx.Provider value={table}>
             <TimerCtx.Provider value={timer}>
@@ -103,7 +106,7 @@ export default function App() {
   else screen = <EndScreen g={g} />;
 
   return (
-    <RoomProvider seatNs={seatNs} title={scriptOf(s).name} phase={s.phase}>
+    <RoomProvider seatNs={seatNs} title={scriptOf(s).name} phase={s.phase} roleCards={roleCards}>
     <UiCtx.Provider value={ui}>
       <TableCtx.Provider value={table}>
       <TimerCtx.Provider value={timer}>
@@ -112,7 +115,7 @@ export default function App() {
             <div className="title">
               <b>{s.phase === 'setup' ? '钟楼说书人' : phaseText(s)}</b>
               <small>
-                {sub}
+                {s.phase === 'deal' ? <DealSub fallback={sub} /> : sub}
                 {prog && <span className="phone-only">{` · 第 ${prog.pos} 步 / 共约 ${prog.visible.length} 步`}</span>}
               </small>
             </div>
@@ -228,6 +231,12 @@ function RoomMenuItem({ onOpen }: { onOpen: () => void }) {
       房间 {room.code}（二维码、谁在线）
     </button>
   );
+}
+
+/** 发身份时的顶栏：开着房间是大家同时看，不是一个一个传 */
+function DealSub({ fallback }: { fallback: string }) {
+  const room = useRoom();
+  return <>{room.code ? '发到每个人手机上' : fallback}</>;
 }
 
 /** 撤销提示里说回到了哪一步 */

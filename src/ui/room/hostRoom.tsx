@@ -1,9 +1,12 @@
 // 说书人这边的房间：开房、看谁入座、把身份发到每个人手机上。
 // Firebase 只在开过房间时才加载（import('../../room/api')），不开房的人主页面不变大。
-import { Suspense, createContext, lazy, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { Suspense, createContext, lazy, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { metaSeats, msgStatus, roomLink, seatLabel, tallyMvp, type Acks, type AiPublic, type EndInfo, type MsgBody, type RoomMeta, type RoomMsg, type SeatInfo } from '../../room/protocol';
 import type { CardContent } from '../common';
 import { BottomBar, ConfirmButton, Sheet } from '../common';
+
+/** 递二维码之前先说清楚座位号怎么数：错了的话所有"邻座"信息都会错 */
+const SEAT_TIP = '递二维码之前先告诉大家：从谁开始是 1 号，然后顺时针 2 号、3 号……坐错号的话，共情者、厨师这些和邻座有关的信息都会错。';
 
 // 二维码也是打开房间面板时才加载
 const Qr = lazy(() => import('./Qr').then((m) => ({ default: m.Qr })));
@@ -51,8 +54,11 @@ export interface HostRoom {
   free(n: number): Promise<void>;
   /** 把每个人的身份发到手机上；成功返回 true */
   deal(cards: Record<number, CardContent>): Promise<boolean>;
-  /** 夜里发一条消息（同一个 id 再发就是覆盖） */
-  send(n: number, id: string, body: MsgBody): Promise<void>;
+  /** 夜里发一条消息（同一个 id 再发就是覆盖）；fix = 改了他看过的信息又重发 */
+  send(n: number, id: string, body: MsgBody, fix?: boolean): Promise<void>;
+  /** 这一步改成当面处理的座位（他手机不行）：换一步自动清空 */
+  offline: number[];
+  setOffline(ns: number[]): void;
   unsend(n: number, id: string): Promise<void>;
   /** 他手机上"看我的角色"换成新角色（红唇女郎接任、小恶魔传刀） */
   setRole(n: number, card: CardContent): Promise<void>;
@@ -68,13 +74,22 @@ export const useRoom = () => useContext(RoomCtx)!;
 type GamePhase = 'setup' | 'deal' | 'night' | 'day' | 'end';
 const roomPhase = (p: GamePhase): RoomMeta['phase'] => (p === 'setup' ? 'lobby' : p === 'end' ? 'end' : 'game');
 
-export function RoomProvider({ seatNs, title, phase, children }: { seatNs: number[]; title: string; phase: GamePhase; children: ReactNode }) {
+export function RoomProvider({ seatNs, title, phase, roleCards, children }: {
+  seatNs: number[];
+  title: string;
+  phase: GamePhase;
+  /** 游戏中每个座位现在的角色卡：有人被"空出"后坐回来，自动把角色还给他 */
+  roleCards?: Record<number, CardContent>;
+  children: ReactNode;
+}) {
   const [saved, setSaved] = useState<Saved | null>(loadSaved);
   const code = saved?.code ?? null;
   const [meta, setMeta] = useState<RoomMeta | null>(null);
   const [seats, setSeats] = useState<Record<string, SeatInfo>>({});
   const [acks, setAcks] = useState<Acks | null>(null);
   const [msgs, setMsgs] = useState<Record<string, Record<string, RoomMsg>> | null>(null);
+  const [hasRole, setHasRole] = useState<Record<string, boolean>>({});
+  const [offline, setOffline] = useState<number[]>([]);
   const [online, setOnline] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -99,7 +114,10 @@ export function RoomProvider({ seatNs, title, phase, children }: { seatNs: numbe
         api.watchMeta(code, (m) => (m ? setMeta(m) : save(null)), fail),
         api.watchSeats(code, setSeats, fail),
         api.watchAcks(code, setAcks),
-        api.watchMsgs(code, setMsgs),
+        api.watchMsgs(code, (m, r) => {
+          setMsgs(m);
+          setHasRole(r);
+        }),
         api.watchConnected(setOnline),
       ];
     });
@@ -138,6 +156,17 @@ export function RoomProvider({ seatNs, title, phase, children }: { seatNs: numbe
     });
   }, [code, meta, want, save]);
 
+  // 有人被"空出"后又坐回来（或者换了一个人坐）：角色卡自动补上
+  const latestCards = useRef(roleCards);
+  latestCards.current = roleCards;
+  useEffect(() => {
+    const cards = latestCards.current;
+    if (!code || !msgs || meta?.phase !== 'game' || !cards) return;
+    const missing = Object.keys(seats).filter((n) => !hasRole[n] && cards[Number(n)]);
+    if (!missing.length) return;
+    loadApi().then((api) => Promise.all(missing.map((n) => api.setRoleCard(code, Number(n), cards[Number(n)]))).catch(() => {}));
+  }, [code, msgs, hasRole, seats, meta?.phase]);
+
   // 结束后：数 MVP 票，只公开票数
   useEffect(() => {
     if (!code || meta?.phase !== 'end' || !meta.end || !acks) return;
@@ -158,6 +187,8 @@ export function RoomProvider({ seatNs, title, phase, children }: { seatNs: numbe
       err,
       busy,
       dealt: saved?.dealt ?? {},
+      offline,
+      setOffline,
       open: async () => {
         setBusy(true);
         setErr(null);
@@ -188,7 +219,8 @@ export function RoomProvider({ seatNs, title, phase, children }: { seatNs: numbe
         try {
           // 房间阶段不在这里改：等游戏进入发身份阶段，由上面的同步统一改成"游戏中"
           const ids = await api.dealRoles(code, cards);
-          save({ code, dealt: Object.fromEntries(Object.entries(ids).map(([n, id]) => [n, id])) });
+          // 只重发给部分人时，其他人的记录保留
+          save({ code, dealt: { ...(saved?.dealt ?? {}), ...Object.fromEntries(Object.entries(ids).map(([n, id]) => [n, id])) } });
           setBusy(false);
           return true;
         } catch (e) {
@@ -197,10 +229,10 @@ export function RoomProvider({ seatNs, title, phase, children }: { seatNs: numbe
           return false;
         }
       },
-      send: async (n, id, body) => {
+      send: async (n, id, body, fix) => {
         if (!code) return;
         const api = await loadApi();
-        await api.sendMsg(code, n, id, body).catch((e) => setErr(api.roomError(e)));
+        await api.sendMsg(code, n, id, body, fix).catch((e) => setErr(api.roomError(e)));
       },
       unsend: async (n, id) => {
         if (!code) return;
@@ -223,7 +255,7 @@ export function RoomProvider({ seatNs, title, phase, children }: { seatNs: numbe
         await api.setAi(code, ai).catch((e) => setErr(api.roomError(e)));
       },
     }),
-    [code, meta, seats, acks, msgs, online, err, busy, saved, seatNs, title, save],
+    [code, meta, seats, acks, msgs, online, err, busy, saved, seatNs, title, save, offline],
   );
   return <RoomCtx.Provider value={value}>{children}</RoomCtx.Provider>;
 }
@@ -232,12 +264,27 @@ export function RoomProvider({ seatNs, title, phase, children }: { seatNs: numbe
 export function RoomCard({ seatNs }: { seatNs: number[] }) {
   const room = useRoom();
   const [sheet, setSheet] = useState(false);
+  // 刚开好房间：直接把二维码弹出来
+  const opened = useRef(false);
+  useEffect(() => {
+    if (room.code && opened.current) {
+      opened.current = false;
+      setSheet(true);
+    }
+  }, [room.code]);
   if (!room.code)
     return (
       <div className="card stack" style={{ gap: 8 }}>
         <b>玩家用自己的手机看身份？</b>
         <p className="dim">开一个房间，大家扫码选好自己的座位。发身份时每个人的角色直接出现在自己手机上，不用传手机。</p>
-        <button className="btn btn-outline btn-block" disabled={room.busy} onClick={room.open}>
+        <button
+          className="btn btn-outline btn-block"
+          disabled={room.busy}
+          onClick={() => {
+            opened.current = true;
+            room.open();
+          }}
+        >
           开房间（扫码入座）
         </button>
         {room.err && <p className="card card-warn">{room.err}</p>}
@@ -255,6 +302,7 @@ export function RoomCard({ seatNs }: { seatNs: number[] }) {
         </button>
       </div>
       {sat.length < seatNs.length && <p className="dim">还没入座：{seatNs.filter((n) => !room.seats[n]).map(seatLabel).join('、')}。让他们扫码选座。</p>}
+      {sat.length < seatNs.length && <p className="dim">{SEAT_TIP}</p>}
       {!room.online && <p className="dim">这台设备断线了，正在重连…</p>}
       {room.err && <p className="card card-warn">{room.err}</p>}
       {sheet && <RoomSheet seatNs={seatNs} onClose={() => setSheet(false)} />}
@@ -277,6 +325,7 @@ export function RoomJoin({ seatNs }: { seatNs: number[] }) {
         <input className="input" readOnly value={link} onFocus={(e) => e.target.select()} />
         {/^(localhost|127\.)/.test(location.hostname) && <p className="card card-warn">这台设备是用 localhost 打开的，手机扫码进不来。</p>}
       </div>
+      <p className="card card-warn">{SEAT_TIP}</p>
       <SeatList seatNs={seatNs} />
     </div>
   );
@@ -299,6 +348,7 @@ export function RoomSheet({ seatNs, onClose }: { seatNs: number[]; onClose: () =
           <input className="input" readOnly value={link} onFocus={(e) => e.target.select()} />
           {/^(localhost|127\.)/.test(location.hostname) && <p className="card card-warn">这台设备是用 localhost 打开的，手机扫码进不来。</p>}
         </div>
+        <p className="dim">{SEAT_TIP}</p>
         <SeatList seatNs={list} />
         <ConfirmButton label="关闭房间" confirmLabel="再点一次：关闭房间，所有玩家退出" onConfirm={() => room.close().then(onClose)} />
       </div>
@@ -320,11 +370,14 @@ function SeatList({ seatNs, status }: { seatNs: number[]; status?: (n: number) =
               {x && !x.online && <span className="dim"> · 断线</span>}
             </span>
             {status?.(n)}
-            {x && !status && (
-              <button className="btn btn-ghost btn-sm" onClick={() => room.free(n)}>
-                空出
-              </button>
-            )}
+            {x && !status &&
+              (room.meta?.phase === 'game' ? (
+                <ConfirmButton className="btn btn-ghost btn-sm" label="空出" confirmLabel="再点一次：让他离座" onConfirm={() => room.free(n)} />
+              ) : (
+                <button className="btn btn-ghost btn-sm" onClick={() => room.free(n)}>
+                  空出
+                </button>
+              ))}
           </div>
         );
       })}
@@ -367,7 +420,7 @@ export function RoomDealScreen({ seatNs, fakes, onResend, onDone }: {
         </div>
         {room.err && <p className="card card-warn">{room.err}</p>}
         {left.length > 0 && (
-          <ConfirmButton className="btn btn-outline btn-block" label="有人没收到？全部重发一次" confirmLabel="再点一次：重新发给所有人" onConfirm={onResend} />
+          <ConfirmButton className="btn btn-outline btn-block" label="有人没收到？重发给还没看的人" confirmLabel={`再点一次：重新发给 ${left.map(seatLabel).join('、')}`} onConfirm={onResend} />
         )}
       </div>
       <BottomBar>

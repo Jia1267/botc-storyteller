@@ -143,7 +143,8 @@ export function Sheet({ title, onClose, children }: { title: string; onClose: ()
   const [ready, setReady] = useState(false);
   const box = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    const t = setTimeout(() => setReady(true), MIN_PAGE_MS);
+    // 面板比整页短一些：0.4 秒挡住连点就够了，再长第一下点不动像是坏了
+    const t = setTimeout(() => setReady(true), 400);
     return () => clearTimeout(t);
   }, []);
   useEscape(onClose, box);

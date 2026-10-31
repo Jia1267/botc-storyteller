@@ -101,9 +101,9 @@ export async function sendCard(code: string, n: number, card: CardContent): Prom
 }
 
 /** 夜里的消息：用固定的 id 发（同一步重发就覆盖原来那条，并清掉他原来的"已看"和选择） */
-export async function sendMsg(code: string, n: number, id: string, body: MsgBody) {
+export async function sendMsg(code: string, n: number, id: string, body: MsgBody, fix = false) {
   await Promise.all([id, gotKey(id), pickKey(id)].map((k) => remove(ref(db, roomPath(code, 'acks', n, k)))));
-  const msg: RoomMsg = { id, ...clean(body), sentAt: Date.now() };
+  const msg: RoomMsg = { id, ...clean(body), sentAt: Date.now(), ...(fix ? { fix: true } : {}) };
   await set(ref(db, roomPath(code, 'priv', n, 'msgs', id)), msg);
 }
 
@@ -113,11 +113,11 @@ export const clearMsg = (code: string, n: number, id: string) => remove(ref(db, 
 /** 所有座位的"看好了"：{ 座位: { 消息id: 点的时间 } } */
 export const watchAcks = (code: string, cb: (acks: Acks) => void) => onValue(ref(db, roomPath(code, 'acks')), (s) => cb(s.val() ?? {}));
 
-/** 所有座位信箱里的消息：{ 座位: { 消息id: 消息 } } */
-export const watchMsgs = (code: string, cb: (msgs: Record<string, Record<string, RoomMsg>>) => void) =>
+/** 所有座位信箱里的消息：{ 座位: { 消息id: 消息 } }；以及哪些座位手机上有角色卡 */
+export const watchMsgs = (code: string, cb: (msgs: Record<string, Record<string, RoomMsg>>, hasRole: Record<string, boolean>) => void) =>
   onValue(ref(db, roomPath(code, 'priv')), (s) => {
-    const all: Record<string, { msgs?: Record<string, RoomMsg> }> = s.val() ?? {};
-    cb(Object.fromEntries(Object.entries(all).map(([n, p]) => [n, p.msgs ?? {}])));
+    const all: Record<string, { msgs?: Record<string, RoomMsg>; role?: unknown }> = s.val() ?? {};
+    cb(Object.fromEntries(Object.entries(all).map(([n, p]) => [n, p.msgs ?? {}])), Object.fromEntries(Object.entries(all).map(([n, p]) => [n, !!p.role])));
   });
 
 /* ---------------- 两边都用 ---------------- */

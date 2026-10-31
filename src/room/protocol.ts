@@ -124,6 +124,8 @@ export interface RoomMsg {
   card: CardContent;
   ask?: PickAsk;
   sentAt: number;
+  /** 说书人改了已经看过的信息又重发：手机上标"以这条为准" */
+  fix?: boolean;
 }
 
 /** 说书人这边一条消息的内容（id 和发出时间由发送时定） */

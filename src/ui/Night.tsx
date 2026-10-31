@@ -140,6 +140,7 @@ export function MiniGrimoire({ s, onOpen }: { s: GameState; onOpen: () => void }
 }
 
 function ActorLine({ s, actor, slot }: { s: GameState; actor: Seat; slot: SlotId }) {
+  const phones = usePhoneOn(actor.n);
   const flags: ReactNode[] = [];
   if (actor.role === 'drunk') flags.push(<span key="d" className="chip chip-warn">其实是酒鬼：能力无效，可以给假信息</span>);
   if (actor.role === 'marionette') flags.push(<span key="m" className="chip chip-evil">其实是提线木偶：能力无效，可以给假信息</span>);
@@ -171,7 +172,7 @@ function ActorLine({ s, actor, slot }: { s: GameState; actor: Seat; slot: SlotId
   return (
     <>
       <div className="who">
-        {slot === 'widow' ? '寡妇是' : '叫醒'} <b>{seatName(actor.n)}</b>
+        {slot === 'widow' ? '寡妇是' : phones ? '轮到' : '叫醒'} <b>{seatName(actor.n)}</b>
         {!actor.alive && actor.role === 'zombuul' && '（僵怖，假死中）'}
         {why}
         {slot === 'scarletwoman' && '（红唇女郎，白天已接任恶魔）'}
@@ -675,7 +676,10 @@ function DawnStep({ g, s }: { g: Game; s: GameState }) {
       )}
       {unread && <p className="dim">天亮前要等每个人都点完手机上的消息{unread.length ? `：还剩 ${seatsText(unread)}` : '（都点完了）'}。</p>}
       <BottomBar wide>
-        <button className="btn btn-primary btn-block" disabled={(!s.winner && promptPending(s)) || waiting} onClick={() => done({ kind: 'none' })}>
+        {waiting && !promptPending(s) && (
+          <ConfirmButton className="btn btn-ghost" label="有人手机不行" confirmLabel="再点一次：不等了，进入白天" onConfirm={() => done({ kind: 'none' })} />
+        )}
+        <button className="btn btn-primary grow" disabled={(!s.winner && promptPending(s)) || waiting} onClick={() => done({ kind: 'none' })}>
           {s.winner ? '宣布结果' : promptPending(s) ? '先处理上面的提示' : waiting ? `等 ${seatsText(unread!)} 点完手机` : '进入白天'}
         </button>
       </BottomBar>
@@ -3616,8 +3620,8 @@ function EvilTwinStep({ g, s, actor }: StepProps) {
   const ui = useUi();
   const good = seatOf(s, s.twin!);
   const phone = usePhoneSend(s, [
-    infoTo(good.n, { title: '你的双子是镜像双子（邪恶）', big: [seatName(actor.n)] }, slotLines('eviltwin', s.style)),
-    infoTo(actor.n, { title: `你的善良双子是 ${seatName(good.n)}，他的角色是`, big: [roleName(good.role)] }, slotLines('eviltwin', s.style)),
+    infoTo(good.n, { title: '你的双子是镜像双子（邪恶）', big: [seatName(actor.n)] }),
+    infoTo(actor.n, { title: `你的善良双子是 ${seatName(good.n)}，他的角色是`, big: [roleName(good.role)] }),
   ]);
   if (phone.on)
     return (

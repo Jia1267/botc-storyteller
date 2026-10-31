@@ -4,7 +4,7 @@
 // - 今晚没有行动的人：在夜里随机某一步收到"今晚你没有行动"，这样谁也看不出谁有行动。天亮要等所有人都点完。
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { demonSeat, seatName, teamOf, wakesAs } from '../../engine/core';
-import { minionSeats, pendingActors, shouldRun, slotsFor } from '../../engine/flow';
+import { currentSlot, minionSeats, pendingActors, shouldRun, slotActor, slotsFor } from '../../engine/flow';
 import type { GameState, SlotId } from '../../engine/types';
 import { answerOf, hashUnit, idleMsgId, isNightMsg, msgStatus, nightMsgId, sameBody, type MsgBody, type PickAnswer, type PickAsk } from '../../room/protocol';
 import { BottomBar, ConfirmButton, type CardContent } from '../common';
@@ -13,7 +13,13 @@ import { useRoom, type HostRoom } from './hostRoom';
 /** 房间开着、在游戏中：夜里走手机 */
 export const phonesOn = (room: HostRoom) => !!room.code && room.meta?.phase === 'game';
 /** 这个座位有人拿手机坐着 */
-const phoneOf = (room: HostRoom, n: number) => phonesOn(room) && !!room.seats[n];
+const phoneOf = (room: HostRoom, n: number) => phonesOn(room) && !!room.seats[n] && !room.offline.includes(n);
+
+/** 说书人改成当面处理时，告诉他的手机一声（不算夜里要点完的消息，不挡天亮） */
+const inPersonNote = (s: GameState, n: number): [string, MsgBody] => [
+  `H${s.night}-${s.ns!.slot}-${n}`,
+  { card: { title: '这一步说书人会当面处理', big: [], lines: ['你不用在手机上操作了，看说书人。'] } },
+];
 
 export function usePhoneOn(n: number | undefined) {
   const room = useRoom();
@@ -75,7 +81,6 @@ export function usePhoneAsk(s: GameState, n: number, o: AskOpts, onPick: (seats:
   const room = useRoom();
   const on = !o.off && phoneOf(room, n);
   const id = stepId(s, n, o.tag ?? 'pick');
-  const [manual, setManual] = useState(false);
   const st = on ? statusOf(room, n, id) : 'none';
   const pick = on ? answerOf(room.acks, n, id) : undefined;
   const body = (): MsgBody => ({
@@ -99,8 +104,8 @@ export function usePhoneAsk(s: GameState, n: number, o: AskOpts, onPick: (seats:
   latest.current = { room, body, onPick };
 
   useEffect(() => {
-    if (on && room.ready && !manual && st === 'none') sendOnce(latest.current.room, n, id, latest.current.body());
-  }, [on, room.ready, manual, st, n, id]);
+    if (on && room.ready && st === 'none') sendOnce(latest.current.room, n, id, latest.current.body());
+  }, [on, room.ready, st, n, id]);
 
   const pk = pick ? JSON.stringify(pick) : '';
   useEffect(() => {
@@ -112,9 +117,7 @@ export function usePhoneAsk(s: GameState, n: number, o: AskOpts, onPick: (seats:
   const who = seatName(n);
   const text = pick
     ? `${who} 在手机上${answerText(o, pick)}（已填到下面，可以改）`
-    : manual
-      ? `已从 ${who} 手机上收回，你直接在下面点`
-      : st === 'got'
+    : st === 'got'
         ? `已发到 ${who} 手机上，等他选…`
         : st === 'sent'
           ? `已发出，还没到 ${who} 手机上（他可能锁屏了）`
@@ -122,7 +125,7 @@ export function usePhoneAsk(s: GameState, n: number, o: AskOpts, onPick: (seats:
   const view = on && (
     <div className={`card stack${pick ? '' : ' card-warn'}`} style={{ gap: 6 }}>
       <p>{text}</p>
-      {!pick && !manual && (
+      {!pick && (
         <div className="row" style={{ gap: 8 }}>
           {(st === 'sent' || st === 'got') && (
             <button className="btn btn-ghost btn-sm" onClick={() => room.send(n, id, body())}>
@@ -131,18 +134,19 @@ export function usePhoneAsk(s: GameState, n: number, o: AskOpts, onPick: (seats:
           )}
           <ConfirmButton
             className="btn btn-ghost btn-sm"
-            label="不等了，我来点"
+            label="不等了，这一步当面处理"
             confirmLabel="再点一次：从他手机上收回"
             onConfirm={() => {
-              setManual(true);
               room.unsend(n, id);
+              room.send(n, ...inPersonNote(s, n));
+              room.setOffline([...room.offline, n]);
             }}
           />
         </div>
       )}
     </div>
   );
-  return { on, view, ans: pick, wait: on && !pick && !manual ? `等 ${who} 在手机上选` : null };
+  return { on, view, ans: pick, wait: on && !pick ? `等 ${who} 在手机上选` : null };
 }
 
 /* ---------------- 发信息给他 ---------------- */
@@ -174,15 +178,23 @@ export function usePhoneSend(s: GameState, items: PhoneItem[]) {
     busy,
     sendAll: async () => {
       setBusy(true);
-      // 一条一条发：同一个人收到的顺序就是发出的顺序
+      // 一条一条发：同一个人收到的顺序就是发出的顺序；他看过旧的、现在改了，手机上标"以这条为准"
       for (const x of unsent) {
-        await room.send(x.n, x.id, x.body);
+        await room.send(x.n, x.id, x.body, !!room.acks[x.n]?.[x.id]);
         if (x.role) await room.setRole(x.n, x.role);
       }
       setBusy(false);
     },
     resend: async () => {
       for (const x of unread) await room.send(x.n, x.id, x.body);
+    },
+    /** 他手机不行：收回没看的，这一步改成当面给他看 */
+    inPerson: () => {
+      for (const x of unread) {
+        room.unsend(x.n, x.id);
+        room.send(x.n, ...inPersonNote(s, x.n));
+      }
+      room.setOffline([...room.offline, ...unread.map((x) => x.n)]);
     },
   };
 }
@@ -243,9 +255,12 @@ export function PhoneBar({ send, wait, ready = true, doneLabel = '完成，下�
               ? btn(`等 ${names(send.unread)} 看完${send.away.length ? `（${names(send.away)} 还没收到）` : ''}`)
               : btn(doneLabel, onDone)}
       {send?.on && !send.unsent.length && send.unread.length > 0 && (
-        <button className="btn btn-ghost" onClick={send.resend}>
-          重发
-        </button>
+        <>
+          <button className="btn btn-ghost" onClick={send.resend}>
+            重发
+          </button>
+          <ConfirmButton className="btn btn-ghost" label="他手机不行" confirmLabel="再点一次：改成当面给他看" onConfirm={send.inPerson} />
+        </>
       )}
     </BottomBar>
   );
@@ -314,6 +329,10 @@ export function NightPhones({ s }: { s: GameState }) {
   const cur = s.ns!.slot;
   const latest = useRef(room);
   latest.current = room;
+  const step = `${s.night}-${cur}-${slotActor(s, currentSlot(s))?.n ?? ''}`;
+  useEffect(() => {
+    if (latest.current.offline.length) latest.current.setOffline([]);
+  }, [step]);
   useEffect(() => {
     if (!live) return;
     const r = latest.current;
@@ -323,7 +342,7 @@ export function NightPhones({ s }: { s: GameState }) {
   return null;
 }
 
-export const IDLE_BODY = (s: GameState): MsgBody => ({ card: { title: `第 ${s.night} 夜`, big: ['今晚你没有行动'] } });
+export const IDLE_BODY = (s: GameState): MsgBody => ({ card: { title: `第 ${s.night} 夜：今晚你`, big: ['没有行动'] } });
 
 /** 前面步骤里没选完就被跳过的选人请求：[座位, 消息 id] */
 export function stalePicks(s: GameState, r: Pick<HostRoom, 'msgs' | 'acks'>): [number, string][] {

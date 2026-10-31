@@ -17,7 +17,7 @@ import { msgStatus, type AiPublic } from '../../room/protocol';
 import type { Game } from '../../store';
 import { dealCard } from '../dealCard';
 import { EndScreen } from '../End';
-import { BottomBar } from '../common';
+import { BottomBar, ConfirmButton } from '../common';
 import { NightPhones, useNightUnread } from '../room/nightRoom';
 import { RoomJoin, useRoom, type HostRoom } from '../room/hostRoom';
 import { aiStep } from './aiHost';
@@ -97,6 +97,9 @@ export default function AiApp({ g, onExit }: { g: Game; onExit: () => void }) {
           <b>AI 说书人 · {scriptOf(s).name}</b>
           <small>{room.code ? `房间 ${room.code}` : '还没开房间'}</small>
         </div>
+        {room.code && (
+          <ConfirmButton className="btn btn-ghost btn-sm" label="关闭房间" confirmLabel="再点一次：关闭房间，所有玩家退出" onConfirm={room.close} />
+        )}
       </header>
       {!unlocked && s.phase !== 'setup' && canSpeak && <p className="card card-warn ai-unlock">点一下屏幕开启声音（平板要先点一下才能念台词）。</p>}
       {body}
