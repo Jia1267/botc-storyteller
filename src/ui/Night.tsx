@@ -1506,7 +1506,9 @@ function LilMonstaStep({ g, s }: { g: Game; s: GameState }) {
   const asker = minions[0]?.n;
   const ask = usePhoneAsk(s, asker ?? 0, { count: 1, title: '小怪宝', lines: slotLines('lilmonsta', s.style), disabled: nonMinions, off: !!locked || asker === undefined }, setBs);
   const lunNote = lunatic ? `疯子是 ${seatName(lunatic.n)}${s.ns?.lunaticPick ? `，今晚他选了 ${seatName(s.ns.lunaticPick)}` : ''}。` : undefined;
-  const tell = usePhoneSend(s, bs.length ? minions.map((x) => infoTo(x.n, { title: '今晚照看小怪宝的是', big: [seatName(bs[0])], note: lunNote })) : []);
+  // 爪牙们闭眼也要知道彼此是谁（当面时是一起睁眼看到的）
+  const minionNote = `爪牙：${minions.map((x) => seatName(x.n)).join('、')}。${lunNote ?? ''}`;
+  const tell = usePhoneSend(s, bs.length ? minions.map((x) => infoTo(x.n, { title: '今晚照看小怪宝的是', big: [seatName(bs[0])], note: minionNote })) : []);
   const phone = usePhoneOn(asker) && (tell.on || !bs.length);
   if (phone)
     return (

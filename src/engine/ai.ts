@@ -2,30 +2,32 @@
 // 要选人的步骤去问他（手机上选），要给信息的步骤按"让局势最均衡"的推荐给法给；
 // 和真人说书人模式用同一套引擎，只是把说书人点的那一下换成了推荐的那个选项。
 import { balance, recommend } from './balance';
-import { actorFor, believedRole, circleOrder, demonSeat, hasAbility, isDemonSeat, isEvil, lilMonsta, malfunction, scriptOf, seatName, seatOf, teamOf } from './core';
+import { actorFor, believedRole, circleOrder, demonSeat, hasAbility, inPlay, isDemonSeat, isEvil, lilMonsta, malfunction, scriptOf, seatName, seatOf, teamOf } from './core';
 import {
   currentSlot, demonKillPreview, effectiveSlot, fangguJumps, godfatherOutsiders, goonTriggered, minionSeats, pithagBlock, previewImp, previewSlayer, previewVirgin, slotActor,
   type SlotPayload,
 } from './flow';
 import {
-  chambermaidChoices, clockmakerChoices, dreamerChoices, flowergirlChoices, fortuneChoices, grandmotherChoices, innkeeperDrunkChoices, mathChoices, mayorBounceChoices,
-  numberChoices, oracleChoices, pairChoices, pithagNightChoices, revealChoices, sageChoices, sailorDrunkChoices, seamstressChoices, shabalothReviveChoices, starpassChoices,
-  sweetheartChoices, tinkerChoices, towncrierChoices, twistChoices, vigorPoisonChoices,
+  balloonistChoices, bountyChoices, chambermaidChoices, clockmakerChoices, dreamerChoices, flowergirlChoices, fortuneChoices, generalChoices, grandmotherChoices,
+  innkeeperDrunkChoices, lilKillChoices, mathChoices, mayorBounceChoices, numberChoices, oracleChoices, pairChoices, pithagNightChoices, revealChoices, sageChoices,
+  sailorDrunkChoices, seamstressChoices, shabalothReviveChoices, starpassChoices, sweetheartChoices, tinkerChoices, towncrierChoices, twistChoices, vigorPoisonChoices,
+  widowInformChoices,
 } from './info';
 import { ROLES, roleName, type RoleId, type Team } from './roles';
 import { seeded, shuffle, type Rng } from './rng';
-import { replaceRole } from './setup';
+import { drunkFakeChoices, marionetteFakeChoices, replaceRole, setCount } from './setup';
 import { librarianZeroLines, phoneDuskLines, slotLines } from './scripts';
 import type { GameState, SlotId } from './types';
 
 /** AI 说书人能带的剧本 */
-export const AI_SCRIPTS = ['tb', 'bmr', 'sv'] as const;
+export const AI_SCRIPTS = ['tb', 'bmr', 'sv', 'sunset', 'spooky', 'alvsal'] as const;
 
 /**
- * AI 局不配的角色：要靠人判断的（造谣者的话是不是真的、"疯狂"像不像、巫师的愿望……），
- * 以及网页还没接到 AI 白天流程里的。
+ * AI 局不配的角色：要靠人判断的（造谣者的话是不是真的、"疯狂"像不像、艺术家/渔夫白天找说书人、
+ * 瘟疫医生死后说书人自己用爪牙能力……），以及网页还没接到 AI 白天流程里的。
+ * 窃窃私语的镇民几乎都在这里，所以 AI 不带窃窃私语。
  */
-export const AI_EXCLUDED: RoleId[] = ['gossip', 'mutant', 'cerenovus', 'artist', 'savant', 'juggler'];
+export const AI_EXCLUDED: RoleId[] = ['gossip', 'mutant', 'cerenovus', 'artist', 'savant', 'juggler', 'pixie', 'harpy', 'plaguedoctor', 'fisherman'];
 
 /** AI 局里还能选的角色（哲学家、麻脸巫婆的选项） */
 const aiRoles = (rs: RoleId[]) => rs.filter((r) => !AI_EXCLUDED.includes(r));
@@ -33,14 +35,43 @@ const aiRoles = (rs: RoleId[]) => rs.filter((r) => !AI_EXCLUDED.includes(r));
 /** 这个板子 AI 能带吗 */
 export const aiBoardOk = (roles: RoleId[]) => !roles.some((r) => AI_EXCLUDED.includes(r));
 
-/** 均衡配板之后，把 AI 带不了的角色换成同类型、不在场、AI 带得了的角色 */
-export function aiFixBoard(s: GameState, rng: Rng) {
-  for (let guard = 0; guard < 10; guard++) {
+/**
+ * 均衡配板之后，把 AI 带不了的角色换成同类型、不在场、AI 带得了的角色；换不了返回 false。
+ * 酒鬼、提线木偶以为的身份和恶魔的伪装也换掉：这些角色这局一定不在场，谁说自己是就一定在说谎。
+ */
+export function aiFixBoard(s: GameState, rng: Rng): boolean {
+  for (let guard = 0; guard <= 10; guard++) {
     const bad = s.seats.find((x) => !x.traveller && AI_EXCLUDED.includes(x.role));
-    if (!bad) return;
+    if (!bad) {
+      aiFixFakes(s, rng);
+      return true;
+    }
     const pool = scriptOf(s).roles.filter((r) => teamOf(r) === teamOf(bad.role) && !AI_EXCLUDED.includes(r) && !s.seats.some((x) => x.role === r));
-    if (!pool.length) return;
+    if (!pool.length) return false;
     replaceRole(s, bad.n, pool[Math.floor(rng() * pool.length)], rng);
+  }
+  return false;
+}
+
+function aiFixFakes(s: GameState, rng: Rng) {
+  const ok = (r: RoleId | null) => !r || !AI_EXCLUDED.includes(r);
+  if (!ok(s.drunkFake)) s.drunkFake = drunkFakeChoices(s).find((c) => ok(c.value))?.value ?? s.drunkFake;
+  if (!ok(s.marionetteFake)) s.marionetteFake = marionetteFakeChoices(s).find((c) => ok(c.value))?.value ?? s.marionetteFake;
+  const pool = shuffle(
+    scriptOf(s).roles.filter((r) => (teamOf(r) === 'townsfolk' || teamOf(r) === 'outsider') && ok(r) && !inPlay(s, r) && !s.bluffs.includes(r) && r !== s.drunkFake && r !== s.marionetteFake),
+    rng,
+  );
+  s.bluffs = s.bluffs.map((r) => (ok(r) ? r : (pool.pop() ?? r)));
+}
+
+/** AI 局一定不会出现的角色（剧本上有、AI 带不了）：开局时公开告诉大家 */
+export const aiMissing = (s: GameState) => scriptOf(s).roles.filter((r) => AI_EXCLUDED.includes(r));
+
+/** AI 局配板：均衡，并且不配要靠人判断的角色（同类型换不了——比如男爵要的外来者不够——就重新配一套） */
+export function aiSetCount(s: GameState, n: number, rng: Rng) {
+  for (let i = 0; i < 20; i++) {
+    setCount(s, n, rng);
+    if (aiFixBoard(s, rng)) return;
   }
 }
 
@@ -86,6 +117,12 @@ export interface AiAsk {
   disabled?: number[];
   opts?: { id: string; label: string; evil?: boolean }[];
   skip?: string;
+  /** 要按顺序选 */
+  ordered?: boolean;
+  /** 选之前先给他看的魔典（寡妇） */
+  rows?: string[];
+  /** 同一步问好几个人、或问同一个人两次时区分（默认 pick） */
+  tag?: string;
 }
 
 /** 他在手机上的回答 */
@@ -95,10 +132,19 @@ export interface AiAnswer {
   skip: boolean;
 }
 
+export interface AiDone {
+  send: AiMsg[];
+  payload: SlotPayload;
+}
+
+/** 问完他还要再同时问几个人（哈迪寂亚选中的三个人各选活还是死） */
+export interface AiMore {
+  more: AiAsk[];
+  then: (as: AiAnswer[]) => AiDone;
+}
+
 /** 这一步要做什么：直接处理，或者先问他、拿到他的选择再处理（处理时可能还要发信息给别人） */
-export type AiPlan =
-  | { say?: string[]; send: AiMsg[]; payload: SlotPayload }
-  | { ask: AiAsk; send?: AiMsg[]; then: (a: AiAnswer) => { send: AiMsg[]; payload: SlotPayload } };
+export type AiPlan = (AiDone & { say?: string[] }) | { ask: AiAsk; send?: AiMsg[]; then: (a: AiAnswer) => AiDone | AiMore };
 
 const roleOpts = (rs: RoleId[]) => rs.map((r) => ({ id: r, label: roleName(r), evil: teamOf(r) === 'minion' || teamOf(r) === 'demon' }));
 const deadSeats = (s: GameState) => s.seats.filter((x) => !x.alive).map((x) => x.n);
@@ -156,6 +202,23 @@ export function aiPlan(s: GameState, deps: { spyRows: (s: GameState) => string[]
         payload: none,
       };
     }
+    case 'lilmonsta': {
+      // 小怪宝：第一个活着的爪牙替大家选照看者，再告诉所有爪牙（谁是爪牙、疯子是谁）；第 2 夜起谁死按推荐
+      const minions = s.seats.filter((x) => x.alive && teamOf(x.role) === 'minion');
+      const lun = s.seats.find((x) => x.role === 'lunatic' && x.alive);
+      const note = `爪牙：${minions.map((x) => seatName(x.n)).join('、')}。${lun ? `疯子是 ${seatName(lun.n)}${s.ns?.lunaticPick ? `，今晚他选了 ${seatName(s.ns.lunaticPick)}` : ''}。` : ''}`;
+      const finish = (bs: number): AiDone => {
+        const choices = s.night > 1 ? lilKillChoices({ ...s, babysitter: bs }, rngOf(s, bs)) : [];
+        const kill = choices.length ? choices[recommend(choices, balance(s).score, rngOf(s, bs + 2))]?.value : undefined;
+        return { send: minions.map((x) => ({ n: x.n, tag: 'info', card: { title: '今晚照看小怪宝的是', big: [seatName(bs)], note } })), payload: { kind: 'lilmonsta', babysitter: bs, kill } };
+      };
+      if (s.babysitterLocked && s.babysitter) return finish(s.babysitter);
+      if (!minions.length) return { send: [], payload: none };
+      return {
+        ask: { n: minions[0].n, count: 1, title: '小怪宝：替爪牙们选谁照看它', lines: lines('lilmonsta'), disabled: s.seats.filter((x) => !minions.includes(x)).map((x) => x.n) },
+        then: ({ seats: [bs] }) => finish(bs ?? minions[0].n),
+      };
+    }
   }
   if (!actor) return { send: [], payload: none };
   const me = actor.n;
@@ -164,9 +227,23 @@ export function aiPlan(s: GameState, deps: { spyRows: (s: GameState) => string[]
     case 'poisoner':
     case 'monk':
     case 'butler':
+    case 'fearmonger':
       return {
-        ask: { n: me, count: 1, title: roleName(eff), lines: lines(eff), disabled: eff === 'poisoner' ? [] : [me] },
+        ask: { n: me, count: 1, title: roleName(eff), lines: lines(eff), disabled: eff === 'monk' || eff === 'butler' ? [me] : [] },
         then: ({ seats: [t] }) => ({ send: [], payload: { kind: 'target', target: t } }),
+      };
+    case 'widow':
+      // 寡妇：先看魔典再下毒；再按推荐告诉一名善良玩家"寡妇在场"
+      return {
+        ask: { n: me, count: 1, title: roleName('widow'), lines: lines('widow'), rows: deps.spyRows(s) },
+        then: ({ seats: [t] }) => {
+          const choices = widowInformChoices({ ...s, widowPoison: t }, rngOf(s, t));
+          const who = choices.length ? (choices[recommend(choices, balance(s).score, rngOf(s, t + 3))]?.value ?? null) : null;
+          return {
+            send: who ? [{ n: who, tag: 'inform', card: { title: '这个角色在场', big: ['寡妇'], lines: ['寡妇在场。'] } }] : [],
+            payload: { kind: 'widow', target: t, informed: who },
+          };
+        },
       };
     case 'washerwoman':
     case 'librarian':
@@ -239,8 +316,72 @@ export function aiPlan(s: GameState, deps: { spyRows: (s: GameState) => string[]
         payload: { kind: 'reveal', pick: t, role: c.value, truth: c.truth, twist: !!c.twist },
       };
     }
+    case 'alchemist': {
+      // 炼金术士：告诉他有哪个爪牙的能力，之后在那个爪牙的位置问他
+      const ab = s.alchemistAbility;
+      if (!ab) return { send: [], payload: none };
+      return { send: [{ n: me, tag: 'info', card: { title: '你拥有这个爪牙的能力（你仍然是善良的）', big: [roleName(ab)], ability: ROLES[ab].ability, lines: lines('alchemist') } }], payload: none };
+    }
   }
-  return bmrPlan(s, eff, actor.n, lines) ?? svPlan(s, eff, actor.n, lines);
+  return bmrPlan(s, eff, actor.n, lines) ?? svPlan(s, eff, actor.n, lines) ?? alvsalPlan(s, eff, actor.n, lines);
+}
+
+/* ---------------- 王不见王 ---------------- */
+
+function alvsalPlan(s: GameState, eff: SlotId, me: number, lines: (sl: SlotId) => string[]): AiPlan | null {
+  const none: SlotPayload = { kind: 'none' };
+  const info = (card: AiCard, l?: string[]): AiMsg[] => [{ n: me, tag: 'info', card: l?.length ? { ...card, lines: l } : card }];
+  switch (eff) {
+    case 'marionette': {
+      const m = s.seats.find((x) => x.role === 'marionette');
+      return m ? { send: info({ title: '这名玩家是你的提线木偶', big: [seatName(m.n)] }, lines('marionette')), payload: none } : { send: [], payload: none };
+    }
+    case 'balloonist': {
+      const choices = balloonistChoices(s, me, rngOf(s));
+      const c = choices[best(s, choices, 1)] ?? choices[0];
+      if (!c) return { send: [], payload: none };
+      return {
+        send: info({ title: '这名玩家的角色类型和你之前得知的都不同', big: [seatName(c.value.seat)] }, lines('balloonist')),
+        payload: { kind: 'balloon', seat: c.value.seat, team: c.value.team, truth: c.truth },
+      };
+    }
+    case 'bountyhunter': {
+      const choices = bountyChoices(s, me, rngOf(s));
+      const c = choices[best(s, choices, 1)] ?? choices[0];
+      if (!c) return { send: [], payload: none };
+      return { send: info({ title: '这名玩家是邪恶的', big: [seatName(c.value)] }, lines('bountyhunter')), payload: { kind: 'bounty', seat: c.value, truth: c.truth, twist: c.twist } };
+    }
+    case 'general': {
+      const choices = generalChoices(s, me);
+      const c = choices[best(s, choices, 1)] ?? choices[0];
+      const word = c.value === 'good' ? '善良占优' : c.value === 'evil' ? '邪恶占优' : '都不占优';
+      return { send: info({ title: '现在的局势', big: [word] }, lines('general')), payload: { kind: 'general', answer: c.value, truth: c.truth } };
+    }
+    case 'alhadikhia':
+      // 哈迪寂亚：按顺序选三个人，三个人再各自在手机上选活还是死（同时问，互相看不到）
+      return {
+        ask: { n: me, count: 3, ordered: true, title: roleName('alhadikhia'), lines: lines('alhadikhia'), skip: '今晚不选' },
+        then: (a): AiDone | AiMore => {
+          if (a.skip || a.seats.length < 3) return { send: [], payload: { kind: 'hadikhia', picks: [], live: [] } };
+          const picks = a.seats;
+          return {
+            more: picks.map((n, i) => ({
+              n,
+              tag: `life${i}`,
+              count: 0,
+              title: '恶魔选中了你：你选择活还是死？',
+              lines: [`恶魔选择了 ${picks.map(seatName).join('、')}。如果三个人都选"活"，三个人都会死。`],
+              opts: [
+                { id: 'live', label: '活' },
+                { id: 'die', label: '死' },
+              ],
+            })),
+            then: (as) => ({ send: [], payload: { kind: 'hadikhia', picks, live: as.map((x) => x.opts[0] === 'live') } }),
+          };
+        },
+      };
+  }
+  return null;
 }
 
 /* ---------------- 梦殒春宵 ---------------- */
@@ -547,7 +688,8 @@ export function voteOrder(s: GameState, nominee: number): number[] {
 
 /**
  * 数票：活人举手算一票；死人举手用掉他整局唯一的一票（已经用过的不算）；
- * 管家（包括以为自己是管家的酒鬼）只有主人也举手时才算。
+ * 管家（包括以为自己是管家的酒鬼）只有主人也举手时才算；
+ * 能力生效的报丧女妖举手算两票，死了也不用掉那一票。
  */
 export function tallyHands(s: GameState, order: number[], hands: Record<number, boolean>, ghostUsed: number[]): { votes: number; counted: number[]; spent: number[] } {
   const counted: number[] = [];
@@ -555,6 +697,10 @@ export function tallyHands(s: GameState, order: number[], hands: Record<number, 
   for (const n of order) {
     if (!hands[n]) continue;
     const x = seatOf(s, n);
+    if (s.bansheeActive === n) {
+      counted.push(n, n);
+      continue;
+    }
     if (!x.alive && ghostUsed.includes(n)) continue;
     if (x.alive && believedRole(s, x) === 'butler' && s.butlerMaster && !hands[s.butlerMaster]) continue;
     counted.push(n);

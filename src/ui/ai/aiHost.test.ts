@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
+import { teamOf } from '../../engine/core';
 import { finishDeal } from '../../engine/flow';
 import { seeded, type Rng } from '../../engine/rng';
-import { newGame, setCount, setScript, shuffleSeats, startDeal } from '../../engine/setup';
-import { aiFixBoard } from '../../engine/ai';
+import { newGame, setScript, shuffleSeats, startDeal } from '../../engine/setup';
+import { aiSetCount, type AI_SCRIPTS } from '../../engine/ai';
 import type { GameState } from '../../engine/types';
 import { gotKey, idleMsgId, pickKey, type Acks, type AiActs, type AiPublic, type MsgBody, type RoomMeta, type RoomMsg, type SeatInfo } from '../../room/protocol';
 import { IDLE_BODY, idleDue, nightUnread, stalePicks } from '../room/nightRoom';
@@ -78,7 +79,8 @@ function phones(s: GameState, room: FakeRoom, rng: Rng, log: string[]) {
   const acts = (n: number) => (room.acks[n] ?? {}) as AiActs;
   if (ai.stage === 'nominate') {
     const designated = ai.alive[(ai.day - 1) % ai.alive.length];
-    for (const n of ai.alive) {
+    const voters = ai.banshee && !ai.alive.includes(ai.banshee) ? [...ai.alive, ai.banshee] : ai.alive;
+    for (const n of voters) {
       if (n === designated && !(ai.nominators ?? []).includes(n) && acts(n).nom?.day !== ai.day) {
         const free = ai.alive.concat(ai.ghost ?? []).filter((x) => !(ai.nominees ?? []).includes(x));
         if (free.length) {
@@ -88,8 +90,16 @@ function phones(s: GameState, room: FakeRoom, rng: Rng, log: string[]) {
         } else act(n, 'nomore', ai.day);
       } else if (n !== designated || (ai.nominators ?? []).includes(n)) act(n, 'nomore', ai.day);
     }
+    // 偶尔有人宣称戏法师公开猜（随便猜，或者照着真身份猜）
+    if ((ai.claims ?? []).includes('alsaahir') && rng() < 0.05) {
+      const g = ai.alive[Math.floor(rng() * ai.alive.length)];
+      const team = (t: string) => s.seats.filter((x) => !x.traveller && teamOf(x.role) === t).map((x) => x.n);
+      const right = rng() < 0.5;
+      if (acts(g).guess?.day !== ai.day)
+        act(g, 'guess', right ? { day: ai.day, minions: team('minion'), demons: team('demon') } : { day: ai.day, demons: [ai.alive[Math.floor(rng() * ai.alive.length)]] });
+    }
     // 偶尔有人宣称猎手开枪
-    if (rng() < 0.05) {
+    if ((ai.claims ?? []).includes('slayer') && rng() < 0.05) {
       const sh = ai.alive[Math.floor(rng() * ai.alive.length)];
       const tg = ai.alive[Math.floor(rng() * ai.alive.length)];
       if (sh !== tg && acts(sh).slay?.day !== ai.day) act(sh, 'slay', { day: ai.day, target: tg });
@@ -103,13 +113,12 @@ function phones(s: GameState, room: FakeRoom, rng: Rng, log: string[]) {
 }
 
 /** 跑一局 AI 暗流涌动，直到结束 */
-async function playGame(count: number, seed: number, script: 'tb' | 'bmr' | 'sv' = 'tb') {
+async function playGame(count: number, seed: number, script: (typeof AI_SCRIPTS)[number] = 'tb') {
   const rng = seeded(seed);
   const s = newGame();
   setScript(s, script);
   s.ai = { priv: 300, pub: 300, vote: 5 };
-  setCount(s, count, rng);
-  aiFixBoard(s, rng);
+  aiSetCount(s, count, rng);
   shuffleSeats(s, rng);
   startDeal(s);
   finishDeal(s);
@@ -173,6 +182,30 @@ describe('AI 说书人：一局从第 1 夜到结束（假的房间和手机）'
     }
   });
 
+  it('残阳高照：5、6 人都能走到结束（炼金术士、茶艺师、弄臣、僵怖假死等由网页处理）', async () => {
+    for (let seed = 1; seed <= 20; seed++) {
+      const { s, said, ticks, room } = await playGame(5 + (seed % 2), seed + 300, 'sunset');
+      const ai = room.meta.ai;
+      expect(s.phase, `残阳高照种子 ${seed}：${ticks} 步还没结束（第${ai?.day}天 ${ai?.stage}），最后说的是：${said.slice(-3).join(' / ')}`).toBe('end');
+    }
+  });
+
+  it('幽灵茶会：5、6 人都能走到结束（小怪宝、寡妇、恐惧之灵、呆瓜等由网页处理）', async () => {
+    for (let seed = 1; seed <= 20; seed++) {
+      const { s, said, ticks, room } = await playGame(5 + (seed % 2), seed + 400, 'spooky');
+      const ai = room.meta.ai;
+      expect(s.phase, `幽灵茶会种子 ${seed}：${ticks} 步还没结束（第${ai?.day}天 ${ai?.stage}），最后说的是：${said.slice(-3).join(' / ')}`).toBe('end');
+    }
+  });
+
+  it('王不见王：不同人数都能走到结束（哈迪寂亚三人选活死、报丧女妖、戏法师等由网页处理）', async () => {
+    for (let seed = 1; seed <= 20; seed++) {
+      const { s, said, ticks, room } = await playGame(7 + (seed % 9), seed + 500, 'alvsal');
+      const ai = room.meta.ai;
+      expect(s.phase, `王不见王种子 ${seed}：${ticks} 步还没结束（第${ai?.day}天 ${ai?.stage}），最后说的是：${said.slice(-3).join(' / ')}`).toBe('end');
+    }
+  });
+
   it('每晚每个人都收到至少一条消息；天亮前都点完了', async () => {
     const { room, s } = await playGame(8, 7);
     const nights = s.night;
@@ -186,7 +219,7 @@ describe('AI 说书人：一局从第 1 夜到结束（假的房间和手机）'
 
   it('公开进度里没有任何人的身份', async () => {
     const { room, s } = await playGame(9, 3);
-    const text = JSON.stringify(room.meta.ai ?? {});
+    const text = JSON.stringify({ ...room.meta.ai, claims: undefined });
     for (const x of s.seats) expect(text.includes(x.role)).toBe(false);
   });
 });

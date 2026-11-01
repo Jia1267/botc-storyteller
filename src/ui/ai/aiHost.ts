@@ -1,10 +1,10 @@
 // AI 说书人的后台主持：每次看一眼现在该做什么，只做一件事（发一条消息、记一步、改一下公开进度）。
 // 不依赖 React：平板上由 useAiHost 每半秒调一次；测试里用假的房间一局一局地跑。
-import { AI_DEFAULTS, aiPlan, aiSlayer, aiVirgin, tallyHands, voteOrder, type AiAnswer, type AiAsk, type AiMsg } from '../../engine/ai';
-import { clone, isDemonSeat, seatName, seatOf, teamOf } from '../../engine/core';
+import { AI_DEFAULTS, aiPlan, aiSlayer, aiVirgin, tallyHands, voteOrder, type AiAnswer, type AiAsk, type AiDone, type AiMsg } from '../../engine/ai';
+import { clone, hasAbility, isDemonSeat, malfunction, scriptOf, seatName, seatOf, teamOf } from '../../engine/core';
 import {
-  completeSlot, currentSlot, execute, finishDay, goonInformed, klutzChoose, klutzNeedsChoice, moonchildChoose, moonchildNeedsChoice, nomResults, nominateVirgin, pacifistCanSave,
-  slayerShoot, voteNeed, witchActive, witchStrikes,
+  alsaahirCorrect, alsaahirGuess, completeSlot, currentSlot, execute, fearmongerNominates, finishDay, goonInformed, klutzChoose, klutzNeedsChoice, moonchildChoose,
+  moonchildNeedsChoice, nomResults, nominateVirgin, pacifistCanSave, slayerShoot, voteNeed, witchActive, witchStrikes,
 } from '../../engine/flow';
 import { balance, recommend } from '../../engine/balance';
 import { pacifistChoices } from '../../engine/info';
@@ -33,22 +33,31 @@ export interface AiCtx {
 
 const aliveOf = (s: GameState) => s.seats.filter((x) => x.alive && !x.left).map((x) => x.n);
 
-/** 公开状态里跟着死活变的部分 */
-function live(s: GameState, ai: Partial<AiPublic>): Pick<AiPublic, 'alive' | 'ghost' | 'spent'> {
+/** 公开状态里跟着局面变的部分 */
+function live(s: GameState, ai: Partial<AiPublic>): Pick<AiPublic, 'alive' | 'ghost' | 'spent' | 'claims' | 'banshee'> {
   const spent = ai.spent ?? [];
-  return { alive: aliveOf(s), ghost: s.seats.filter((x) => !x.alive && !x.left && !spent.includes(x.n)).map((x) => x.n), spent };
+  const roles = scriptOf(s).roles;
+  return {
+    alive: aliveOf(s),
+    ghost: s.seats.filter((x) => !x.alive && !x.left && !spent.includes(x.n)).map((x) => x.n),
+    spent,
+    // 剧本上有这个角色，手机上才给"宣称猎手开枪""宣称戏法师猜"
+    claims: (['slayer', 'alsaahir'] as const).filter((r) => roles.includes(r)),
+    banshee: s.bansheeActive ?? undefined,
+  };
 }
 
 /** 选人请求发到手机上的内容（和真人说书人模式一样） */
 function askBody(s: GameState, a: AiAsk): MsgBody {
   const deaths = s.ns?.deaths ?? [];
   return {
-    card: { title: a.title, big: [], lines: a.lines },
+    card: { title: a.title, big: [], lines: a.lines, rows: a.rows },
     ask: {
       count: a.count,
       seats: s.seats.filter((x) => !x.left).map((x) => x.n),
       dead: s.seats.filter((x) => !x.alive && !deaths.includes(x.n)).map((x) => x.n),
       disabled: a.disabled?.filter((n) => !deaths.includes(n)),
+      ordered: a.ordered,
       opts: a.opts,
       skip: a.skip,
     },
@@ -118,22 +127,36 @@ export async function aiStep(c: AiCtx): Promise<void> {
       commit((st) => completeSlot(st, { kind: 'none' }));
       return;
     }
-    let r: Exclude<typeof plan, { ask: unknown }>;
+    let r: AiDone & { say?: string[] };
     let before: AiMsg[] = [];
+    // 问一个人：没发就发；拿到回答返回回答，还没答返回 null
+    const askOne = async (a: AiAsk): Promise<AiAnswer | 'sent' | null> => {
+      const id = nightMsgId(s.night, cur, a.n, a.tag ?? 'pick');
+      if (!room.msgs[a.n]?.[id]) {
+        await room.send(a.n, id, askBody(s, a));
+        return 'sent';
+      }
+      const got = answerOf(room.acks, a.n, id);
+      return got ? { seats: got.seats ?? [], opts: got.opts ?? [], skip: !!got.skip } : null;
+    };
     if ('ask' in plan) {
       const a = plan.ask;
       // 问他之前先给他看的（例如疯子先看假的爪牙和伪装）
       before = plan.send ?? [];
       for (const m of before) if (await sendNight(room, s, m)) return;
-      const id = nightMsgId(s.night, cur, a.n, 'pick');
-      if (!room.msgs[a.n]?.[id]) {
-        await room.send(a.n, id, askBody(s, a));
-        return;
-      }
-      const got = answerOf(room.acks, a.n, id);
-      const ans: AiAnswer | null = got ? { seats: got.seats ?? [], opts: got.opts ?? [], skip: !!got.skip } : takeSkip() ? randomAnswer(s, a) : null;
+      const got = await askOne(a);
+      if (got === 'sent') return;
+      const ans = got ?? (takeSkip() ? randomAnswer(s, a) : null);
       if (!ans) return;
-      r = plan.then(ans);
+      const next = plan.then(ans);
+      if ('more' in next) {
+        // 再同时问几个人：一起发出去，都答了（或平板点了跳过）才往下走
+        const got2: (AiAnswer | 'sent' | null)[] = [];
+        for (const q of next.more) got2.push(await askOne(q));
+        if (got2.includes('sent')) return;
+        if (got2.includes(null) && !takeSkip()) return;
+        r = next.then(got2.map((x, i) => (x && x !== 'sent' ? x : randomAnswer(s, next.more[i]))));
+      } else r = next;
     } else r = plan;
     for (const m of r.send) if (await sendNight(room, s, m)) return;
     const waiting = [...before, ...r.send].some((m) => !room.acks[m.n]?.[nightMsgId(s.night, cur, m.n, m.tag)]);
@@ -149,6 +172,8 @@ export async function aiStep(c: AiCtx): Promise<void> {
     }
     // 天亮前：所有人都点完手机上的消息（没行动的人会收到"今晚你没有行动"）
     if (slot === 'dawn' && unread.length && !takeSkip()) return;
+    // 恐惧之灵换了目标要在天亮宣布：天亮这一步会清掉这个标记，先记下来
+    if (slot === 'dawn') mark.current[`fear-${s.night}`] = s.fearAnnounce ? 1 : 0;
     commit((st) => completeSlot(st, r.payload));
     return;
   }
@@ -201,9 +226,12 @@ export async function aiStep(c: AiCtx): Promise<void> {
   }
   // 新的一天：念死讯，开始私聊倒计时
   if (!ai || ai.day !== s.night || ai.stage === 'night' || ai.stage === 'wait') {
-    const deaths = dawnLines(s.ns?.deaths ?? [], s.style, { phones: true }).join('');
+    // 报丧女妖昨晚被恶魔杀死、哈迪寂亚选了谁、谁复活了、恐惧之灵换了目标：和死讯一起公开说
+    const bs = s.bansheeActive ? seatOf(s, s.bansheeActive) : null;
+    const banshee = bs?.death?.when === 'night' && bs.death.night === s.night ? bs.n : undefined;
+    const deaths = dawnLines(s.ns?.deaths ?? [], s.style, { phones: true, fear: !!mark.current[`fear-${s.night}`], hadikhia: s.ns?.hadikhia, banshee, revived: s.ns?.revived }).join('');
     await speak(`${deaths}现在是第 ${s.night} 天。私聊时间 ${Math.round(settings.priv / 60)} 分钟，可以离开座位找人单独聊。`, {
-      stage: 'private', day: s.night, until: now + settings.priv * 1000, nominators: [], nominees: [], noMore: [], shots: [], results: [], nom: undefined, vote: undefined,
+      stage: 'private', day: s.night, until: now + settings.priv * 1000, nominators: [], nominees: [], noMore: [], shots: [], guesses: [], results: [], nom: undefined, vote: undefined,
     });
     return;
   }
@@ -222,6 +250,21 @@ export async function aiStep(c: AiCtx): Promise<void> {
       await speak(`${seatName(shooter)} 宣称自己是猎手，向 ${seatName(target)} 开枪。${r.hits ? `${seatName(target)} 死了。` : '什么都没有发生。'}`, { shots: [...(ai.shots ?? []), shooter] });
       return;
     }
+    // 宣称戏法师公开猜：真戏法师全猜中（并且没中毒）善良直接获胜，否则什么都不会发生
+    const guesser = aliveOf(s).find((n) => acts(n).guess?.day === ai.day && !(ai.guesses ?? []).includes(n));
+    if (guesser !== undefined) {
+      const g = acts(guesser).guess!;
+      const m = g.minions ?? [];
+      const d = g.demons ?? [];
+      const real = hasAbility(s, seatOf(s, guesser), 'alsaahir');
+      const wins = real && alsaahirCorrect(s, m, d) && !malfunction(s, guesser);
+      if (real) commit((st) => alsaahirGuess(st, guesser, m, d, alsaahirCorrect(st, m, d)));
+      await speak(
+        `${seatName(guesser)} 宣称自己是戏法师，公开猜：爪牙是 ${m.map(seatName).join('、') || '没有'}，恶魔是 ${d.map(seatName).join('、') || '没有'}。${wins ? '' : '什么都没有发生。'}`,
+        { guesses: [...(ai.guesses ?? []), guesser] },
+      );
+      return;
+    }
   }
   switch (ai.stage) {
     case 'private':
@@ -233,13 +276,17 @@ export async function aiStep(c: AiCtx): Promise<void> {
         await speak('公聊结束，现在开始提名。想提名谁，就在手机上点他。每人每天只能提名一次，每人每天只能被提名一次。不想再提名了，就点"今天不再提名"。', { stage: 'nominate', until: undefined });
       return;
     case 'nominate': {
+      // 报丧女妖能力生效：死了也能提名，每天两次
+      const banshee = s.bansheeActive;
       const alive = aliveOf(s);
-      const noMore = alive.filter((n) => acts(n).nomore === ai.day);
+      const voters = banshee && !alive.includes(banshee) ? [...alive, banshee] : alive;
+      const noMore = voters.filter((n) => acts(n).nomore === ai.day);
       if (noMore.join() !== (ai.noMore ?? []).join()) {
         await put({ noMore });
         return;
       }
-      const canNominate = alive.filter((n) => !(ai.nominators ?? []).includes(n));
+      const times = (n: number) => (ai.nominators ?? []).filter((x) => x === n).length;
+      const canNominate = voters.filter((n) => times(n) < (n === banshee ? 2 : 1));
       // 所有活人都点了"不再提名"，或者没人还能提名：今天结束
       if (canNominate.every((n) => noMore.includes(n)) || takeSkip()) {
         const block = nomResults(s).block;
@@ -263,6 +310,8 @@ export async function aiStep(c: AiCtx): Promise<void> {
       const base = { nominators: [...(ai.nominators ?? []), by], nominees: [...(ai.nominees ?? []), target], nom: { i, by, target } };
       // 城镇公告员要知道今天有没有爪牙提名过
       if (teamOf(seatOf(s, by).role) === 'minion') commit((st) => (st.minionNominatedDay = st.night));
+      // 恐惧之灵提名：记下来（处决的正好是他的目标，那一方落败）
+      if (seatOf(s, by).role === 'fearmonger' && seatOf(s, by).alive) commit((st) => fearmongerNominates(st, target));
       // 被女巫诅咒的人一提名就死（提名照常投票）
       const curse = s.witchCurse;
       if (curse && curse.seat === by && curse.night === s.night && witchActive(s) && seatOf(s, by).alive) {

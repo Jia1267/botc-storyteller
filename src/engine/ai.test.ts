@@ -1,18 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { aiBoardOk, aiFixBoard, aiPlan, aiSlayer, aiVirgin, tallyHands, voteOrder, type AiAnswer, type AiAsk } from './ai';
+import { aiBoardOk, aiPlan, aiSetCount, aiSlayer, aiVirgin, tallyHands, voteOrder, type AI_SCRIPTS, type AiAnswer, type AiAsk } from './ai';
 import { completeSlot, currentSlot, execute, finishDay, nomResults, voteNeed } from './flow';
 import { seeded, type Rng } from './rng';
-import { newGame, setCount, setScript, shuffleSeats, startDeal } from './setup';
+import { newGame, setScript, shuffleSeats, startDeal } from './setup';
 import { finishDeal } from './flow';
 import type { GameState } from './types';
 
 /** 一局 AI：网页配板（不配 AI 带不了的角色）、随机坐、发完身份进第 1 夜 */
-function aiGame(count: number, seed: number, script: 'tb' | 'bmr' | 'sv' = 'tb'): GameState {
+function aiGame(count: number, seed: number, script: (typeof AI_SCRIPTS)[number] = 'tb'): GameState {
   const rng = seeded(seed);
   const s = newGame();
   setScript(s, script);
-  setCount(s, count, rng);
-  aiFixBoard(s, rng);
+  aiSetCount(s, count, rng);
   shuffleSeats(s, rng);
   startDeal(s);
   finishDeal(s);
@@ -41,7 +40,9 @@ function runNight(s: GameState, rng: Rng): string[] {
     const plan = aiPlan(s, { spyRows: () => ['1号 · 间谍'] });
     expect(plan, `第 ${s.night} 夜 ${slot} 没有处理办法`).not.toBeNull();
     if ('ask' in plan!) {
-      const r = plan.then(pick(s, plan.ask, rng));
+      const r0 = plan.then(pick(s, plan.ask, rng));
+      // 哈迪寂亚：再问选中的三个人
+      const r = 'more' in r0 ? r0.then(r0.more.map((q) => pick(s, q, rng))) : r0;
       for (const m of r.send) expect(m.card.big.length + (m.card.rows?.length ?? 0)).toBeGreaterThan(0);
       completeSlot(s, r.payload);
     } else completeSlot(s, plan!.payload);
@@ -104,7 +105,8 @@ describe('AI 说书人（暗流涌动）', () => {
     for (let guard = 0; guard < 30 && s.phase === 'night'; guard++) {
       const plan = aiPlan(s, { spyRows: () => [] })!;
       if ('ask' in plan) {
-        const r = plan.then(pick(s, plan.ask, rng));
+        const r0 = plan.then(pick(s, plan.ask, rng));
+        const r = 'more' in r0 ? r0.then(r0.more.map((q) => pick(s, q, rng))) : r0;
         if (r.payload.kind === 'fortune') expect(r.send[0].card.big[0]).toBe(r.payload.yes ? '有恶魔' : '没有恶魔');
         completeSlot(s, r.payload);
       } else {
@@ -113,6 +115,39 @@ describe('AI 说书人（暗流涌动）', () => {
       }
     }
     expect(s.phase).toBe('day');
+  });
+
+  it('残阳高照、幽灵茶会、王不见王：夜里每一步都有处理办法；不配要靠人判断的角色', () => {
+    const cases = [
+      ['sunset', 5, 2],
+      ['spooky', 5, 2],
+      ['alvsal', 7, 9],
+    ] as const;
+    for (const [script, min, span] of cases)
+      for (let seed = 1; seed <= 30; seed++) {
+        const rng = seeded(seed * 29);
+        const s = aiGame(min + (seed % span), seed, script);
+        // 在场的角色、酒鬼/提线木偶以为的身份、恶魔的伪装都不能是 AI 带不了的
+        expect(aiBoardOk([...s.seats.map((x) => x.role), ...s.bluffs, ...[s.drunkFake, s.marionetteFake].filter((r) => r !== null)]), `${script} 种子 ${seed}`).toBe(true);
+        for (let round = 0; round < 12 && s.phase !== 'end'; round++) {
+          runNight(s, rng);
+          if (s.phase !== 'day') break;
+          const alive = s.seats.filter((x) => x.alive);
+          execute(s, rng() < 0.6 ? alive[Math.floor(rng() * alive.length)].n : null);
+          if (s.phase === 'day') finishDay(s);
+        }
+        expect(['end', 'night', 'day']).toContain(s.phase);
+      }
+  });
+
+  it('报丧女妖能力生效：举手算两票，死了也不用掉那一票', () => {
+    const s = aiGame(7, 2);
+    s.seats.forEach((x, i) => (x.role = (['banshee', 'chef', 'empath', 'dreamer', 'general', 'poisoner', 'alhadikhia'] as const)[i]));
+    s.seats[0].alive = false;
+    s.bansheeActive = 1;
+    const order = voteOrder(s, 7);
+    expect(tallyHands(s, order, { 1: true, 2: true }, []).votes).toBe(3);
+    expect(tallyHands(s, order, { 1: true }, []).spent).toEqual([]);
   });
 
   it('投票顺序：从被提名者下一位开始，被提名者最后', () => {

@@ -349,7 +349,8 @@ export function stalePicks(s: GameState, r: Pick<HostRoom, 'msgs' | 'acks'>): [n
   const out: [number, string][] = [];
   for (const [k, box] of Object.entries(r.msgs))
     for (const id of Object.keys(box)) {
-      const m = /^N(\d+)-(\d+)-\d+-pick$/.exec(id);
+      // 选人请求，以及哈迪寂亚之后三个人的"活还是死"
+      const m = /^N(\d+)-(\d+)-\d+-(pick|life\d)$/.exec(id);
       if (m && Number(m[1]) === s.night && Number(m[2]) < s.ns!.slot && !r.acks[k]?.[id]) out.push([Number(k), id]);
     }
   return out;

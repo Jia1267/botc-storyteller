@@ -2,16 +2,15 @@
 // 屏幕是公共面板（谁坐哪、谁死了、倒计时、投票），台词用系统自带的中文语音念，同时显示文字；
 // 夜里按官方顺序在后台处理，选人、给信息都走各人的手机。平板上不显示任何人的身份。
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AI_DEFAULTS, AI_SCRIPTS, aiFixBoard } from '../../engine/ai';
+import { AI_DEFAULTS, AI_SCRIPTS, aiMissing, aiSetCount } from '../../engine/ai';
+import { roleName } from '../../engine/roles';
 import { scriptOf } from '../../engine/core';
 import { SCRIPTS } from '../../engine/editions';
-import type { Rng } from '../../engine/rng';
-import type { GameState } from '../../engine/types';
 import { seatName } from '../../engine/core';
 import { finishDeal } from '../../engine/flow';
 import { seeded } from '../../engine/rng';
 import { endLines } from '../../engine/scripts';
-import { setCount, setScript, shuffleSeats, startDeal } from '../../engine/setup';
+import { setScript, shuffleSeats, startDeal } from '../../engine/setup';
 import { watchOffset } from '../../room/api';
 import { msgStatus, type AiPublic } from '../../room/protocol';
 import type { Game } from '../../store';
@@ -155,12 +154,17 @@ function AiSetup({ g, onStart, onExit }: { g: Game; onStart: () => void; onExit:
           <b>几个人玩？</b>
           <div className="role-grid">
             {Array.from({ length: sc.max - sc.min + 1 }, (_, i) => i + sc.min).map((n) => (
-              <button key={n} className="role-chip" style={s.count === n && seatNs.length ? { boxShadow: '0 0 0 2px var(--gold) inset' } : undefined} onClick={() => g.commit((st) => aiCount(st, n, seeded(Date.now())))}>
+              <button key={n} className="role-chip" style={s.count === n && seatNs.length ? { boxShadow: '0 0 0 2px var(--gold) inset' } : undefined} onClick={() => g.commit((st) => aiSetCount(st, n, seeded(Date.now())))}>
                 {n} 人
               </button>
             ))}
           </div>
           <p className="dim">角色由网页随机配一套均衡的，平板上不会显示。</p>
+          {aiMissing(s).length > 0 && (
+            <p className="dim">
+              这局一定不会出现（要靠真人说书人判断，AI 带不了）：{aiMissing(s).map(roleName).join('、')}。可以告诉大家。
+            </p>
+          )}
         </div>
         <div className="card stack" style={{ gap: 10 }}>
           <b>时间</b>
@@ -199,12 +203,6 @@ function AiSetup({ g, onStart, onExit }: { g: Game; onStart: () => void; onExit:
       </BottomBar>
     </main>
   );
-}
-
-/** AI 局配板：均衡，并且不配要靠人判断的角色 */
-function aiCount(s: GameState, n: number, rng: Rng) {
-  setCount(s, n, rng);
-  aiFixBoard(s, rng);
 }
 
 /* ---------------- 发身份 ---------------- */
@@ -290,7 +288,7 @@ function AiTable({ g, room, say }: { g: Game; room: HostRoom; say: (t: string) =
                 <b>{seatName(x.n)}</b>
                 <small>{name(x.n) || ''}</small>
                 <small>
-                  {x.alive ? '' : (ai?.ghost ?? []).includes(x.n) ? '已死 · 还有一票' : '已死 · 没有票了'}
+                  {ai?.banshee === x.n ? '报丧女妖 · 提名两次、算两票' : x.alive ? '' : (ai?.ghost ?? []).includes(x.n) ? '已死 · 还有一票' : '已死 · 没有票了'}
                   {hand ? ' ✋' : ''}
                   {ai?.nominees?.includes(x.n) ? ' · 被提名过' : ''}
                 </small>

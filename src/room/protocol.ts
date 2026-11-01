@@ -52,8 +52,14 @@ export interface AiPublic {
   noMore?: number[];
   /** 今天宣称猎手开过枪的人 */
   shots?: number[];
+  /** 今天宣称戏法师公开猜过的人 */
+  guesses?: number[];
   /** 今天每次提名的结果 */
   results?: { by: number; target: number; votes: number; text: string }[];
+  /** 剧本上有的、谁都可以公开宣称的角色：手机上才给对应的按钮 */
+  claims?: ('slayer' | 'alsaahir')[];
+  /** 能力生效的报丧女妖（已经公开宣布过）：每天提名两次，投票算两票 */
+  banshee?: number;
 }
 
 /** AI 局里玩家的操作：都写在自己座位下面（acks/{n}/…），只有开房的平板读得到 */
@@ -63,6 +69,8 @@ export interface AiActs {
   hand?: { day: number; i: number; up: boolean };
   nomore?: number;
   slay?: { day: number; target: number };
+  /** 宣称戏法师：公开猜谁是爪牙、谁是恶魔（数据库会去掉空数组） */
+  guess?: { day: number; minions?: number[]; demons?: number[] };
 }
 
 /** 结束后发到每个人手机上的复盘（都是写好的文字，手机上不用再算） */
