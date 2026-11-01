@@ -4,6 +4,7 @@ import { completeSlot, currentSlot, execute, finishDay, nomResults, voteNeed } f
 import { seeded, type Rng } from './rng';
 import { newGame, setScript, shuffleSeats, startDeal } from './setup';
 import { finishDeal } from './flow';
+import { dawnLines } from './scripts';
 import type { GameState } from './types';
 
 /** 一局 AI：网页配板（不配 AI 带不了的角色）、随机坐、发完身份进第 1 夜 */
@@ -148,6 +149,14 @@ describe('AI 说书人（暗流涌动）', () => {
     const order = voteOrder(s, 7);
     expect(tallyHands(s, order, { 1: true, 2: true }, []).votes).toBe(3);
     expect(tallyHands(s, order, { 1: true }, []).spent).toEqual([]);
+  });
+
+  it('哈迪寂亚让死人复活：天亮念"复活了"，不说"活着"，也不重复念', () => {
+    const t = dawnLines([4], 'simple', { phones: true, hadikhia: { picks: [2, 3, 4], alive: [true, true, false] }, revived: [2] }).join('');
+    expect(t).toContain('2号复活了');
+    expect(t).toContain('3号活着');
+    expect(t).toContain('4号死了');
+    expect(t.match(/复活/g)?.length).toBe(1);
   });
 
   it('投票顺序：从被提名者下一位开始，被提名者最后', () => {

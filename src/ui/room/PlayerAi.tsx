@@ -1,7 +1,8 @@
 // AI 说书人局：玩家手机上的白天——看倒计时和平板念的话，提名、发言结束、轮到自己时举手、不再提名、宣称猎手开枪、宣称戏法师猜。
 import { useEffect, useRef, useState } from 'react';
 import { aiAct, roomError, watchOffset } from '../../room/api';
-import { seatLabel, type AiActs, type AiPublic, type SeatInfo } from '../../room/protocol';
+import { handVotes, seatLabel, type AiActs, type AiPublic, type SeatInfo } from '../../room/protocol';
+import { Icon } from '../icons';
 
 const STAGE: Record<AiPublic['stage'], string> = {
   wait: '准备中',
@@ -40,22 +41,48 @@ export function AiDay({ code, seat, ai, seats }: { code: string; seat: number; a
   // 宣称戏法师：先点爪牙，再点恶魔（都可以点好几个）
   const [guess, setGuess] = useState<{ minions: number[]; demons: number[] }>({ minions: [], demons: [] });
   // 自己今天做过什么只记在本机（数据库里的操作只有平板读得到）
-  const [mine, setMine] = useState<{ day: number; nom?: number; noMore?: boolean; shot?: boolean; guessed?: boolean; hand?: Record<number, boolean> }>({ day: ai.day });
+  // 存在本机：刷新、锁屏回来，"今天不再提名"、举手这些还在
+  const key = `botc-ai-mine-${code}-${seat}`;
+  const [mine, setMine] = useState<{ day: number; nom?: number; noMore?: boolean; shot?: boolean; guessed?: boolean; hand?: Record<number, boolean> }>(() => {
+    try {
+      return JSON.parse(localStorage.getItem(key) ?? '') ?? { day: ai.day };
+    } catch {
+      return { day: ai.day };
+    }
+  });
   const me = mine.day === ai.day ? mine : { day: ai.day };
-  const set = (x: Partial<typeof mine>) => setMine({ ...me, ...x, day: ai.day });
-  const act = <K extends keyof AiActs>(k: K, v: AiActs[K]) => aiAct(code, seat, k, v).catch((e) => setErr(roomError(e)));
+  const set = (x: Partial<typeof mine>) => {
+    const next = { ...me, ...x, day: ai.day };
+    setMine(next);
+    try {
+      localStorage.setItem(key, JSON.stringify(next));
+    } catch {
+      /* 存不了只是刷新后按钮状态不在 */
+    }
+  };
+  const act = <K extends keyof AiActs>(k: K, v: AiActs[K] | null) => aiAct(code, seat, k, v).catch((e) => setErr(roomError(e)));
 
   const alive = ai.alive.includes(seat);
   // 报丧女妖能力生效：死了也能提名，每天两次，投票算两票
   const banshee = ai.banshee === seat;
-  const nominated = (ai.nominators ?? []).filter((n) => n === seat).length >= (banshee ? 2 : 1);
+  const times = (ai.nominators ?? []).filter((n) => n === seat).length;
+  const nominated = times >= (banshee ? 2 : 1);
   const claims = ai.claims ?? [];
+  // 我的提名：已经轮到过了 / 被别人抢先提名了同一个人（作废）/ 还在排队
+  const myNomDone = me.nom !== undefined && ((ai.results ?? []).some((r) => r.by === seat && r.target === me.nom) || (ai.nom?.by === seat && ai.nom.target === me.nom));
+  const myNomLost = me.nom !== undefined && !myNomDone && (ai.nominees ?? []).includes(me.nom);
+  const myNomQueued = me.nom !== undefined && !myNomDone && !myNomLost && !nominated;
+  const withdraw = () => {
+    set({ nom: undefined });
+    act('nom', null);
+  };
   const left = ai.until ? ai.until - now : 0;
   const name = (n: number) => `${seatLabel(n)}${n === seat ? '（你）' : seats[n]?.name ? `（${seats[n].name}）` : ''}`;
   const voter = ai.stage === 'vote' && ai.vote ? ai.vote.order[ai.vote.at] : null;
   const nom = ai.nom;
+  const voters = ai.alive.length + (ai.banshee !== undefined && !ai.alive.includes(ai.banshee) ? 1 : 0);
   const ghost = ai.ghost ?? [];
-  const everyone = [...ai.alive, ...ghost, ...(ai.spent ?? [])].sort((a, b) => a - b);
+  const everyone = [...new Set([...ai.alive, ...ghost, ...(ai.spent ?? [])])].sort((a, b) => a - b);
 
   // 换了阶段就收起选人面板
   useEffect(() => {
@@ -63,6 +90,11 @@ export function AiDay({ code, seat, ai, seats }: { code: string; seat: number; a
     setPick(null);
     setGuess({ minions: [], demons: [] });
   }, [ai.stage, ai.day]);
+  // 轮到自己举手：手机震一下（抬头聊天时也不会错过）
+  const myTurn = voter === seat;
+  useEffect(() => {
+    if (myTurn) navigator.vibrate?.(200);
+  }, [myTurn, nom?.i]);
 
   const grid = (allowed: (n: number) => boolean) => (
     <div className="role-grid">
@@ -84,6 +116,25 @@ export function AiDay({ code, seat, ai, seats }: { code: string; seat: number; a
         {ai.until && (ai.stage === 'private' || ai.stage === 'public' || ai.stage === 'vote') && <b className="ai-clock-sm">{mmss(left)}</b>}
       </div>
       {ai.say && <p className="ai-say-sm">{ai.say}</p>}
+      {ai.stage !== 'night' && ai.dawn && !ai.say?.includes(ai.dawn) && <p className="dim">今天天亮时：{ai.dawn}</p>}
+
+      {/* 我的提名在排队 / 作废了：任何时候都看得到，排队时能撤回 */}
+      {myNomQueued && ai.stage !== 'nominate' && ai.stage !== 'result' && (
+        <div className="card stack" style={{ gap: 6 }}>
+          <p>你提名了 {name(me.nom!)}，在排队：这一轮结束后就轮到你。</p>
+          <button className="btn btn-ghost btn-sm" onClick={withdraw}>
+            撤回我的提名
+          </button>
+        </div>
+      )}
+      {myNomLost && ai.stage !== 'result' && (
+        <div className="card card-warn stack" style={{ gap: 6 }}>
+          <p>你提名的 {name(me.nom!)} 已经被别人先提名了（每人每天只能被提名一次），你的提名作废。{ai.stage === 'nominate' ? '可以重新提名。' : '等提名时间再选一次。'}</p>
+          <button className="btn btn-ghost btn-sm" onClick={withdraw}>
+            知道了
+          </button>
+        </div>
+      )}
 
       {/* 发言 */}
       {(ai.stage === 'speech1' || ai.stage === 'speech2') && nom && (
@@ -105,7 +156,7 @@ export function AiDay({ code, seat, ai, seats }: { code: string; seat: number; a
       {ai.stage === 'vote' && nom && ai.vote && (
         <>
           <p>
-            {name(nom.by)} 提名了 {name(nom.target)}，需要 {ai.vote.need} 票。现在 {Object.values(ai.vote.hands ?? {}).filter(Boolean).length} 人举手。
+            {name(nom.by)} 提名了 {name(nom.target)}，需要 {ai.vote.need} 票。现在 {handVotes(ai)} 票。
           </p>
           {voter === seat ? (
             !alive && !ghost.includes(seat) ? (
@@ -170,14 +221,16 @@ export function AiDay({ code, seat, ai, seats }: { code: string; seat: number; a
               </button>
             </div>
           </div>
-        ) : me.nom !== undefined && !(ai.nominees ?? []).includes(me.nom) ? (
+        ) : myNomQueued ? (
           <div className="stack" style={{ gap: 6 }}>
-            <p className="dim">你提名了 {name(me.nom)}，等平板念出来……（有人比你先提名的话，等他们这轮投完再来）</p>
-            <button className="btn btn-ghost btn-sm" onClick={() => set({ nom: undefined })}>
+            <p className="dim">你提名了 {name(me.nom!)}，等平板念出来……（有人比你先提名的话，等他们这轮投完就轮到你）</p>
+            <button className="btn btn-ghost btn-sm" onClick={withdraw}>
               撤回，重新选
             </button>
           </div>
-        ) : (
+        ) : myNomLost ? null : (
+          <>
+            {banshee && <p className="dim">你是报丧女妖：今天还能提名 {2 - times} 次（死了也能），投票时举手算两票。</p>}
           <div className="row" style={{ gap: 8 }}>
             <button className="btn btn-primary grow" onClick={() => setMode('nom')}>
               提名
@@ -192,17 +245,20 @@ export function AiDay({ code, seat, ai, seats }: { code: string; seat: number; a
               {me.noMore ? '已点"今天不再提名"（点一下撤回）' : '今天不再提名'}
             </button>
           </div>
+          </>
         ))}
       {ai.stage === 'nominate' && (
         <p className="dim">
-          {(ai.noMore ?? []).length} / {ai.alive.length + (ai.banshee && !ai.alive.includes(ai.banshee) ? 1 : 0)} 个能提名的人点了"今天不再提名"；全部点了，今天的提名就结束。
+          {(ai.noMore ?? []).length} / {voters} 人已经提名过或点了"今天不再提名"；到齐了，今天的提名就结束。
         </p>
       )}
 
       {/* 宣称猎手开枪 */}
       {claims.includes('slayer') && alive && ai.stage !== 'night' && ai.stage !== 'vote' && ai.stage !== 'result' && !(ai.shots ?? []).includes(seat) && !me.shot && (
         <details className="more">
-          <summary>宣称自己是猎手并开枪</summary>
+          <summary>
+            <Icon name="chevronDown" size={18} /> 宣称自己是猎手并开枪
+          </summary>
           <div className="stack" style={{ gap: 8, marginTop: 8 }}>
             <p className="dim">谁都可以宣称。只有真的猎手打中恶魔，恶魔才会死；否则什么都不会发生。每人每天只能开一次。</p>
             {mode === 'slay' ? (
@@ -233,7 +289,9 @@ export function AiDay({ code, seat, ai, seats }: { code: string; seat: number; a
       {/* 宣称戏法师公开猜 */}
       {claims.includes('alsaahir') && alive && ai.stage !== 'night' && ai.stage !== 'vote' && ai.stage !== 'result' && !(ai.guesses ?? []).includes(seat) && !me.guessed && (
         <details className="more">
-          <summary>宣称自己是戏法师，公开猜爪牙和恶魔</summary>
+          <summary>
+            <Icon name="chevronDown" size={18} /> 宣称自己是戏法师，公开猜爪牙和恶魔
+          </summary>
           <div className="stack" style={{ gap: 8, marginTop: 8 }}>
             <p className="dim">谁都可以宣称。只有真的戏法师把所有爪牙和恶魔都猜对（死了的也算），善良才直接获胜；否则什么都不会发生。每人每天只能猜一次。</p>
             {mode === 'minions' || mode === 'demons' ? (

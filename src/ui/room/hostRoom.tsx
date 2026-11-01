@@ -6,7 +6,7 @@ import type { CardContent } from '../common';
 import { BottomBar, ConfirmButton, Sheet } from '../common';
 
 /** 递二维码之前先说清楚座位号怎么数：错了的话所有"邻座"信息都会错 */
-const SEAT_TIP = '递二维码之前先告诉大家：从谁开始是 1 号，然后顺时针 2 号、3 号……坐错号的话，共情者、厨师这些和邻座有关的信息都会错。';
+const SEAT_TIP = '递二维码之前先告诉大家：从谁开始是 1 号，然后顺时针 2 号、3 号……坐错号的话，和邻座有关的信息都会错。';
 
 // 二维码也是打开房间面板时才加载
 const Qr = lazy(() => import('./Qr').then((m) => ({ default: m.Qr })));

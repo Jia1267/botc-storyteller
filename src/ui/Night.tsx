@@ -23,7 +23,7 @@ import {
   SEATS_COUNT, choirboyChoices, farmerChoices, kingChoices, knightChoices, nobleChoices, priestessChoices, seatsVerdict, shugenjaChoices, shugenjaSteps,
   stewardChoices, type SeatsKind, huntsmanBecomeChoices, legionChoices, viChoices,
 } from '../engine/info';
-import { SLOT_TITLE, dawnLines, librarianZeroLines, phoneDuskLines, slotLines } from '../engine/scripts';
+import { SLOT_TITLE, abilityNoSetup, dawnLines, hadikhiaLifeLines, librarianZeroLines, lilmonstaPhoneLines, phoneDuskLines, slotLines } from '../engine/scripts';
 import type { GameState, Seat, SlotId } from '../engine/types';
 import { stepRng, type Game } from '../store';
 import { BottomBar, ChoicePanel, ConfirmButton, DoBox, SayBox, SeatPicker, Sheet, TableCtx, TwoChoice, drunkWhy, roleCard, seatMarks, usePoint, useUi } from './common';
@@ -1504,7 +1504,7 @@ function LilMonstaStep({ g, s }: { g: Game; s: GameState }) {
   const nonMinions = s.seats.filter((x) => !minions.includes(x)).map((x) => x.n);
   // 手机上：由第一个爪牙替大家选照看者；选好后告诉所有爪牙
   const asker = minions[0]?.n;
-  const ask = usePhoneAsk(s, asker ?? 0, { count: 1, title: '小怪宝', lines: slotLines('lilmonsta', s.style), disabled: nonMinions, off: !!locked || asker === undefined }, setBs);
+  const ask = usePhoneAsk(s, asker ?? 0, { count: 1, title: '小怪宝', lines: lilmonstaPhoneLines, disabled: nonMinions, off: !!locked || asker === undefined }, setBs);
   const lunNote = lunatic ? `疯子是 ${seatName(lunatic.n)}${s.ns?.lunaticPick ? `，今晚他选了 ${seatName(s.ns.lunaticPick)}` : ''}。` : undefined;
   // 爪牙们闭眼也要知道彼此是谁（当面时是一起睁眼看到的）
   const minionNote = `爪牙：${minions.map((x) => seatName(x.n)).join('、')}。${lunNote ?? ''}`;
@@ -1872,7 +1872,7 @@ function AlchemistStep({ g, s, actor }: StepProps) {
   const done = useDone(g);
   const ui = useUi();
   const ab = s.alchemistAbility;
-  const card = ab ? { title: '你拥有这个爪牙的能力（你仍然是善良的）', big: [roleName(ab)], ability: ROLES[ab].ability } : null;
+  const card = ab ? { title: '你拥有这个爪牙的能力（你仍然是善良的）', big: [roleName(ab)], ability: abilityNoSetup(ROLES[ab].ability) } : null;
   const phoneOn = usePhoneOn(actor.n);
   const phone = usePhoneSend(s, card ? [infoTo(actor.n, card, slotLines('alchemist', s.style))] : []);
   if (phoneOn)
@@ -1900,7 +1900,7 @@ function AlchemistStep({ g, s, actor }: StepProps) {
       <SayBox lines={slotLines('alchemist', s.style)} title="小声说" />
       <Tips role="alchemist" drunk={actor.role === 'drunk'} />
       <BottomBar wide>
-        {ab && <CardButton onClick={() => ui.showCard({ title: '你拥有这个爪牙的能力（你仍然是善良的）', big: [roleName(ab)], ability: ROLES[ab].ability })} />}
+        {ab && <CardButton onClick={() => ui.showCard(card!)} />}
         <button className="btn btn-primary grow" onClick={() => done({ kind: 'none' })}>
           完成，下一步
         </button>
@@ -2413,7 +2413,7 @@ function HadikhiaStep({ g, s, actor }: StepProps) {
   const lifeAsk = (i: number) => ({
     count: 0,
     title: '恶魔选中了你：你选择活还是死？',
-    lines: [`恶魔选择了 ${seatsText(picks)}。如果三个人都选"活"，三个人都会死。`],
+    lines: hadikhiaLifeLines(picks, picks[i] !== undefined && !seatOf(s, picks[i]).alive),
     opts: liveOpts,
     off: !ask.on || picks.length < 3,
     tag: `life${i}`,

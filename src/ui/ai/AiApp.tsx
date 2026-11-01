@@ -12,7 +12,7 @@ import { seeded } from '../../engine/rng';
 import { endLines } from '../../engine/scripts';
 import { setScript, shuffleSeats, startDeal } from '../../engine/setup';
 import { watchOffset } from '../../room/api';
-import { msgStatus, type AiPublic } from '../../room/protocol';
+import { handVotes, msgStatus, type AiPublic } from '../../room/protocol';
 import type { Game } from '../../store';
 import { dealCard } from '../dealCard';
 import { EndScreen } from '../End';
@@ -97,7 +97,12 @@ export default function AiApp({ g, onExit }: { g: Game; onExit: () => void }) {
           <small>{room.code ? `房间 ${room.code}` : '还没开房间'}</small>
         </div>
         {room.code && (
-          <ConfirmButton className="btn btn-ghost btn-sm" label="关闭房间" confirmLabel="再点一次：关闭房间，所有玩家退出" onConfirm={room.close} />
+          <ConfirmButton
+            className="btn btn-ghost btn-sm"
+            label="关闭房间"
+            confirmLabel={s.phase === 'end' ? '再点一次：关闭房间（手机上的复盘还能看，MVP 不能再投）' : '再点一次：关闭房间，所有玩家退出'}
+            onConfirm={room.close}
+          />
         )}
       </header>
       {!unlocked && s.phase !== 'setup' && canSpeak && <p className="card card-warn ai-unlock">点一下屏幕开启声音（平板要先点一下才能念台词）。</p>}
@@ -197,8 +202,8 @@ function AiSetup({ g, onStart, onExit }: { g: Game; onStart: () => void; onExit:
         </button>
       </div>
       <BottomBar wide>
-        <button className="btn btn-primary btn-block" disabled={!room.code || !seatNs.length || missing.length > 0} onClick={start}>
-          {!seatNs.length ? '先选人数' : !room.code ? '先开房间' : missing.length ? `还没入座：${missing.map(seatName).join('、')}` : '开始：把身份发到每个人手机上'}
+        <button className="btn btn-primary btn-block" disabled={room.busy || !seatNs.length || missing.length > 0} onClick={room.code ? start : room.open}>
+          {!seatNs.length ? '先选人数' : !room.code ? '开房间（大家扫码入座）' : missing.length ? `还没入座：${missing.map(seatName).join('、')}` : '开始：把身份发到每个人手机上'}
         </button>
       </BottomBar>
     </main>
@@ -274,21 +279,24 @@ function AiTable({ g, room, say }: { g: Game; room: HostRoom; say: (t: string) =
         {ai?.nom && (ai.stage === 'speech1' || ai.stage === 'speech2' || ai.stage === 'vote') && (
           <p className="ai-nom">
             {seatName(ai.nom.by)} 提名了 {seatName(ai.nom.target)}
-            {ai.stage === 'vote' && ai.vote && `　需要 ${ai.vote.need} 票　现在 ${Object.values(ai.vote.hands ?? {}).filter(Boolean).length} 人举手`}
+            {ai.stage === 'vote' && ai.vote && `　需要 ${ai.vote.need} 票　现在 ${handVotes(ai)} 票`}
             {voter && `　轮到 ${seatName(voter)}`}
           </p>
         )}
         {ai?.say && <p className="ai-say">{ai.say}</p>}
+        {s.phase === 'day' && ai?.dawn && !ai.say?.includes(ai.dawn) && <p className="muted">今天天亮时：{ai.dawn}</p>}
         {s.phase === 'night' && <p className="muted">{unread.length ? `还在等 ${unread.length} 个人点手机。` : '网页在处理……'}</p>}
         <div className="ai-seats">
           {s.seats.map((x) => {
             const hand = ai?.vote?.hands?.[x.n];
+            // 死活按公开进度显示：夜里死的人天亮才公布，不能先出现在桌上
+            const alive = ai ? ai.alive.includes(x.n) : x.alive;
             return (
-              <div key={x.n} className={`ai-seat${x.alive ? '' : ' dead'}${voter === x.n ? ' turn' : ''}${hand ? ' up' : ''}`}>
+              <div key={x.n} className={`ai-seat${alive ? '' : ' dead'}${voter === x.n ? ' turn' : ''}${hand ? ' up' : ''}`}>
                 <b>{seatName(x.n)}</b>
                 <small>{name(x.n) || ''}</small>
                 <small>
-                  {ai?.banshee === x.n ? '报丧女妖 · 提名两次、算两票' : x.alive ? '' : (ai?.ghost ?? []).includes(x.n) ? '已死 · 还有一票' : '已死 · 没有票了'}
+                  {ai?.banshee === x.n ? '报丧女妖 · 提名两次、算两票' : alive ? '' : (ai?.ghost ?? []).includes(x.n) ? '已死 · 还有一票' : '已死 · 没有票了'}
                   {hand ? ' ✋' : ''}
                   {ai?.nominees?.includes(x.n) ? ' · 被提名过' : ''}
                 </small>

@@ -287,6 +287,8 @@ function wakers(s: GameState, slot: SlotId): number[] {
   if (!shouldRun(s, slot)) return slot === 'ravenkeeper' ? ravens(s) : [];
   const evil = s.seats.filter((x) => x.alive && (teamOf(x.role) === 'minion' || teamOf(x.role) === 'demon')).map((x) => x.n);
   if (slot === 'duchess') return s.duchessVisitors;
+  // 哈迪寂亚可能选中任何人（死人也行）：这一步过了才发"今晚你没有行动"
+  if (slot === 'alhadikhia') return s.seats.filter((x) => !x.left).map((x) => x.n);
   if (slot === 'damsel' || slot === 'snitch' || slot === 'riot') return minionSeats(s).filter((x) => x.alive).map((x) => x.n);
   if (slot === 'poppygrower' || slot === 'hatter') return evil;
   if (slot === 'eviltwin') return [...pendingActors(s, slot).map((x) => x.n), ...(s.twin ? [s.twin] : [])];

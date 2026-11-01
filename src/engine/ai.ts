@@ -16,7 +16,7 @@ import {
 import { ROLES, roleName, type RoleId, type Team } from './roles';
 import { seeded, shuffle, type Rng } from './rng';
 import { drunkFakeChoices, marionetteFakeChoices, replaceRole, setCount } from './setup';
-import { librarianZeroLines, phoneDuskLines, slotLines } from './scripts';
+import { abilityNoSetup, hadikhiaLifeLines, librarianZeroLines, lilmonstaPhoneLines, phoneDuskLines, slotLines } from './scripts';
 import type { GameState, SlotId } from './types';
 
 /** AI 说书人能带的剧本 */
@@ -215,7 +215,7 @@ export function aiPlan(s: GameState, deps: { spyRows: (s: GameState) => string[]
       if (s.babysitterLocked && s.babysitter) return finish(s.babysitter);
       if (!minions.length) return { send: [], payload: none };
       return {
-        ask: { n: minions[0].n, count: 1, title: '小怪宝：替爪牙们选谁照看它', lines: lines('lilmonsta'), disabled: s.seats.filter((x) => !minions.includes(x)).map((x) => x.n) },
+        ask: { n: minions[0].n, count: 1, title: '小怪宝：替爪牙们选谁照看它', lines: lilmonstaPhoneLines, disabled: s.seats.filter((x) => !minions.includes(x)).map((x) => x.n) },
         then: ({ seats: [bs] }) => finish(bs ?? minions[0].n),
       };
     }
@@ -320,7 +320,7 @@ export function aiPlan(s: GameState, deps: { spyRows: (s: GameState) => string[]
       // 炼金术士：告诉他有哪个爪牙的能力，之后在那个爪牙的位置问他
       const ab = s.alchemistAbility;
       if (!ab) return { send: [], payload: none };
-      return { send: [{ n: me, tag: 'info', card: { title: '你拥有这个爪牙的能力（你仍然是善良的）', big: [roleName(ab)], ability: ROLES[ab].ability, lines: lines('alchemist') } }], payload: none };
+      return { send: [{ n: me, tag: 'info', card: { title: '你拥有这个爪牙的能力（你仍然是善良的）', big: [roleName(ab)], ability: abilityNoSetup(ROLES[ab].ability), lines: lines('alchemist') } }], payload: none };
     }
   }
   return bmrPlan(s, eff, actor.n, lines) ?? svPlan(s, eff, actor.n, lines) ?? alvsalPlan(s, eff, actor.n, lines);
@@ -370,7 +370,7 @@ function alvsalPlan(s: GameState, eff: SlotId, me: number, lines: (sl: SlotId) =
               tag: `life${i}`,
               count: 0,
               title: '恶魔选中了你：你选择活还是死？',
-              lines: [`恶魔选择了 ${picks.map(seatName).join('、')}。如果三个人都选"活"，三个人都会死。`],
+              lines: hadikhiaLifeLines(picks, !seatOf(s, n).alive),
               opts: [
                 { id: 'live', label: '活' },
                 { id: 'die', label: '死' },

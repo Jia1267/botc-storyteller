@@ -20,6 +20,14 @@ export function keyMoments(s: GameState): { when: string; text: string }[] {
     it.texts.push(`${seatName(x.n)} ${roleName(x.role)} ${x.death.cause}`);
     byTime.set(t, it);
   }
+  // 复活的人身上已经没有死亡记录了：从记录里把"复活了"找出来
+  for (const e of s.log) {
+    if (e.phase === 'setup' || !e.text.includes('复活了')) continue;
+    const t = e.night * 2 + (e.phase === 'day' ? 1 : 0);
+    const it = byTime.get(t) ?? { when: `第 ${e.night} ${e.phase === 'day' ? '天' : '夜'}`, texts: [] };
+    it.texts.push(e.text);
+    byTime.set(t, it);
+  }
   const out = [...byTime.entries()].sort((a, b) => a[0] - b[0]).map(([, v]) => ({ when: v.when, text: v.texts.join('；') }));
   const w = endWhen(s);
   out.push({ when: `第 ${w.n} ${w.unit}`, text: `${s.winReason}，${s.winner === 'evil' ? '邪恶' : '善良'}获胜` });

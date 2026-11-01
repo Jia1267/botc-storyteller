@@ -220,6 +220,18 @@ function EndRoom({ s }: { s: GameState }) {
         MVP 投票：{end?.voters ?? 0} / {total} 人已投
         {ranked.length > 0 && <>　{ranked.map(([n, v]) => `${seatName(Number(n))} ${v} 票`).join('，')}</>}
       </p>
+      {total > 0 && (end?.voters ?? 0) >= total && ranked.length > 0 && (
+        <p className="card" style={{ textAlign: 'center' }}>
+          大家都投完了：本局 MVP 是{' '}
+          <b>
+            {ranked
+              .filter(([, v]) => v === ranked[0][1])
+              .map(([n]) => seatName(Number(n)))
+              .join('、')}
+          </b>
+          （{ranked[0][1]} 票）
+        </p>
+      )}
     </div>
   );
 }

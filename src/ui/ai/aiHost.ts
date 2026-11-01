@@ -229,9 +229,9 @@ export async function aiStep(c: AiCtx): Promise<void> {
     // 报丧女妖昨晚被恶魔杀死、哈迪寂亚选了谁、谁复活了、恐惧之灵换了目标：和死讯一起公开说
     const bs = s.bansheeActive ? seatOf(s, s.bansheeActive) : null;
     const banshee = bs?.death?.when === 'night' && bs.death.night === s.night ? bs.n : undefined;
-    const deaths = dawnLines(s.ns?.deaths ?? [], s.style, { phones: true, fear: !!mark.current[`fear-${s.night}`], hadikhia: s.ns?.hadikhia, banshee, revived: s.ns?.revived }).join('');
-    await speak(`${deaths}现在是第 ${s.night} 天。私聊时间 ${Math.round(settings.priv / 60)} 分钟，可以离开座位找人单独聊。`, {
-      stage: 'private', day: s.night, until: now + settings.priv * 1000, nominators: [], nominees: [], noMore: [], shots: [], guesses: [], results: [], nom: undefined, vote: undefined,
+    const dawn = dawnLines(s.ns?.deaths ?? [], s.style, { phones: true, fear: !!mark.current[`fear-${s.night}`], hadikhia: s.ns?.hadikhia, banshee, revived: s.ns?.revived });
+    await speak(`${dawn.join('')}现在是第 ${s.night} 天。私聊时间 ${Math.round(settings.priv / 60)} 分钟，可以离开座位找人单独聊。`, {
+      stage: 'private', day: s.night, dawn: dawn.slice(1).join(''), until: now + settings.priv * 1000, nominators: [], nominees: [], noMore: [], shots: [], guesses: [], results: [], nom: undefined, vote: undefined,
     });
     return;
   }
@@ -280,15 +280,17 @@ export async function aiStep(c: AiCtx): Promise<void> {
       const banshee = s.bansheeActive;
       const alive = aliveOf(s);
       const voters = banshee && !alive.includes(banshee) ? [...alive, banshee] : alive;
-      const noMore = voters.filter((n) => acts(n).nomore === ai.day);
+      const times = (n: number) => (ai.nominators ?? []).filter((x) => x === n).length;
+      const used = (n: number) => times(n) >= (n === banshee ? 2 : 1);
+      // 公开的"到齐了"名单：点了"今天不再提名"的，加上提名次数用完的
+      const noMore = voters.filter((n) => acts(n).nomore === ai.day || used(n));
       if (noMore.join() !== (ai.noMore ?? []).join()) {
         await put({ noMore });
         return;
       }
-      const times = (n: number) => (ai.nominators ?? []).filter((x) => x === n).length;
-      const canNominate = voters.filter((n) => times(n) < (n === banshee ? 2 : 1));
-      // 所有活人都点了"不再提名"，或者没人还能提名：今天结束
-      if (canNominate.every((n) => noMore.includes(n)) || takeSkip()) {
+      const canNominate = voters.filter((n) => !used(n));
+      // 能提名的人都到齐了：今天结束
+      if (voters.every((n) => noMore.includes(n)) || takeSkip()) {
         const block = nomResults(s).block;
         // 和平主义者：被处决的善良玩家要不要不死，按推荐
         let pacifist = false;

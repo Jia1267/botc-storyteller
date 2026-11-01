@@ -196,7 +196,8 @@ export function ConfirmButton({ label, confirmLabel, onConfirm, className = 'btn
   const [armedAt, setArmedAt] = useState<number | null>(null);
   useEffect(() => {
     if (armedAt === null) return;
-    const t = setTimeout(() => setArmedAt(null), 3000);
+    // 6 秒内点第二下：犹豫一下也来得及
+    const t = setTimeout(() => setArmedAt(null), 6000);
     return () => clearTimeout(t);
   }, [armedAt]);
   const armed = armedAt !== null;

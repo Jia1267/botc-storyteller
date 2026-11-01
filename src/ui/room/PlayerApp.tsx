@@ -15,6 +15,20 @@ const loadSeen = (code: string, seat: number): string[] => {
     return [];
   }
 };
+/** 最后一局的复盘存在本机：房间关了、开了新的一局也还能看 */
+const lastEndKey = (code: string) => `botc-room-last-end-${code}`;
+interface LastEnd {
+  end: EndInfo;
+  seat: number;
+  seats: Record<string, SeatInfo>;
+}
+const loadLastEnd = (code: string): LastEnd | null => {
+  try {
+    return JSON.parse(localStorage.getItem(lastEndKey(code)) ?? 'null');
+  } catch {
+    return null;
+  }
+};
 const loadName = () => {
   try {
     return localStorage.getItem(NAME_KEY) ?? '';
@@ -52,12 +66,36 @@ export default function PlayerApp({ code }: { code: string }) {
   if (seat !== null) was.current = seat;
   const kicked = seat === null && stray === null && meta?.phase === 'game' ? was.current : null;
 
+  // 上一局的复盘（本机存的）：房间里已经没有了的时候拿出来
+  const last = meta?.phase === 'end' && meta.end ? null : loadLastEnd(code);
+  const lastView = last && <EndView code={code} seat={last.seat} end={last.end} seats={last.seats} closed />;
+
   let body;
   if (err) body = <p className="card card-warn">{err}</p>;
   else if (meta === undefined || !uid) body = <p className="dim">正在连接房间 {code}…</p>;
-  else if (meta === null) body = <p className="card card-warn">房间 {code} 不存在，或者已经关了。找说书人要新的链接。</p>;
-  else if (seat === null) body = <PickSeat code={code} uid={uid} meta={meta} seats={seats} stray={stray} kicked={kicked} />;
-  else body = <Seated code={code} seat={seat} name={mine![1].name} meta={meta} seats={seats} />;
+  else if (meta === null)
+    body = last ? (
+      <div className="stack">
+        <p className="card card-warn">房间 {code} 已经关了。下面是上一局的复盘。</p>
+        {lastView}
+      </div>
+    ) : (
+      <p className="card card-warn">房间 {code} 不存在，或者已经关了。找说书人要新的链接。</p>
+    );
+  else {
+    body = seat === null ? <PickSeat code={code} uid={uid} meta={meta} seats={seats} stray={stray} kicked={kicked} /> : <Seated code={code} seat={seat} name={mine![1].name} meta={meta} seats={seats} />;
+    // 开新局之前（还在选座、等开始）可以翻一翻上一局
+    if (last && meta.phase === 'lobby')
+      body = (
+        <div className="stack">
+          {body}
+          <details className="more">
+            <summary>上一局的复盘</summary>
+            {lastView}
+          </details>
+        </div>
+      );
+  }
 
   return (
     <div className="app">
@@ -109,7 +147,7 @@ function PickSeat({ code, uid, meta, seats, stray, kicked }: { code: string; uid
         {stray !== null
           ? `说书人改了人数，你原来的 ${seatLabel(stray)}这局没有了，重新选一个。`
           : lobby
-            ? '说书人会告诉大家从哪里开始数 1 号。点你自己的座位。'
+            ? '先商量好从谁开始是 1 号，然后顺时针数。点你自己的座位。'
             : '游戏已经开始了，只能坐空着的座位（比如说书人给你空出来的、新加的旅行者座位）。'}
       </p>
       <label className="stack" style={{ gap: 6 }}>
@@ -286,7 +324,16 @@ function PickCard({ m, me, seats, onPick }: { m: RoomMsg; me: number; seats: Rec
 }
 
 /** 结束后：胜负、所有人的身份、匿名选 MVP、关键时刻、每晚发生了什么 */
-function EndView({ code, seat, end, seats }: { code: string; seat: number; end: EndInfo; seats: Record<string, SeatInfo> }) {
+function EndView({ code, seat, end, seats, closed = false }: { code: string; seat: number; end: EndInfo; seats: Record<string, SeatInfo>; closed?: boolean }) {
+  // 存一份在本机：说书人关了房间或者开了新的一局，手机上还能看
+  useEffect(() => {
+    if (closed) return;
+    try {
+      localStorage.setItem(lastEndKey(code), JSON.stringify({ end, seat, seats } satisfies LastEnd));
+    } catch {
+      /* 存不了只是房间关了以后看不到 */
+    }
+  }, [closed, code, end, seat, seats]);
   // 自己投了谁只记在本机（数据库里的票别人看不到，自己也读不回来）
   const key = `botc-room-mvp-${code}-${end.at}`;
   const [vote, setVote] = useState<number | null>(() => {
@@ -343,7 +390,12 @@ function EndView({ code, seat, end, seats }: { code: string; seat: number; end: 
       </div>
       <div className="card stack" style={{ gap: 8 }}>
         <h3>选 MVP（匿名，不能投自己）</h3>
-        {vote !== null && pick === null ? (
+        {closed ? (
+          <p className="dim">
+            {vote !== null ? `你投给了 ${name(vote)}。` : ''}投票已经结束
+            {ranked.length > 0 ? `：${ranked.map(([n, v]) => `${seatLabel(Number(n))} ${v} 票`).join('，')}。` : '。'}
+          </p>
+        ) : vote !== null && pick === null ? (
           <>
             <p>
               你投给了 <b>{name(vote)}</b>。谁投了谁不会公开，只公开票数。
@@ -388,7 +440,7 @@ function EndView({ code, seat, end, seats }: { code: string; seat: number; end: 
       <div className="card">
         <h3>复盘：每晚发生了什么</h3>
         <p className="dim" style={{ marginBottom: 8 }}>
-          红色的是说书人给的假信息。
+          红色的是假信息。
         </p>
         <div className="timeline">
           {end.log.map((g, i) => (

@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react';
-import { AI_DEFAULTS } from '../engine/ai';
+import { AI_DEFAULTS, AI_SCRIPTS } from '../engine/ai';
 import { FABLED, FABLED_LIST, ROLES, TEAM_NAME, isEvilTeam, roleName, type FabledId, type RoleId, type Team } from '../engine/roles';
 import { recommend, setupLabel, balance } from '../engine/balance';
 import { actorFor, addLog, inPlay, isEvil, lilMonsta, scriptOf, seatName } from '../engine/core';
-import { SCRIPT_LIST, type ScriptDef, type ScriptId } from '../engine/editions';
+import { SCRIPTS, SCRIPT_LIST, type ScriptDef, type ScriptId } from '../engine/editions';
 import { defaultRng } from '../engine/rng';
 import {
   DISTRIBUTION, F4, MAX_F4, alchemistChoices, amnesiacChoices, bluffChoicesWith, bluffPool, drunkFakeChoices, evilTownsfolkChoices, godfatherChoices, godfatherModFor,
@@ -76,7 +76,7 @@ function ScriptStep({ g }: { g: Game }) {
           </button>
         </div>
         <h2 style={{ fontSize: 22, marginTop: 8 }}>没有说书人？</h2>
-        <p className="dim">让网页当说书人：一台平板放在桌子中间念台词、倒计时、数票，大家用自己的手机看身份、夜里选人、白天提名投票。目前支持暗流涌动、暗月初升、梦殒春宵。</p>
+        <p className="dim">让网页当说书人：一台平板放在桌子中间念台词、倒计时、数票，大家用自己的手机看身份、夜里选人、白天提名投票。目前支持{AI_SCRIPTS.map((id) => SCRIPTS[id].name).join('、')}。</p>
         <button
           className="btn btn-outline btn-block"
           onClick={() =>

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { clone } from './engine/core';
-import { newGame } from './engine/setup';
+import { aiSetCount } from './engine/ai';
+import { newGame, setScript } from './engine/setup';
 import { seeded, type Rng } from './engine/rng';
 import type { GameState } from './engine/types';
 
@@ -75,7 +76,16 @@ export function useGame() {
   }, []);
 
   const reset = useCallback(() => {
-    setData((d) => ({ cur: { ...newGame(), style: d.cur.style }, hist: [] }));
+    setData((d) => {
+      const s: GameState = { ...newGame(), style: d.cur.style };
+      // AI 局：留在 AI 设置页，剧本、人数、时长照旧（同一桌人接着玩，座位不用重选）
+      if (d.cur.ai && d.cur.script !== 'custom') {
+        s.ai = d.cur.ai;
+        setScript(s, d.cur.script);
+        aiSetCount(s, d.cur.count, seeded(Date.now()));
+      }
+      return { cur: s, hist: [] };
+    });
   }, []);
 
   return { s: data.cur, hist: data.hist, prev: data.hist[data.hist.length - 1] ?? null, canUndo: data.hist.length > 0, commit, tweak, undo, reset };

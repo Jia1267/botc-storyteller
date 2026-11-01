@@ -532,6 +532,20 @@ export function librarianZeroLines(style: 'simple' | 'atmo'): string[] {
   return style === 'simple' ? ['场上没有外来者。'] : ['书架深处的名单上……一个外来者也没有。'];
 }
 
+/** 手机上问一个爪牙替大家选照看者（闭着眼没法商量，不用"商量、指向"那句） */
+export const lilmonstaPhoneLines = ['你替所有爪牙决定今晚由谁照看小怪宝（只能选爪牙，可以选自己）。'];
+
+/** 哈迪寂亚选中的人在手机上选活还是死 */
+export function hadikhiaLifeLines(picks: number[], dead: boolean): string[] {
+  return [
+    `恶魔选择了 ${picks.map((n) => seatName(n)).join('、')}。如果三个人都选"活"，三个人都会死。`,
+    ...(dead ? ['你已经死了：选"活"你会复活，选"死"就保持死亡。'] : []),
+  ];
+}
+
+/** 卡片上不用配板标记（"[外来者 +1]"之类）：炼金术士拿到教父能力不改外来者人数 */
+export const abilityNoSetup = (text: string) => text.replace(/\s*\[[^\]]*\]/g, '');
+
 export function dawnLines(
   deaths: number[], style: 'simple' | 'atmo',
   extra: { fear?: boolean; leviathanDay?: number; hadikhia?: { picks: number[]; alive: boolean[] }; banshee?: number; revived?: number[]; phones?: boolean } = {},
@@ -543,9 +557,11 @@ export function dawnLines(
       ? [extra.phones ? '天亮了，大家可以放下手机了。' : '天亮了，大家请睁眼。', deaths.length ? `昨晚，${list} 死了。` : '昨晚是平安夜，没有人死亡。']
       : [extra.phones ? '晨光刺破了黑夜，大家抬起头来。' : '晨光刺破了黑夜，大家请睁开眼睛。', deaths.length ? `可惜，昨夜 ${list} 再也没有醒来……` : '昨夜，钟楼小镇平安无事。'];
   if (extra.fear) out.push('恐惧之灵选择了一名新的目标。');
-  if (extra.hadikhia?.picks.length)
-    out.push(`恶魔昨晚选择了 ${extra.hadikhia.picks.map((n) => seatName(n)).join('、')}：${extra.hadikhia.picks.map((n, i) => `${seatName(n)}${extra.hadikhia!.alive[i] ? '活着' : '死了'}`).join('，')}。`);
-  if (extra.revived?.length) out.push(`${extra.revived.map((n) => seatName(n)).join('、')} 复活了！`);
+  const hk = extra.hadikhia;
+  if (hk?.picks.length)
+    out.push(`恶魔昨晚选择了 ${hk.picks.map((n) => seatName(n)).join('、')}：${hk.picks.map((n, i) => `${seatName(n)}${hk.alive[i] ? (extra.revived?.includes(n) ? '复活了' : '活着') : '死了'}`).join('，')}。`);
+  const revived = (extra.revived ?? []).filter((n) => !hk?.picks.includes(n));
+  if (revived.length) out.push(`${revived.map((n) => seatName(n)).join('、')} 复活了！`);
   if (extra.banshee) out.push(`${seatName(extra.banshee)} 是报丧女妖，被恶魔杀死了！从现在起她每天可以提名两次，投票时算两票。`);
   if (extra.leviathanDay === 1) out.push('另外：利维坦在场。');
   else if (extra.leviathanDay) out.push(`今天是第 ${extra.leviathanDay} 天，利维坦仍在场。`);

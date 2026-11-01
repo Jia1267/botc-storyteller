@@ -36,6 +36,8 @@ export interface AiPublic {
   until?: number;
   /** 刚念的话（手机上也显示，听不清的人看字） */
   say?: string;
+  /** 今天天亮时公布的（死讯等）：后面念了别的也一直留在屏幕上 */
+  dawn?: string;
   alive: number[];
   /** 死了、还剩一票的人（数据库会去掉空数组，可能没有这一项） */
   ghost?: number[];
@@ -61,6 +63,9 @@ export interface AiPublic {
   /** 能力生效的报丧女妖（已经公开宣布过）：每天提名两次，投票算两票 */
   banshee?: number;
 }
+
+/** 现在举手的票数（报丧女妖算两票） */
+export const handVotes = (ai: AiPublic) => Object.entries(ai.vote?.hands ?? {}).reduce((a, [k, v]) => a + (v ? (Number(k) === ai.banshee ? 2 : 1) : 0), 0);
 
 /** AI 局里玩家的操作：都写在自己座位下面（acks/{n}/…），只有开房的平板读得到 */
 export interface AiActs {

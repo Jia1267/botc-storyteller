@@ -170,7 +170,7 @@ export const watchPrivate = (
 export const ackMsg = (code: string, n: number, id: string) => set(ref(db, roomPath(code, 'acks', n, id)), Date.now());
 
 /** AI 局：玩家在手机上提名、发言结束、举手、不再提名、开枪 */
-export const aiAct = <K extends keyof AiActs>(code: string, n: number, key: K, value: AiActs[K]) => set(ref(db, roomPath(code, 'acks', n, key)), value);
+export const aiAct = <K extends keyof AiActs>(code: string, n: number, key: K, value: AiActs[K] | null) => set(ref(db, roomPath(code, 'acks', n, key)), value);
 
 /** 投 MVP（可以改票；只有开房设备读得到） */
 export const voteMvp = (code: string, n: number, target: number) => set(ref(db, roomPath(code, 'acks', n, 'mvp')), target);

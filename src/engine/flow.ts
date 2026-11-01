@@ -347,7 +347,7 @@ export function checkWin(s: GameState, phase: 'night' | 'day'): boolean {
   }
   if (!demonSeat(s)) win(s, 'good', lilMonsta(s) ? '照看小怪宝的人死了' : '恶魔死了', phase);
   // 假死的僵怖其实还活着，要算上
-  else if (aliveCount(s) + (s.zombuulFake ? 1 : 0) <= 2) win(s, 'evil', '只剩两名玩家存活', phase);
+  else if (aliveCount(s) + (s.zombuulFake ? 1 : 0) <= 2) win(s, 'evil', `只剩 ${aliveCount(s) + (s.zombuulFake ? 1 : 0)} 名玩家存活`, phase);
   return !!s.winner;
 }
 
@@ -776,7 +776,7 @@ export function completeSlot(s: GameState, p: SlotPayload) {
       else if (p.kind === 'target') {
         addLog(s, 'night', `教父 ${who} 选择了 ${seatName(p.target)}`);
         if (malfunction(s, actor!.n)) addLog(s, 'night', '他中毒/醉酒：没有效果');
-        else kill(s, p.target, 'night', '被教父杀死');
+        else kill(s, p.target, 'night', actor!.role === 'alchemist' ? '被炼金术士（教父的能力）杀死' : '被教父杀死');
       }
       break;
     case 'devilsadvocate':
@@ -1545,6 +1545,8 @@ function resolveHadikhia(s: GameState, d: Seat, picks: number[], live: boolean[]
       x.alive = true;
       delete x.death;
       ns.deaths = ns.deaths.filter((m) => m !== n);
+      // 天亮念"复活了"，不说"活着"（大家都知道他之前死了）
+      ns.revived = [...(ns.revived ?? []), n];
       addLog(s, 'night', `${seatName(n)} 选择活：复活了`);
     } else if (!live[i] && x.alive) kill(s, n, 'night', '被恶魔杀死（自己选择了死）');
   });
