@@ -1,7 +1,7 @@
 import { ROLES, isEvilTeam, roleName, type RoleId, type Team } from './roles';
 import {
   abilityAlive, addLog, aliveCount, aliveVoters, boneRegained, deathShield, demonCause, drunkOrPoisoned, preachedNow, demonSeat, diedOnDay, hasAbility, inPlay, isDemonSeat, isEvil, isPoisoned, kill, lilMonsta,
-  malfunction, scriptOf, seatLabel, seatOf, teamOf, vortoxActive, wakesAs, seatName,
+  malfunction, scriptOf, seatLabel, seatOf, teamOf, vortoxActive, wakesAs, seatName, falseWhy,
 } from './core';
 import { firstNightOnly } from './nightOrder';
 import { balloonRemaining, killPreview, pairLabel, scarletCanTakeOver, type PairInfo } from './info';
@@ -579,7 +579,11 @@ export function completeSlot(s: GameState, p: SlotPayload) {
   const tagWho = (x: Seat) =>
     x.role === 'drunk' ? '（其实是酒鬼）' : x.role === 'marionette' ? '（其实是提线木偶）' : x.role === 'cannibal' ? '（食人族）' : x.role === 'pixie' ? '（小精灵）' : x.role === 'amnesiac' ? '（失忆者）' : x.role === 'alchemist' && slot !== 'alchemist' ? '（炼金术士）' : x.role === 'philosopher' && eff !== 'philosopher' ? '（哲学家）' : '';
   const who = actor ? `${seatName(actor.n)}${tagWho(actor)}` : '';
-  const tag = (truth: boolean, twist?: boolean) => (!truth ? '（假信息）' : twist ? '（合规误导）' : '（真实信息）');
+  // 假信息、误导都写出理由：结束后对照记录，每条线索都说得通
+  // 理由在写记录时再算：选中莽夫的人是这一步里才醉的
+  const why = () => (actor ? falseWhy(s, actor.n, ROLES[eff as RoleId] ? (eff as RoleId) : null) : '');
+  const tag = (truth: boolean, twist?: boolean) =>
+    !truth ? (why() ? `（假信息：${why()}）` : '（假信息）') : twist ? '（合规误导：间谍、陌客可以被当成别的身份）' : '（真实信息）';
   if (!ns.ran) ns.ran = [];
   if (!ns.ran.includes(ns.slot)) ns.ran.push(ns.slot);
   // 哲学家选了能力：只在第一晚用的能力（钟表匠等）当晚马上用，这一步先不结束

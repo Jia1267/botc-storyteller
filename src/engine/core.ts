@@ -139,6 +139,23 @@ export function malfunction(s: GameState, n: number): boolean {
   );
 }
 
+/**
+ * 他这次为什么可以拿到假信息（写进记录和复盘：每条假信息都要有规则上的理由）。
+ * 清醒健康、也没有涡流时返回空：这种人不该拿到假信息。
+ */
+export function falseWhy(s: GameState, n: number, ability: RoleId | null): string {
+  const r = seatOf(s, n).role;
+  if (r === 'drunk') return '他其实是酒鬼';
+  if (r === 'marionette') return '他其实是提线木偶';
+  if (isPoisoned(s, n)) return '他中毒了';
+  if (s.sweetheartDrunk === n) return '被心上人弄醉';
+  if (philoDrunk(s, n)) return '哲学家拿了他的能力，他醉酒';
+  if (tempDrunk(s, n)) return '他醉酒';
+  if (malfunction(s, n)) return '他醉酒或中毒';
+  if (ability && mustLie(s, ability)) return '涡流在场，镇民的信息都是假的';
+  return '';
+}
+
 /** 被传教士选中的爪牙：传教士活着且健康时没有能力 */
 export function preachedNow(s: GameState, n: number): boolean {
   if (!s.preached.includes(n) || teamOf(seatOf(s, n).role) !== 'minion') return false;

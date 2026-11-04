@@ -467,6 +467,32 @@ describe('平衡', () => {
   });
 });
 
+describe('首夜信息不点强神、整体稍微帮邪恶', () => {
+  it('洗衣妇（F4）清醒健康时：场上有别的镇民，所有给法都不会说出强神（共情者、占卜师、送葬者、镇长……）', () => {
+    const roles: RoleId[] = ['washerwoman', 'chef', 'empath', 'fortuneteller', 'undertaker', 'soldier', 'mayor', 'poisoner', 'spy', 'imp'];
+    for (let seed = 1; seed <= 60; seed++) {
+      const s = game(roles);
+      for (const c of pairChoices(s, 'washerwoman', 1, seeded(seed))) {
+        // 间谍登记成镇民的那种给法，说的是不在场的角色，不暴露谁在场
+        if (!c.value.role || c.twist) continue;
+        expect(ROLES[c.value.role].weight, `${c.key}：${c.label}`).toBeLessThan(1.5);
+      }
+    }
+  });
+
+  it('场上只剩强神可点时才点强神（不会没信息可给）', () => {
+    const s = game(['washerwoman', 'empath', 'fortuneteller', 'undertaker', 'monk', 'virgin', 'slayer', 'poisoner', 'spy', 'imp']);
+    const cs = pairChoices(s, 'washerwoman', 1, seeded(3));
+    expect(cs.some((c) => c.standard && c.value.role)).toBe(true);
+  });
+
+  it('没有单独设置的剧本也稍微帮邪恶：局势多算给善良方 6 分', () => {
+    const s = game(['washerwoman', 'chef', 'empath', 'monk', 'soldier', 'mayor', 'virgin', 'poisoner', 'spy', 'imp']);
+    s.script = 'bmr';
+    expect(balance(s).parts.find((p) => p.name === '邪恶补偿')?.value).toBe(6);
+  });
+});
+
 describe('驱魔人挡住小恶魔', () => {
   it('驱魔人选中恶魔的那晚，小恶魔那一步不再出现', () => {
     const s = newGame();

@@ -141,6 +141,38 @@ describe('AI 说书人（暗流涌动）', () => {
       }
   });
 
+  it('每条线索都有理由：清醒健康的人只拿真信息或规则允许的误导，假信息都写明是醉酒、中毒还是涡流', () => {
+    const cases = [
+      ['tb', 5, 11],
+      ['bmr', 7, 9],
+      ['sv', 5, 11],
+      ['sunset', 5, 2],
+      ['spooky', 5, 2],
+      ['alvsal', 7, 9],
+    ] as const;
+    let falses = 0;
+    for (const [script, min, span] of cases)
+      for (let seed = 1; seed <= 20; seed++) {
+        const rng = seeded(seed * 41);
+        const s = aiGame(min + (seed % span), seed + 900, script);
+        for (let round = 0; round < 12 && s.phase !== 'end'; round++) {
+          runNight(s, rng);
+          if (s.phase !== 'day') break;
+          const alive = s.seats.filter((x) => x.alive);
+          execute(s, rng() < 0.6 ? alive[Math.floor(rng() * alive.length)].n : null);
+          if (s.phase === 'day') finishDay(s);
+        }
+        for (const e of s.log) {
+          if (e.truth !== 'false') continue;
+          falses++;
+          // 记录里标红的：假信息（写明醉酒/中毒/涡流）或规则允许的误导（间谍、陌客）
+          expect(e.text, `${script} 种子 ${seed}`).toMatch(/（(假信息|合规误导)：.+）/);
+        }
+      }
+    // 真的跑到了假信息（醉酒、中毒的局不少）
+    expect(falses).toBeGreaterThan(20);
+  });
+
   it('报丧女妖能力生效：举手算两票，死了也不用掉那一票', () => {
     const s = aiGame(7, 2);
     s.seats.forEach((x, i) => (x.role = (['banshee', 'chef', 'empath', 'dreamer', 'general', 'poisoner', 'alhadikhia'] as const)[i]));

@@ -59,11 +59,24 @@ export function pairVerdict(s: GameState, kind: PairKind, actorN: number, p: Pai
 
 /* ---------------- 洗衣妇 / 图书管理员 / 调查员 ---------------- */
 
+/**
+ * 强神（共情者、占卜师、送葬者、贞洁者、猎手……权重 1.5 以上）：
+ * 首夜点名一个镇民的信息（洗衣妇、祖母）不点他们，让大家没法从首夜信息知道强神在不在——稍微帮邪恶。
+ * 场上没有别的可点时才点他们。
+ */
+const STRONG = 1.5;
+const notStrong = (xs: Seat[]) => {
+  const weak = xs.filter((x) => ROLES[x.role].weight < STRONG);
+  return weak.length ? weak : xs;
+};
+
 export function pairChoices(s: GameState, kind: PairKind, actorN: number, rng: Rng): Choice<PairInfo>[] {
   const team = KIND_TEAM[kind];
   const healthy = !malfunction(s, actorN) && !mustLie(s, kind);
   const rest = others(s, [actorN]);
-  const targets = rest.filter((x) => ROLES[x.role].team === team);
+  const all = rest.filter((x) => ROLES[x.role].team === team);
+  // 洗衣妇只点不是强神的镇民
+  const targets = kind === 'washerwoman' ? notStrong(all) : all;
   const out: Choice<PairInfo>[] = [];
   const mk = (key: string, info: PairInfo, lean: number, reason: string, v: Verdict, standard = false): Choice<PairInfo> => ({
     key, label: pairLabel(info), value: info, lean, reason, truth: v !== 'false', twist: v === 'twist', standard,
@@ -96,12 +109,6 @@ export function pairChoices(s: GameState, kind: PairKind, actorN: number, rng: R
       const t = pick(targets, rng);
       const d = decoyFor(t, evilOf(rest));
       if (d) out.push(mk('evilDecoy', { role: t.role, seats: sorted(t.n, d.n) }, -1, `干扰项选了邪恶玩家 ${seatName(d.n)}：他会显得像个${kind === 'washerwoman' ? '镇民' : '外来者'}，替他打掩护。`, 'true'));
-    }
-    if (kind === 'washerwoman' && targets.length) {
-      const strong = [...targets].sort((a, b) => ROLES[b.role].weight - ROLES[a.role].weight)[0];
-      const d = decoyFor(strong, goodOf(rest));
-      if (d && ROLES[strong.role].weight >= 1.5)
-        out.push(mk('confirm', { role: strong.role, seats: sorted(strong.n, d.n) }, 1, `帮关键角色【${roleName(strong.role)}】坐实身份，帮善良。`, 'true'));
     }
     if (kind === 'investigator' && targets.length) {
       const t = pick(targets, rng);
@@ -765,9 +772,10 @@ export function grandmotherChoices(s: GameState, actorN: number, rng: Rng): Choi
   const good = s.seats.filter((x) => x.n !== actorN && !x.traveller && !isEvil(x));
   const lbl = (g: GrandchildInfo) => `指向 ${seatName(g.seat)}，给她看【${roleName(g.role)}】`;
   const out: Choice<GrandchildInfo>[] = [];
-  const mid = pickOr(good, rng);
+  // 标准给法不点强神（和洗衣妇一样）；"认证强神"只在善良明显落后时作为帮善良的选项
+  const mid = pickOr(notStrong(good), rng);
   if (!malfunction(s, actorN) && !mustLie(s, 'grandmother')) {
-    if (mid) out.push({ key: 'mid', label: lbl({ seat: mid.n, role: mid.role }), value: { seat: mid.n, role: mid.role }, lean: 0, truth: true, standard: true, reason: '随便一名善良玩家，标准做法。' });
+    if (mid) out.push({ key: 'mid', label: lbl({ seat: mid.n, role: mid.role }), value: { seat: mid.n, role: mid.role }, lean: 0, truth: true, standard: true, reason: '随便一名不是强神的善良玩家，标准做法。' });
     const strong = [...good].sort((a, b) => ROLES[b.role].weight - ROLES[a.role].weight)[0];
     if (strong && strong.n !== mid?.n)
       out.push({ key: 'strong', label: lbl({ seat: strong.n, role: strong.role }), value: { seat: strong.n, role: strong.role }, lean: 1, truth: true, reason: `${roleName(strong.role)}是关键角色，被祖母"认证"后好人更信任他，帮善良。` });
