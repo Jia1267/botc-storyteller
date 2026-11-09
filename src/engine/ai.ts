@@ -220,6 +220,21 @@ export function aiPlan(s: GameState, deps: { spyRows: (s: GameState) => string[]
       };
     }
   }
+  // 说书人自己决定、不用叫醒任何人的步骤（放在"谁行动"之前，不然会被当成没人行动直接跳过）
+  switch (eff) {
+    case 'sweetheart': {
+      // 心上人死了：按推荐选一个人从此醉酒
+      const choices = sweetheartChoices(s, rngOf(s));
+      const c = choices[best(s, choices, 1)] ?? choices[0];
+      return { send: [], payload: c ? { kind: 'target', target: c.value } : none };
+    }
+    case 'tinker': {
+      // 修补匠：说书人决定他今晚死不死
+      const choices = tinkerChoices(s);
+      const c = choices[recommend(choices, balance(s).score, rngOf(s, 7))] ?? choices[0];
+      return { send: [], payload: { kind: 'yesno', yes: c.value, truth: true } };
+    }
+  }
   if (!actor) return { send: [], payload: none };
   const me = actor.n;
 
@@ -523,11 +538,6 @@ function svPlan(s: GameState, eff: SlotId, me: number, lines: (sl: SlotId) => st
         },
       };
     }
-    case 'sweetheart': {
-      const choices = sweetheartChoices(s, rngOf(s));
-      const c = choices[best(s, choices, 1)] ?? choices[0];
-      return { send: [], payload: c ? { kind: 'target', target: c.value } : none };
-    }
   }
   return null;
 }
@@ -665,11 +675,6 @@ function bmrPlan(s: GameState, eff: SlotId, me: number, lines: (sl: SlotId) => s
         ask: { n: me, count: 1, title: '赌徒：选一名玩家，再猜他的角色', lines: lines('gambler'), disabled: [me], opts: roleOpts(scriptOf(s).roles) },
         then: (a) => ({ send: [], payload: { kind: 'gambler', target: a.seats[0], role: (a.opts[0] as RoleId) ?? seatOf(s, a.seats[0]).role } }),
       };
-    case 'tinker': {
-      const choices = tinkerChoices(s);
-      const c = choices[recommend(choices, balance(s).score, rngOf(s, 7))] ?? choices[0];
-      return { send: [], payload: { kind: 'yesno', yes: c.value, truth: true } };
-    }
     case 'gossip':
     case 'moonchild':
       return { send: [], payload: none };

@@ -308,6 +308,18 @@ const hasNightMsg = (room: Pick<HostRoom, 'msgs'>, s: GameState, n: number) => O
  */
 const deadBefore = (s: GameState, x: Seat) => !x.alive && !(x.death?.when === 'night' && x.death.night === s.night);
 
+/**
+ * 今晚有"之前就死了、却还要行动"的人（假死的僵怖、被亡骨魔杀死留着能力的爪牙……）：
+ * 所有死人都照常收到"今晚你没有行动"打掩护，不然大家睁着眼，他是唯一在点手机的死人。
+ */
+function deadCover(s: GameState, r: Pick<HostRoom, 'msgs'>): boolean {
+  return s.seats.some(
+    (y) => deadBefore(s, y) && (mayWakeFrom(s, y.n, 0) || Object.keys(r.msgs[y.n] ?? {}).some((id) => isNightMsg(id, s.night) && id !== idleMsgId(s.night, y.n))),
+  );
+}
+/** 今晚不用给他发"没有行动"、天亮也不等他 */
+const skipDead = (s: GameState, x: Seat, cover: boolean) => deadBefore(s, x) && !cover;
+
 /** 今晚还有谁没点完（天亮前要等他们） */
 export function useNightUnread(s: GameState): number[] | null {
   const room = useRoom();
@@ -316,13 +328,14 @@ export function useNightUnread(s: GameState): number[] | null {
 
 /** 今晚还有谁没点完（不用 React，AI 说书人和测试也用） */
 export function nightUnread(s: GameState, room: Pick<HostRoom, 'seats' | 'msgs' | 'acks'>): number[] {
+  const cover = deadCover(s, room);
   return s.seats
     .filter((x) => !x.left && room.seats[x.n])
     .filter((x) => {
       const n = x.n;
       const ids = Object.keys(room.msgs[n] ?? {}).filter((id) => isNightMsg(id, s.night));
-      // 还没收到任何东西、也没被当面叫醒过的：马上会收到"今晚你没有行动"（之前就死了的人不发、不等）
-      if (!ids.length) return !s.ns!.woke.includes(n) && !deadBefore(s, x);
+      // 还没收到任何东西、也没被当面叫醒过的：马上会收到"今晚你没有行动"（之前就死了的人不发、不等，除非要打掩护）
+      if (!ids.length) return !s.ns!.woke.includes(n) && !skipDead(s, x, cover);
       return ids.some((id) => !room.acks[n]?.[id]);
     })
     .map((x) => x.n);
@@ -375,10 +388,11 @@ export function idleDue(s: GameState, r: Pick<HostRoom, 'code' | 'seats' | 'msgs
   const ran = s.ns!.ran ?? [];
   const steps = order.map((sl, i) => ({ sl, i })).filter(({ sl, i }) => sl !== 'dusk' && sl !== 'dawn' && (i < cur ? ran.includes(i) : shouldRun(s, sl))).map(({ i }) => i);
   const game = s.seats.map((x) => x.startRole).join();
+  const cover = deadCover(s, r);
   return s.seats
     .filter((x) => {
       const n = x.n;
-      if (x.left || !r.seats[n] || hasNightMsg(r, s, n) || s.ns!.woke.includes(n) || deadBefore(s, x)) return false;
+      if (x.left || !r.seats[n] || hasNightMsg(r, s, n) || s.ns!.woke.includes(n) || skipDead(s, x, cover)) return false;
       if (dawn) return true;
       const at = steps.length ? steps[Math.floor(hashUnit(`${r.code}|${s.night}|${n}|${game}`) * steps.length)] : cur;
       return cur >= at && !mayWakeFrom(s, n, cur);

@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { teamOf } from '../../engine/core';
-import { finishDeal } from '../../engine/flow';
+import { completeSlot, execute, finishDay, finishDeal } from '../../engine/flow';
 import { seeded, type Rng } from '../../engine/rng';
-import { newGame, setScript, shuffleSeats, startDeal } from '../../engine/setup';
+import { newGame, setCount, setScript, shuffleSeats, startDeal } from '../../engine/setup';
 import { aiSetCount, type AI_SCRIPTS } from '../../engine/ai';
 import type { GameState } from '../../engine/types';
 import { gotKey, idleMsgId, pickKey, type Acks, type AiActs, type AiPublic, type MsgBody, type RoomMeta, type RoomMsg, type SeatInfo } from '../../room/protocol';
@@ -222,6 +222,36 @@ describe('AI 说书人：一局从第 1 夜到结束（假的房间和手机）'
       }
     }
     expect(deadNights).toBeGreaterThan(0);
+  });
+
+  it('死人里有人今晚还要行动（假死的僵怖）：所有死人都收到"今晚你没有行动"打掩护；没人要行动的夜晚死人什么都不收', () => {
+    const s = newGame();
+    setScript(s, 'sunset');
+    setCount(s, 6, seeded(1));
+    const roles = ['zombuul', 'tealady', 'undertaker', 'alchemist', 'devilsadvocate', 'recluse'] as const;
+    s.seats.forEach((x, i) => (x.role = x.startRole = roles[i]));
+    s.demonChar = 'zombuul';
+    startDeal(s);
+    finishDeal(s);
+    const room = { code: 'T', seats: Object.fromEntries(s.seats.map((x) => [x.n, { uid: `u${x.n}`, online: true }])), msgs: {}, acks: {} };
+    const toDay = () => {
+      for (let g = 0; g < 40 && s.phase === 'night'; g++) completeSlot(s, { kind: 'none' });
+    };
+    toDay();
+    // 第 1 天：处决僵怖（假死），陌客也死了
+    execute(s, 1);
+    s.seats[5].alive = false;
+    s.seats[5].death = { night: 1, when: 'day', cause: '测试' };
+    expect(s.zombuulFake).toBe(true);
+    finishDay(s);
+    // 第 2 夜：白天有人死了，僵怖不醒：之前就死的两个人都不用点
+    expect(nightUnread(s, room)).not.toContain(6);
+    expect(nightUnread(s, room)).not.toContain(1);
+    toDay();
+    execute(s, null);
+    finishDay(s);
+    // 第 3 夜：白天没人死，假死的僵怖要醒：所有死人都要收到"没有行动"打掩护
+    expect(nightUnread(s, room)).toContain(6);
   });
 
   it('公开进度里没有任何人的身份', async () => {

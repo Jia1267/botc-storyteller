@@ -173,6 +173,49 @@ describe('AI 说书人（暗流涌动）', () => {
     expect(falses).toBeGreaterThan(20);
   });
 
+  it('心上人死了：AI 说书人当晚按推荐选一个人从此醉酒；修补匠那一步也会处理（不会被当成没人行动跳过）', () => {
+    const s = newGame();
+    setScript(s, 'sv');
+    aiSetCount(s, 7, seeded(1));
+    const roles = ['clockmaker', 'dreamer', 'sweetheart', 'mathematician', 'flowergirl', 'witch', 'nodashii'] as const;
+    s.seats.forEach((x, i) => (x.role = x.startRole = roles[i]));
+    s.demonChar = 'nodashii';
+    startDeal(s);
+    finishDeal(s);
+    const rng = seeded(2);
+    runNight(s, rng);
+    execute(s, 3);
+    finishDay(s);
+    runNight(s, rng);
+    expect(s.sweetheartDrunk).not.toBeNull();
+    expect(s.log.some((e) => e.text.includes('心上人死了'))).toBe(true);
+
+    const b = newGame();
+    setScript(b, 'bmr');
+    aiSetCount(b, 7, seeded(1));
+    const broles = ['grandmother', 'sailor', 'tinker', 'chambermaid', 'exorcist', 'godfather', 'zombuul'] as const;
+    b.seats.forEach((x, i) => (x.role = x.startRole = broles[i]));
+    b.demonChar = 'zombuul';
+    startDeal(b);
+    finishDeal(b);
+    runNight(b, rng);
+    execute(b, null);
+    finishDay(b);
+    let seen = false;
+    for (let g = 0; g < 40 && b.phase === 'night'; g++) {
+      const plan = aiPlan(b, { spyRows: () => [] })!;
+      if (currentSlot(b) === 'tinker') {
+        seen = true;
+        expect('payload' in plan && plan.payload.kind).toBe('yesno');
+      }
+      if ('ask' in plan) {
+        const r0 = plan.then(pick(b, plan.ask, rng));
+        completeSlot(b, ('more' in r0 ? r0.then(r0.more.map((q) => pick(b, q, rng))) : r0).payload);
+      } else completeSlot(b, plan.payload);
+    }
+    expect(seen).toBe(true);
+  });
+
   it('报丧女妖能力生效：举手算两票，死了也不用掉那一票', () => {
     const s = aiGame(7, 2);
     s.seats.forEach((x, i) => (x.role = (['banshee', 'chef', 'empath', 'dreamer', 'general', 'poisoner', 'alhadikhia'] as const)[i]));
