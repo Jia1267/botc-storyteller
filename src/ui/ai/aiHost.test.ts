@@ -206,15 +206,22 @@ describe('AI 说书人：一局从第 1 夜到结束（假的房间和手机）'
     }
   });
 
-  it('每晚每个人都收到至少一条消息；天亮前都点完了', async () => {
-    const { room, s } = await playGame(8, 7);
-    const nights = s.night;
-    for (const n of Object.keys(room.seats)) {
-      for (let night = 1; night < nights; night++) {
-        const got = Object.keys(room.msgs[n] ?? {}).some((id) => id.startsWith(`N${night}-`));
-        expect(got, `${n} 号第 ${night} 夜没收到任何东西`).toBe(true);
+  it('每晚活着的人都收到至少一条消息；之前就死了的人不用点"今晚你没有行动"', async () => {
+    let deadNights = 0;
+    for (const seed of [7, 8, 9, 10]) {
+      const { room, s } = await playGame(8, seed);
+      for (const x of s.seats) {
+        for (let night = 1; night < s.night; night++) {
+          const ids = Object.keys(room.msgs[x.n] ?? {}).filter((id) => id.startsWith(`N${night}-`));
+          // 第 night 夜开始前就死了（死在更早的夜里或白天）
+          if (x.death && x.death.night < night) {
+            deadNights++;
+            expect(ids.includes(idleMsgId(night, x.n)), `${x.n} 号第 ${night} 夜已经死了，还收到了"今晚你没有行动"`).toBe(false);
+          } else expect(ids.length, `${x.n} 号第 ${night} 夜没收到任何东西`).toBeGreaterThan(0);
+        }
       }
     }
+    expect(deadNights).toBeGreaterThan(0);
   });
 
   it('公开进度里没有任何人的身份', async () => {

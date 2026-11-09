@@ -5,7 +5,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { demonSeat, seatName, teamOf, wakesAs } from '../../engine/core';
 import { currentSlot, minionSeats, pendingActors, shouldRun, slotActor, slotsFor } from '../../engine/flow';
-import type { GameState, SlotId } from '../../engine/types';
+import type { GameState, Seat, SlotId } from '../../engine/types';
 import { answerOf, hashUnit, idleMsgId, isNightMsg, msgStatus, nightMsgId, sameBody, type MsgBody, type PickAnswer, type PickAsk } from '../../room/protocol';
 import { BottomBar, ConfirmButton, type CardContent } from '../common';
 import { useRoom, type HostRoom } from './hostRoom';
@@ -301,6 +301,13 @@ const ravens = (s: GameState) => s.seats.filter((x) => (x.alive || s.ns!.deaths.
 
 const hasNightMsg = (room: Pick<HostRoom, 'msgs'>, s: GameState, n: number) => Object.keys(room.msgs[n] ?? {}).some((id) => isNightMsg(id, s.night));
 
+/**
+ * 今晚之前就死了的人：不用"今晚你没有行动"，天亮也不等他（他手机上夜里什么都不用点）。
+ * 他今晚真有事（被哈迪寂亚选中、被亡骨魔杀死的爪牙留着能力……）照样会收到那条消息。
+ * 今晚才死的人照常收到，不然天亮前他就知道自己死了。
+ */
+const deadBefore = (s: GameState, x: Seat) => !x.alive && !(x.death?.when === 'night' && x.death.night === s.night);
+
 /** 今晚还有谁没点完（天亮前要等他们） */
 export function useNightUnread(s: GameState): number[] | null {
   const room = useRoom();
@@ -311,13 +318,14 @@ export function useNightUnread(s: GameState): number[] | null {
 export function nightUnread(s: GameState, room: Pick<HostRoom, 'seats' | 'msgs' | 'acks'>): number[] {
   return s.seats
     .filter((x) => !x.left && room.seats[x.n])
-    .map((x) => x.n)
-    .filter((n) => {
+    .filter((x) => {
+      const n = x.n;
       const ids = Object.keys(room.msgs[n] ?? {}).filter((id) => isNightMsg(id, s.night));
-      // 还没收到任何东西、也没被当面叫醒过的：马上会收到"今晚你没有行动"
-      if (!ids.length) return !s.ns!.woke.includes(n);
+      // 还没收到任何东西、也没被当面叫醒过的：马上会收到"今晚你没有行动"（之前就死了的人不发、不等）
+      if (!ids.length) return !s.ns!.woke.includes(n) && !deadBefore(s, x);
       return ids.some((id) => !room.acks[n]?.[id]);
-    });
+    })
+    .map((x) => x.n);
 }
 
 /**
@@ -370,7 +378,7 @@ export function idleDue(s: GameState, r: Pick<HostRoom, 'code' | 'seats' | 'msgs
   return s.seats
     .filter((x) => {
       const n = x.n;
-      if (x.left || !r.seats[n] || hasNightMsg(r, s, n) || s.ns!.woke.includes(n)) return false;
+      if (x.left || !r.seats[n] || hasNightMsg(r, s, n) || s.ns!.woke.includes(n) || deadBefore(s, x)) return false;
       if (dawn) return true;
       const at = steps.length ? steps[Math.floor(hashUnit(`${r.code}|${s.night}|${n}|${game}`) * steps.length)] : cur;
       return cur >= at && !mayWakeFrom(s, n, cur);
