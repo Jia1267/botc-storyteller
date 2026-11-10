@@ -5,7 +5,7 @@ import {
   DISTRIBUTION, F4, MAX_F4, balancedRoles, bluffChoices, newGame, randomRoles, replaceRole, setCount, setupZ, startDeal,
 } from './setup';
 import {
-  chefCount, empathCount, fortuneChoices, legalNumbers, numberChoices, pairChoices, pairVerdict,
+  chefCount, dreamerChoices, empathCount, fortuneChoices, legalNumbers, numberChoices, pairChoices, pairVerdict,
   revealChoices, revealVerdict, starpassChoices, mayorBounceChoices,
 } from './info';
 import {
@@ -480,15 +480,41 @@ describe('首夜信息不点强神、整体稍微帮邪恶', () => {
     }
   });
 
-  it('场上只剩强神可点时才点强神（不会没信息可给）', () => {
+  it('场上只剩强神可点时，点最弱的那一档（不点共情者、占卜师）', () => {
     const s = game(['washerwoman', 'empath', 'fortuneteller', 'undertaker', 'monk', 'virgin', 'slayer', 'poisoner', 'spy', 'imp']);
-    const cs = pairChoices(s, 'washerwoman', 1, seeded(3));
-    expect(cs.some((c) => c.standard && c.value.role)).toBe(true);
+    for (let seed = 1; seed <= 30; seed++) {
+      const cs = pairChoices(s, 'washerwoman', 1, seeded(seed));
+      expect(cs.some((c) => c.standard && c.value.role)).toBe(true);
+      for (const c of cs) if (c.value.role && !c.twist) expect(ROLES[c.value.role].weight, c.label).toBe(1.5);
+    }
+  });
+
+  it('酒鬼送葬者的谎话前后对得上：说成爪牙不超过场上爪牙数，被贞洁者证实的人只说成镇民，不重复', () => {
+    const s = game(['drunk', 'chef', 'empath', 'monk', 'soldier', 'mayor', 'virgin', 'poisoner', 'imp'], { drunkFake: 'undertaker' });
+    s.seats[1].alive = false;
+    s.seats[1].death = { night: 1, when: 'day', cause: '被处决' };
+    // 已经说过一个人是投毒者：场上只有一个爪牙，不能再说成爪牙
+    s.reveals = [{ by: 1, seat: 5, role: 'poisoner' }];
+    for (let seed = 1; seed <= 20; seed++) {
+      const std = revealChoices(s, 1, 2, seeded(seed)).find((c) => c.standard)!;
+      expect(ROLES[std.value].team, std.label).toBe('townsfolk');
+      expect(std.value).not.toBe('poisoner');
+    }
+    // 被贞洁者当众处决的人：一开始也不能说成爪牙
+    s.reveals = [];
+    s.seats[1].death = { night: 1, when: 'day', cause: '提名贞洁者，被立刻处决' };
+    for (let seed = 1; seed <= 20; seed++) expect(ROLES[revealChoices(s, 1, 2, seeded(seed)).find((c) => c.standard)!.value].team).toBe('townsfolk');
+  });
+
+  it('筑梦师再查同一个人：他角色没变，给和上次一样的一对', () => {
+    const s = game(['dreamer', 'chef', 'empath', 'monk', 'soldier', 'mayor', 'virgin', 'poisoner', 'spy', 'imp']);
+    s.dreams = { 3: { good: 'empath', evil: 'baron' } };
+    for (let seed = 1; seed <= 10; seed++) expect(dreamerChoices(s, 1, 3, seeded(seed)).find((c) => c.standard)!.value).toEqual({ good: 'empath', evil: 'baron' });
   });
 
   it('没有单独设置的剧本也稍微帮邪恶：局势多算给善良方 6 分', () => {
     const s = game(['washerwoman', 'chef', 'empath', 'monk', 'soldier', 'mayor', 'virgin', 'poisoner', 'spy', 'imp']);
-    s.script = 'bmr';
+    s.script = 'spooky';
     expect(balance(s).parts.find((p) => p.name === '邪恶补偿')?.value).toBe(6);
   });
 });

@@ -496,7 +496,10 @@ function DuskStep({ g, s }: { g: Game; s: GameState }) {
       <DoBox
         items={[
           ...(phones
-            ? ['不用闭眼：每个人看自己的手机。今晚每个人都会收到消息（没有行动的人收到"今晚你没有行动"），看完点"看完了"。', '接下来按网页顺序一步一步走，要选人的会直接发到他手机上。']
+            ? [
+                '不用闭眼：每个人看自己的手机。活着的人今晚都会收到消息（没有行动的人收到"今晚你没有行动"），看完点"看完了"。之前就死了的人通常收不到，不用等他们。',
+                '接下来按网页顺序一步一步走，要选人的会直接发到他手机上。',
+              ]
             : ['等所有人都闭上眼睛、低下头。', '接下来按网页顺序，一个一个轻拍肩膀叫醒。不要出声叫名字。']),
           s.night === 1 ? '第一晚恶魔不杀人。' : null,
           s.night === 1 && s.fabled.includes('stormcatcher') && s.stormRole
@@ -744,7 +747,7 @@ function TargetStep({
           : slot === 'fearmonger'
           ? `现在的目标：${s.fearTarget ? `${seatName(s.fearTarget)}` : '还没有'}。选了新目标，天亮时要公开宣布"恐惧之灵选择了一名新的目标"。`
           : '明天白天提醒自己：只有主人投票时，管家才能投票。';
-  const phone = usePhoneAsk(s, actor.n, { count: 1, title: roleName(slot), lines: slotLines(slot, s.style), disabled: blocked }, setT);
+  const phone = usePhoneAsk(s, actor.n, { count: 1, title: roleName(slot), lines: slotLines(slot, s.style), disabled: blocked, why: last ? { [last]: '昨晚选过' } : undefined }, setT);
   const extra = usePhoneSend(
     s,
     exorcisedDemon

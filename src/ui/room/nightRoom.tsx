@@ -54,7 +54,7 @@ const names = (ns: number[]) => [...new Set(ns)].map(seatName).join('、');
 
 /* ---------------- 让他在手机上选人 ---------------- */
 
-export interface AskOpts extends Pick<PickAsk, 'count' | 'disabled' | 'ordered' | 'opts' | 'optCount' | 'optMin' | 'text' | 'skip'> {
+export interface AskOpts extends Pick<PickAsk, 'count' | 'disabled' | 'why' | 'ordered' | 'opts' | 'optCount' | 'optMin' | 'text' | 'skip'> {
   title: string;
   lines: string[];
   /** 卡片上附带的一段说明（例如他现在拥有什么能力） */
@@ -92,6 +92,7 @@ export function usePhoneAsk(s: GameState, n: number, o: AskOpts, onPick: (seats:
       dead: s.seats.filter((x) => !x.alive && !s.ns!.deaths.includes(x.n)).map((x) => x.n),
       // 同理：不能因为今晚刚死的人选不了，就让他猜到谁死了
       disabled: o.disabled?.filter((n) => !s.ns!.deaths.includes(n)),
+      why: o.why,
       ordered: o.ordered,
       opts: o.opts,
       optCount: o.optCount,

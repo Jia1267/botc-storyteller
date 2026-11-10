@@ -40,10 +40,14 @@ function load(): Saved | null {
 }
 
 function save(d: Saved) {
-  try {
-    localStorage.setItem(KEY, JSON.stringify(d));
-  } catch {
-    /* 存不下就算了，不影响本局继续 */
+  // 存不下（手机浏览器空间有限，撤销历史最多 300 份）：少留一些撤销记录再存，当前这一步一定要存住
+  for (const keep of [d.hist.length, 50, 10, 0]) {
+    try {
+      localStorage.setItem(KEY, JSON.stringify({ cur: d.cur, hist: keep ? d.hist.slice(-keep) : [] }));
+      return;
+    } catch {
+      /* 再少留一些试一次 */
+    }
   }
 }
 

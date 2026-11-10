@@ -216,6 +216,10 @@ export interface GameState {
   cereMad: { seat: number; role: RoleId; night: number } | null;
   /** 镜像双子的善良双子 */
   twin: number | null;
+  /** 送葬者、守鸦人等说过的"某人是某角色"（中毒/醉酒时的谎话要前后对得上） */
+  reveals?: { by: number; seat: number; role: RoleId }[];
+  /** 筑梦师查过的人和给过的那一对角色（再查同一个人给一样的） */
+  dreams?: Record<number, { good: RoleId; evil: RoleId }>;
   /** 被舞蛇人换掉的前恶魔：一直中毒 */
   snakePoisoned: number[];
   /** 哲学家选了在场的角色：那个人醉酒（哲学家死了或失灵就恢复） */

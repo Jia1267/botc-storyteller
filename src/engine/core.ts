@@ -339,11 +339,24 @@ export const diedOnDay = (s: GameState, day: number) => s.seats.filter((x) => x.
 /** 本剧本里不在场的角色 */
 export function notInPlay(s: GameState, team: Team | Team[], exclude: RoleId[] = []): RoleId[] {
   const teams = Array.isArray(team) ? team : [team];
-  return scriptOf(s).roles.filter((r) => teams.includes(ROLES[r].team) && !inPlay(s, r) && !exclude.includes(r));
+  return infoRoles(s).filter((r) => teams.includes(ROLES[r].team) && !inPlay(s, r) && !exclude.includes(r));
 }
 
 /** 本剧本里某个阵营的全部角色 */
-export const scriptRolesOf = (s: GameState, team: Team): RoleId[] => scriptOf(s).roles.filter((r) => ROLES[r].team === team);
+export const scriptRolesOf = (s: GameState, team: Team): RoleId[] => infoRoles(s).filter((r) => ROLES[r].team === team);
+
+/**
+ * AI 局不配的角色：要靠人判断的（造谣者的话是不是真的、"疯狂"像不像、艺术家/渔夫白天找说书人、
+ * 瘟疫医生死后说书人自己用爪牙能力……），以及网页还没接到 AI 白天流程里的。
+ * 窃窃私语的镇民几乎都在这里，所以 AI 不带窃窃私语。
+ */
+export const AI_EXCLUDED: RoleId[] = ['gossip', 'mutant', 'cerenovus', 'artist', 'savant', 'juggler', 'pixie', 'harpy', 'plaguedoctor', 'fisherman'];
+
+/**
+ * 编信息、编伪装时能用的角色：AI 局里不算 AI 带不了的那些
+ * （开局页公开说过它们"一定不会出现"，再拿来当信息，谁都知道是假的）
+ */
+export const infoRoles = (s: GameState): RoleId[] => (s.ai ? scriptOf(s).roles.filter((r) => !AI_EXCLUDED.includes(r)) : scriptOf(s).roles);
 
 export function clone<T>(x: T): T {
   return structuredClone(x);

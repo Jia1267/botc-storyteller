@@ -669,7 +669,9 @@ export function twinChoices(s: GameState, rng: Rng): Choice<number>[] {
   if (!good.length) return [];
   const lbl = (x: Seat) => `${seatName(x.n)}（${roleName(x.role)}）`;
   const strong = [...good].sort((a, b) => ROLES[b.role].weight - ROLES[a.role].weight)[0];
-  const mid = good.length > 1 ? pick(good.filter((x) => x.n !== strong.n), rng) : strong;
+  // 标准做法挑一名镇民：外来者当双子容易分辨（下面单独作为帮善良的选项）
+  const towns = good.filter((x) => x.n !== strong.n && ROLES[x.role].team === 'townsfolk');
+  const mid = towns.length ? pick(towns, rng) : good.length > 1 ? pick(good.filter((x) => x.n !== strong.n), rng) : strong;
   const out: Choice<number>[] = [{ key: 'mid', label: lbl(mid), value: mid.n, lean: 0, truth: true, standard: true, reason: '随便一名善良玩家，标准做法。' }];
   if (strong.n !== mid.n)
     out.push({ key: 'strong', label: lbl(strong), value: strong.n, lean: -1, truth: true, reason: `${roleName(strong.role)}能力强：两人都说自己是${roleName(strong.role)}时，好人不敢轻易处决，帮邪恶。` });
@@ -934,7 +936,11 @@ export function redHerringChoices(s: GameState, rng: Rng): Choice<number>[] {
   const saint = good.find((x) => x.role === 'saint');
   if (saint)
     out.push({ key: 'saint', label: `${seatName(saint.n)}（圣徒）`, value: saint.n, lean: -2, truth: true, reason: '干扰项放在圣徒身上：好人可能把圣徒当恶魔处决，直接输。大帮邪恶。' });
-  out.push({ key: 'self', label: `${seatName(ft.n)}（${roleName(ft.role)}自己）`, value: ft.n, lean: -1, truth: true, reason: '占卜的人自己当干扰项：他查到自己会得到"有"，会怀疑自己。帮邪恶。' });
+  out.push({ key: 'self', label: `${seatName(ft.n)}（${roleName(ft.role)}自己）`, value: ft.n, lean: 0, truth: true, reason: '占卜的人自己当干扰项：只要不带上自己，他查谁都没有干扰。影响不大。' });
+  // 干扰项放在最强的镇民身上：占卜师会怀疑他，好人可能冤枉自己的强神
+  const strong = [...plain].sort((a, b) => ROLES[b.role].weight - ROLES[a.role].weight)[0];
+  if (strong && ROLES[strong.role].weight >= 1.5)
+    out.push({ key: 'strong', label: `${seatName(strong.n)}（${roleName(strong.role)}）`, value: strong.n, lean: -1, truth: true, reason: `干扰项放在${roleName(strong.role)}身上：占卜师会怀疑这个关键好人。帮邪恶。` });
   const recluse = good.find((x) => x.role === 'recluse');
   if (recluse)
     out.push({ key: 'recluse', label: `${seatName(recluse.n)}（陌客）`, value: recluse.n, lean: 1, truth: true, reason: '陌客本来就可能被当成恶魔，干扰集中在一个人身上，帮善良。' });

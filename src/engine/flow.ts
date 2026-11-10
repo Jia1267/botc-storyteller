@@ -765,6 +765,8 @@ export function completeSlot(s: GameState, p: SlotPayload) {
         infoStat(s, p.truth, p.twist);
         const sub = seatOf(s, p.pick);
         if (p.truth && !p.twist && sub.alive && isEvil(sub)) expose(s, p.pick, isDemonSeat(s, p.pick) ? 2 : 1);
+        // 记下他说过什么：之后的谎话要和说过的对得上
+        if (actor) s.reveals = [...(s.reveals ?? []), { by: actor.n, seat: p.pick, role: p.role }];
         addLog(s, 'night', `${roleName(eff)} ${who} 得知 ${seatName(p.pick)} 是【${roleName(p.role)}】${tag(p.truth, p.twist)}`, p.truth && !p.twist);
       }
       break;
@@ -956,6 +958,8 @@ export function completeSlot(s: GameState, p: SlotPayload) {
       if (p.kind === 'dreamer') {
         infoStat(s, p.truth, p.twist);
         if (p.truth && !p.twist && isEvil(seatOf(s, p.target))) expose(s, p.target);
+        // 记下给过的这一对：再查同一个人时给一样的
+        s.dreams = { ...s.dreams, [p.target]: { good: p.good, evil: p.evil } };
         addLog(s, 'night', `筑梦师 ${who} 查 ${seatName(p.target)}：【${roleName(p.good)}】或【${roleName(p.evil)}】${tag(p.truth, p.twist)}`, p.truth && !p.twist);
       }
       break;

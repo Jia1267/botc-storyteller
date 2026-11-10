@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { aiBoardOk, aiPlan, aiSetCount, aiSlayer, aiVirgin, tallyHands, voteOrder, type AI_SCRIPTS, type AiAnswer, type AiAsk } from './ai';
+import { AI_EXCLUDED, aiBoardOk, aiPlan, aiSetCount, aiSlayer, aiVirgin, tallyHands, voteOrder, type AI_SCRIPTS, type AiAnswer, type AiAsk } from './ai';
+import { roleName } from './roles';
 import { completeSlot, currentSlot, execute, finishDay, nomResults, voteNeed } from './flow';
 import { seeded, type Rng } from './rng';
 import { newGame, setScript, shuffleSeats, startDeal } from './setup';
@@ -12,6 +13,8 @@ function aiGame(count: number, seed: number, script: (typeof AI_SCRIPTS)[number]
   const rng = seeded(seed);
   const s = newGame();
   setScript(s, script);
+  // 和网页一样：先标成 AI 局再配板（编信息时会跳过 AI 带不了的角色）
+  s.ai = { priv: 300, pub: 300, vote: 5 };
   aiSetCount(s, count, rng);
   shuffleSeats(s, rng);
   startDeal(s);
@@ -214,6 +217,33 @@ describe('AI 说书人（暗流涌动）', () => {
       } else completeSlot(b, plan.payload);
     }
     expect(seen).toBe(true);
+  });
+
+  it('AI 局的信息里不会出现"一定不会出现"的角色（筑梦师选项、酒鬼看到的假角色、送葬者的谎话……）', () => {
+    const names = AI_EXCLUDED.map(roleName);
+    let infos = 0;
+    for (const [script, min, span] of [
+      ['bmr', 7, 9],
+      ['sv', 5, 11],
+      ['spooky', 5, 2],
+      ['alvsal', 7, 9],
+    ] as const)
+      for (let seed = 1; seed <= 25; seed++) {
+        const rng = seeded(seed * 59);
+        const s = aiGame(min + (seed % span), seed + 700, script);
+        for (let round = 0; round < 10 && s.phase !== 'end'; round++) {
+          runNight(s, rng);
+          if (s.phase !== 'day') break;
+          const alive = s.seats.filter((x) => x.alive);
+          execute(s, rng() < 0.6 ? alive[Math.floor(rng() * alive.length)].n : null);
+          if (s.phase === 'day') finishDay(s);
+        }
+        for (const e of s.log) {
+          if (e.truth) infos++;
+          for (const nm of names) expect(e.text.includes(nm), `${script} 种子 ${seed}：${e.text}`).toBe(false);
+        }
+      }
+    expect(infos).toBeGreaterThan(100);
   });
 
   it('报丧女妖能力生效：举手算两票，死了也不用掉那一票', () => {

@@ -111,7 +111,9 @@ export function AiDay({ code, seat, ai, seats }: { code: string; seat: number; a
     <div className="card stack ai-phone" style={{ gap: 10 }}>
       <div className="row" style={{ justifyContent: 'space-between', flexWrap: 'nowrap' }}>
         <b>
-          第 {ai.day} {ai.stage === 'night' ? '夜' : '天'} · {STAGE[ai.stage]}
+          第 {ai.day} {ai.stage === 'night' ? '夜' : '天'} ·{' '}
+          {/* 之前就死了的人：夜里通常收不到任何东西，别让他以为手机坏了 */}
+          {ai.stage === 'night' && !alive ? '夜晚：你已经死了，今晚多半没有你的事（有事会自动弹出来）' : STAGE[ai.stage]}
         </b>
         {ai.until && (ai.stage === 'private' || ai.stage === 'public' || ai.stage === 'vote') && <b className="ai-clock-sm">{mmss(left)}</b>}
       </div>

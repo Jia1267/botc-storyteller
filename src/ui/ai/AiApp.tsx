@@ -2,14 +2,14 @@
 // 屏幕是公共面板（谁坐哪、谁死了、倒计时、投票），台词用系统自带的中文语音念，同时显示文字；
 // 夜里按官方顺序在后台处理，选人、给信息都走各人的手机。平板上不显示任何人的身份。
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AI_DEFAULTS, AI_SCRIPTS, aiMissing, aiSetCount } from '../../engine/ai';
+import { AI_DEFAULTS, AI_SCRIPTS, aiMissing, aiPlan, aiSetCount } from '../../engine/ai';
 import { roleName } from '../../engine/roles';
 import { scriptOf } from '../../engine/core';
 import { SCRIPTS } from '../../engine/editions';
 import { seatName } from '../../engine/core';
-import { finishDeal } from '../../engine/flow';
+import { currentSlot, finishDeal } from '../../engine/flow';
 import { seeded } from '../../engine/rng';
-import { endLines } from '../../engine/scripts';
+import { SLOT_TITLE, endLines } from '../../engine/scripts';
 import { setScript, shuffleSeats, startDeal } from '../../engine/setup';
 import { watchOffset } from '../../room/api';
 import { handVotes, msgStatus, type AiPublic } from '../../room/protocol';
@@ -17,6 +17,7 @@ import type { Game } from '../../store';
 import { dealCard } from '../dealCard';
 import { EndScreen } from '../End';
 import { BottomBar, ConfirmButton } from '../common';
+import { spyRows } from '../Grimoire';
 import { NightPhones, useNightUnread } from '../room/nightRoom';
 import { RoomJoin, useRoom, type HostRoom } from '../room/hostRoom';
 import { aiStep } from './aiHost';
@@ -68,6 +69,37 @@ const mmss = (ms: number) => {
   return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
 };
 
+/**
+ * 平板别自动锁屏：私聊、公聊一放就是几分钟没人碰，一锁屏后台主持就停了。
+ * 浏览器支持就一直亮着（切回来再要一次）；不支持返回 false，设置页提醒手动关自动锁定。
+ */
+function useWakeLock(on: boolean): boolean {
+  const supported = typeof navigator !== 'undefined' && 'wakeLock' in navigator;
+  useEffect(() => {
+    if (!on || !supported) return;
+    let lock: { release: () => Promise<void> } | null = null;
+    let alive = true;
+    const ask = () => {
+      if (document.visibilityState !== 'visible') return;
+      navigator.wakeLock
+        .request('screen')
+        .then((l) => {
+          if (alive) lock = l;
+          else l.release().catch(() => {});
+        })
+        .catch(() => {});
+    };
+    ask();
+    document.addEventListener('visibilitychange', ask);
+    return () => {
+      alive = false;
+      document.removeEventListener('visibilitychange', ask);
+      lock?.release().catch(() => {});
+    };
+  }, [on, supported]);
+  return supported;
+}
+
 /* ---------------- 入口 ---------------- */
 
 export default function AiApp({ g, onExit }: { g: Game; onExit: () => void }) {
@@ -75,6 +107,7 @@ export default function AiApp({ g, onExit }: { g: Game; onExit: () => void }) {
   const room = useRoom();
   const say = useVoice();
   const [unlocked, setUnlocked] = useState(false);
+  const awake = useWakeLock(!!room.code);
   // 结束时念一次结果
   const ended = useRef(false);
   useEffect(() => {
@@ -106,6 +139,7 @@ export default function AiApp({ g, onExit }: { g: Game; onExit: () => void }) {
         )}
       </header>
       {!unlocked && s.phase !== 'setup' && canSpeak && <p className="card card-warn ai-unlock">点一下屏幕开启声音（平板要先点一下才能念台词）。</p>}
+      {!awake && <p className="card card-warn">这台设备的浏览器不能保持屏幕常亮：请在系统设置里把"自动锁定"关掉，不然几分钟没人碰，平板一锁屏网页就不主持了。</p>}
       {body}
     </div>
   );
@@ -264,6 +298,8 @@ function AiTable({ g, room, say }: { g: Game; room: HostRoom; say: (t: string) =
   const waitKey = `${s.phase}-${s.night}-${s.ns?.slot}-${unread.join()}-${ai?.stage}-${ai?.nom?.i}`;
   if (waitSince.current.key !== waitKey) waitSince.current = { key: waitKey, at: Date.now() };
   const stuck = Date.now() - waitSince.current.at > 45000;
+  // 夜里这一步网页没有处理办法（bug）：报出来，不悄悄跳过
+  const unknown = s.phase === 'night' && !aiPlan(s, { spyRows });
   const left = ai?.until ? ai.until - now : 0;
   const voter = ai?.stage === 'vote' && ai.vote ? ai.vote.order[ai.vote.at] : null;
   const name = (n: number) => room.seats[n]?.name;
@@ -335,12 +371,20 @@ function AiTable({ g, room, say }: { g: Game; room: HostRoom; say: (t: string) =
               大家都不提名了：结束今天
             </button>
           )}
-          {stuck && s.phase === 'night' && (
+          {stuck && s.phase === 'night' && !unknown && (
             <button className="btn btn-ghost btn-sm" onClick={() => (skip.current = true)}>
               等太久了：跳过（替他随便选、当他看过了）
             </button>
           )}
         </div>
+        {unknown && (
+          <div className="card card-warn stack" style={{ gap: 8 }}>
+            <p>网页不知道夜里这一步（{SLOT_TITLE[currentSlot(s)] ?? currentSlot(s)}）该怎么处理，这是网页的 bug。点下面跳过这一步继续玩，结束后告诉开发者。</p>
+            <button className="btn btn-outline btn-block" onClick={() => (skip.current = true)}>
+              跳过这一步
+            </button>
+          </div>
+        )}
       </div>
       <NightPhones s={s} />
     </main>

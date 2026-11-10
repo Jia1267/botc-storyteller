@@ -70,6 +70,8 @@ export const SCRIPTS: Record<ScriptId, ScriptDef> = {
       'zombuul', 'pukka', 'shabaloth', 'po', 'assassin', 'godfather', 'professor', 'gossip', 'tinker', 'moonchild', 'chambermaid', 'dawn',
     ],
     image: 'bmr.jpg',
+    // 跑几百局算出来的：开局约三到四成的局推荐会帮邪恶（和暗流涌动一致）
+    evilBoost: 9,
   },
   alvsal: {
     id: 'alvsal',
@@ -93,6 +95,8 @@ export const SCRIPTS: Record<ScriptId, ScriptDef> = {
       'empath', 'dreamer', 'seamstress', 'balloonist', 'general', 'spy', 'bountyhunter', 'dawn',
     ],
     image: 'alvsal.jpg',
+    // 跑几百局算出来的：开局约三到四成的局推荐会帮邪恶（和暗流涌动一致）
+    evilBoost: 12,
   },
   spooky: {
     id: 'spooky',
@@ -134,6 +138,8 @@ export const SCRIPTS: Record<ScriptId, ScriptDef> = {
     firstNight: ['dusk', 'bureaucrat', 'thief', 'alchemist', 'minionInfo', 'demonInfo', 'godfather', 'devilsadvocate', 'dawn'],
     otherNights: ['dusk', 'bureaucrat', 'thief', 'devilsadvocate', 'exorcist', 'zombuul', 'godfather', 'undertaker', 'flowergirl', 'dawn'],
     image: 'sunset.jpg',
+    // 跑几百局算出来的：开局约三到四成的局推荐会帮邪恶（和暗流涌动一致）
+    evilBoost: 11,
   },
   sv: {
     id: 'sv',
@@ -142,6 +148,8 @@ export const SCRIPTS: Record<ScriptId, ScriptDef> = {
     max: 15,
     blurb: '角色会变来变去：麻脸巫婆给人换角色，舞蛇人可能变成恶魔。疯狂、醉酒和中毒到处都是，信息要靠数学家来校准。',
     roles: SV_ROLES,
+    // 跑几百局算出来的：开局约三到四成的局推荐会帮邪恶（和暗流涌动一致）
+    evilBoost: 15,
     fabled: [],
     ...nightsFor(SV_ROLES),
   },

@@ -296,7 +296,7 @@ function PickCard({ m, me, seats, onPick }: { m: RoomMsg; me: number; seats: Rec
             <button key={n} className={`pick-seat${sel.includes(n) ? ' sel' : ''}`} disabled={a.disabled?.includes(n)} aria-pressed={sel.includes(n)} onClick={() => setSel((xs) => toggle(xs, n, a.count))}>
               {a.ordered && sel.includes(n) && <i className="ord">{sel.indexOf(n) + 1}</i>}
               <b>{seatLabel(n)}</b>
-              <small>{[n === me ? '你' : seats[n]?.name, a.dead?.includes(n) && '已死'].filter(Boolean).join(' · ')}</small>
+              <small>{[n === me ? '你' : seats[n]?.name, a.dead?.includes(n) && '已死', a.disabled?.includes(n) && a.why?.[n]].filter(Boolean).join(' · ')}</small>
             </button>
           ))}
         </div>

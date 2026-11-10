@@ -1,10 +1,11 @@
 import { ROLES, TEAM_NAME, isEvilTeam, roleName, rolesOfTeam, type RoleId, type Team } from './roles';
 import { balance, type Choice } from './balance';
 import {
-  aliveCount, aliveNeighbors, circleOrder, deathShield, demonSeat, findRole, isDemonSeat, isEvil, malfunction, mustLie, notInPlay, scriptOf, scriptRolesOf,
+  aliveCount, aliveNeighbors, circleOrder, deathShield, demonSeat, findRole, inPlay, infoRoles, isDemonSeat, isEvil, malfunction, mustLie, notInPlay, scriptRolesOf,
   seatLabel, seatOf, seatName, teamOf, townsfolkNeighbors,
 } from './core';
 import { pick, shuffle, type Rng } from './rng';
+import { F4 } from './setup';
 import type { GameState, Seat } from './types';
 
 /** 洗衣妇/图书管理员/调查员的信息：一个角色 + 两名玩家；role 为 null 表示"场上没有外来者" */
@@ -62,12 +63,15 @@ export function pairVerdict(s: GameState, kind: PairKind, actorN: number, p: Pai
 /**
  * 强神（共情者、占卜师、送葬者、贞洁者、猎手……权重 1.5 以上）：
  * 首夜点名一个镇民的信息（洗衣妇、祖母）不点他们，让大家没法从首夜信息知道强神在不在——稍微帮邪恶。
- * 场上没有别的可点时才点他们。
+ * 场上全是强神时，点最弱的那一档。
  */
 const STRONG = 1.5;
 const notStrong = (xs: Seat[]) => {
   const weak = xs.filter((x) => ROLES[x.role].weight < STRONG);
-  return weak.length ? weak : xs;
+  if (weak.length) return weak;
+  // 全是强神：点最弱的那一档（例如调查员、僧侣），不点共情者、占卜师
+  const min = Math.min(...xs.map((x) => ROLES[x.role].weight));
+  return xs.filter((x) => ROLES[x.role].weight === min);
 };
 
 export function pairChoices(s: GameState, kind: PairKind, actorN: number, rng: Rng): Choice<PairInfo>[] {
@@ -107,7 +111,9 @@ export function pairChoices(s: GameState, kind: PairKind, actorN: number, rng: R
     }
     if (targets.length && kind !== 'investigator') {
       const t = pick(targets, rng);
-      const d = decoyFor(t, evilOf(rest));
+      // 调查员在场时，干扰项用恶魔：调查员一定会点到爪牙，用爪牙当干扰项等于把他点两次
+      const demonDecoy = s.seats.some((x) => x.role === 'investigator') ? rest.find((x) => isDemonSeat(s, x.n)) : undefined;
+      const d = demonDecoy && demonDecoy.n !== t.n ? demonDecoy : decoyFor(t, evilOf(rest));
       if (d) out.push(mk('evilDecoy', { role: t.role, seats: sorted(t.n, d.n) }, -1, `干扰项选了邪恶玩家 ${seatName(d.n)}：他会显得像个${kind === 'washerwoman' ? '镇民' : '外来者'}，替他打掩护。`, 'true'));
     }
     if (kind === 'investigator' && targets.length) {
@@ -116,6 +122,12 @@ export function pairChoices(s: GameState, kind: PairKind, actorN: number, rng: R
       const otherMinion = decoyFor(t, rest.filter((x) => ROLES[x.role].team === 'minion'));
       if (otherMinion) out.push(mk('twoMinions', { role: t.role, seats: sorted(t.n, otherMinion.n) }, 1, '干扰项也是爪牙：两个人都是邪恶，帮善良。', 'true'));
       if (demon) out.push(mk('demonDecoy', { role: t.role, seats: sorted(t.n, demon.n) }, 2, '干扰项是恶魔：好人几乎直接锁定邪恶，大帮善良。', 'true'));
+      // 干扰项是最强的镇民（不是首夜信息位，免得和别的首夜信息互相印证）：好人会怀疑自己的强神
+      const strong = [...goodOf(rest)]
+        .filter((x) => ROLES[x.role].team === 'townsfolk' && !F4.includes(x.role) && x.n !== t.n)
+        .sort((a, b) => ROLES[b.role].weight - ROLES[a.role].weight)[0];
+      if (strong && ROLES[strong.role].weight >= 1.5)
+        out.push(mk('strongDecoy', { role: t.role, seats: sorted(t.n, strong.n) }, -1, `干扰项是${roleName(strong.role)}（${seatName(strong.n)}）：好人会怀疑这个关键好人。帮邪恶。`, 'true'));
     }
     if (spy && kind !== 'investigator') {
       const g = pickOr(goodOf(rest), rng);
@@ -142,12 +154,16 @@ export function pairChoices(s: GameState, kind: PairKind, actorN: number, rng: R
   if (g2.length >= 2) {
     const a = pick(g2, rng);
     const b = pick(g2.filter((x) => x.n !== a.n), rng);
-    const fake = kind === 'investigator' ? pickOr(s.seats.filter((x) => ROLES[x.role].team === 'minion').map((x) => x.role), rng) ?? fakeRole('minion') : fakeRole(team);
+    // 调查员也给不在场的爪牙：给场上真实的爪牙种类等于把它泄露出去（提线木偶更不能看到"提线木偶"）
+    const fake = kind === 'investigator' ? (pickOr(notInPlay(s, 'minion', ['marionette']), rng) ?? fakeRole('minion')) : fakeRole(team);
     const reason =
       kind === 'investigator'
-        ? '假信息：两个好人被冤枉成爪牙嫌疑。中毒的标准用法。'
+        ? '假信息：给一个不在场的爪牙，两个好人被冤枉成爪牙嫌疑。中毒的标准用法。'
         : `假信息：给一个不在场的角色，指向两个好人。看起来很正常，不容易被识破。`;
     out.push(mk('fake', { role: fake, seats: sorted(a.n, b.n) }, 0, reason, 'false', true));
+    const realMinion = pickOr(s.seats.filter((x) => ROLES[x.role].team === 'minion' && x.role !== 'marionette').map((x) => x.role), rng);
+    if (kind === 'investigator' && realMinion && realMinion !== fake)
+      out.push(mk('realMinion', { role: realMinion, seats: sorted(a.n, b.n) }, 1, `假信息，但用场上真实的爪牙【${roleName(realMinion)}】：好人能知道是哪种爪牙。帮善良。`, 'false'));
   }
   if (kind === 'librarian' && targets.length) {
     out.push(mk('fakeZero', { role: null, seats: null }, -1, '假信息：说场上没有外来者。好人会算错外来者人数。', 'false'));
@@ -294,9 +310,15 @@ export function revealChoices(
   const mk = (role: RoleId, lean: number, reason: string, v: Verdict, standard = false): Choice<RoleId> => ({
     key: role, label: `给他看【${roleName(role)}】`, value: role, lean, reason, truth: v !== 'false', twist: v === 'twist', standard,
   });
+  // 他之前说过的：谎话要前后说得通（不重复同一个角色，说成爪牙的人数不超过场上爪牙数）
+  const said = (s.reveals ?? []).filter((x) => x.by === actorN).map((x) => x.role);
   const goodFake = () =>
-    pickOr(notInPlay(s, 'townsfolk', [...s.bluffs, ...(s.drunkFake ? [s.drunkFake] : [])]), rng) ?? pickOr(scriptRolesOf(s, 'townsfolk'), rng) ?? pick(rolesOfTeam('townsfolk'), rng);
-  const minionFake = () => pickOr(s.seats.filter((x) => ROLES[x.role].team === 'minion').map((x) => x.role), rng) ?? pickOr(scriptRolesOf(s, 'minion'), rng) ?? pick(rolesOfTeam('minion'), rng);
+    pickOr(notInPlay(s, 'townsfolk', [...s.bluffs, ...(s.drunkFake ? [s.drunkFake] : []), ...said]), rng) ??
+    pickOr(scriptRolesOf(s, 'townsfolk').filter((x) => !said.includes(x)), rng) ??
+    pick(rolesOfTeam('townsfolk'), rng);
+  // 编爪牙用不在场的种类：场上真实的爪牙种类不能白送出去
+  const minionFake = () =>
+    pickOr(notInPlay(s, 'minion', ['marionette', ...said]), rng) ?? pickOr(scriptRolesOf(s, 'minion').filter((x) => !said.includes(x)), rng) ?? pick(rolesOfTeam('minion'), rng);
 
   if (!malfunction(s, actorN) && !mustLie(s, ability)) {
     if (r === 'spy') return [mk('spy', 1, '按真实身份给，帮善良。', 'true'), mk(goodFake(), -1, '把间谍当成善良角色给出去（规则允许），帮邪恶。', 'twist')];
@@ -304,8 +326,16 @@ export function revealChoices(
     return [mk(r, 0, r === 'drunk' ? '他就是酒鬼，直接给看"酒鬼"。' : '真实角色。', 'true', true)];
   }
   const out = [mk(r, 1, '中毒/酒鬼也可以给真角色。帮善良。', 'true')];
+  const minions = s.seats.filter((x) => ROLES[x.role].team === 'minion').length;
+  const accused = said.filter((x) => ROLES[x].team === 'minion').length;
+  // 被贞洁者当众处决的人大家都知道是镇民：不能说成爪牙
+  const proven = !!sub.death?.cause.includes('贞洁者');
   if (isEvil(sub)) out.push(mk(goodFake(), -1, '假信息：把邪恶玩家说成善良角色，替他洗白。', 'false', true));
-  else out.push(mk(minionFake(), 0, '假信息：把好人说成爪牙。中毒的标准用法。', 'false', true));
+  else if (!proven && accused < minions) out.push(mk(minionFake(), 0, '假信息：把好人说成一个不在场的爪牙。中毒的标准用法。', 'false', true));
+  else
+    out.push(
+      mk(goodFake(), 0, proven ? '假信息：他被贞洁者当众证实是镇民，只能说成另一个镇民。' : '假信息：他已经"认出"过够多爪牙了，再说就对不上人数，改成另一个镇民。', 'false', true),
+    );
   return vortoxOnly(s, ability, out);
 }
 
@@ -526,17 +556,42 @@ export const dreamLabel = (d: DreamInfo) => `【${roleName(d.good)}】和【${ro
 /** 筑梦师：一个善良角色 + 一个邪恶角色，其中一个是他的真实角色 */
 export function dreamerChoices(s: GameState, actorN: number, target: number, rng: Rng): Choice<DreamInfo>[] {
   const real = seatOf(s, target).role;
-  const goods = scriptOf(s).roles.filter((r) => !isEvilTeam(ROLES[r].team));
-  const evils = scriptOf(s).roles.filter((r) => isEvilTeam(ROLES[r].team));
-  const otherGood = (not: RoleId[] = []) => pickOr(goods.filter((r) => r !== real && !not.includes(r)), rng) ?? goods[0];
-  const otherEvil = (not: RoleId[] = []) => pickOr(evils.filter((r) => r !== real && !not.includes(r)), rng) ?? evils[0];
+  const pool = infoRoles(s);
+  const goods = pool.filter((r) => !isEvilTeam(ROLES[r].team));
+  const evils = pool.filter((r) => isEvilTeam(ROLES[r].team));
+  // 另一个角色优先挑不在场、也不改配板人数的（"[外来者 +1]"这类和场上人数对不上，一眼就能排除）
+  const plain = (r: RoleId) => !/\[/.test(ROLES[r].ability);
+  const other = (rs: RoleId[], not: RoleId[]) => {
+    const ok = rs.filter((r) => r !== real && !not.includes(r));
+    return pickOr(ok.filter((r) => !inPlay(s, r) && plain(r)), rng) ?? pickOr(ok.filter((r) => !inPlay(s, r)), rng) ?? pickOr(ok, rng) ?? rs[0];
+  };
+  const otherGood = (not: RoleId[] = []) => other(goods, not);
+  const otherEvil = (not: RoleId[] = []) => other(evils, not);
   const realGood = !isEvilTeam(teamOf(real));
-  const truthful: DreamInfo = realGood ? { good: real, evil: otherEvil() } : { good: otherGood(), evil: real };
+  // 同一个筑梦师再查同一个人：他角色没变，就给和上次一样的一对（换来换去一对照就出答案）
+  const prev = s.dreams?.[target];
+  const samePair = prev && (prev.good === real || prev.evil === real) ? prev : null;
+  const truthful: DreamInfo = samePair ?? (realGood ? { good: real, evil: otherEvil() } : { good: otherGood(), evil: real });
   const mk = (key: string, d: DreamInfo, lean: number, reason: string, truth: boolean, extra: Partial<Choice<DreamInfo>> = {}): Choice<DreamInfo> => ({
     key, label: dreamLabel(d), value: d, lean, reason, truth, ...extra,
   });
   if (!malfunction(s, actorN) && !mustLie(s, 'dreamer')) {
-    const out = [mk('std', truthful, 0, realGood ? `他真实角色是善良的【${roleName(real)}】。` : `他真实角色是邪恶的【${roleName(real)}】。`, true, { standard: true })];
+    const out = [
+      mk('std', truthful, 0, `${realGood ? `他真实角色是善良的【${roleName(real)}】` : `他真实角色是邪恶的【${roleName(real)}】`}${samePair ? '，和上次查他给的一样' : '，另一个挑不在场的角色'}。`, true, {
+        standard: true,
+      }),
+    ];
+    // 查到邪恶玩家：善良那一项用恶魔的伪装，他跳这个身份时筑梦师的结果对得上
+    const bluff = s.bluffs.find((r) => r !== real && !isEvilTeam(ROLES[r].team));
+    if (!realGood && bluff && !samePair)
+      out.push(mk('cover', { good: bluff, evil: real }, -1, `善良那一项给恶魔的伪装【${roleName(bluff)}】：他跳这个身份时，筑梦师的结果看起来对得上。帮邪恶。`, true));
+    // 查到善良双子：邪恶那一项给"镜像双子"，两个双子谁真谁假不会被一下拆穿
+    if (realGood && s.twin === target && !samePair && pool.includes('eviltwin'))
+      out.push(mk('twin', { good: real, evil: 'eviltwin' }, -1, '邪恶那一项给【镜像双子】：两个双子谁真谁假还得靠大家判断。帮邪恶。', true));
+    // 查到好人：邪恶那一项给场上真实的恶魔种类，帮善良（善良明显落后时用）
+    const demon = demonSeat(s);
+    if (realGood && demon && !samePair && demon.role !== truthful.evil)
+      out.push(mk('demon', { good: real, evil: demon.role }, 1, `邪恶那一项给场上真实的恶魔【${roleName(demon.role)}】：好人能知道是哪种恶魔。帮善良。`, true));
     if (real === 'spy') out.push(mk('spy', { good: otherGood(), evil: otherEvil(['spy']) }, -1, '把间谍当成善良角色（规则允许）：两个角色都不是间谍，替他打掩护，帮邪恶。', true, { twist: true }));
     if (real === 'recluse') out.push(mk('recluse', { good: otherGood(['recluse']), evil: otherEvil() }, -1, '把陌客当成邪恶角色（规则允许）：好人会怀疑他，帮邪恶。', true, { twist: true }));
     return out;
@@ -576,7 +631,13 @@ export function bountyChoices(s: GameState, actorN: number, rng: Rng): Choice<nu
   const etf = pool.find((x) => ROLES[x.role].team === 'townsfolk');
   const recluse = s.seats.find((x) => x.alive && x.role === 'recluse' && x.n !== actorN && !s.bountyKnown.includes(x.n));
   if (!malfunction(s, actorN) && !mustLie(s, 'bountyhunter')) {
-    if (minion) out.push({ key: 'minion', label: lbl(minion), value: minion.n, lean: 0, truth: true, standard: true, reason: '一名爪牙，标准做法。' });
+    // 提线木偶一定挨着恶魔：指出他等于把恶魔圈到两个座位里，帮善良
+    if (minion)
+      out.push(
+        minion.role === 'marionette'
+          ? { key: 'minion', label: lbl(minion), value: minion.n, lean: 1, truth: true, standard: true, reason: '一名爪牙（提线木偶）：他一定挨着恶魔，等于把恶魔圈到两个座位里。帮善良。' }
+          : { key: 'minion', label: lbl(minion), value: minion.n, lean: 0, truth: true, standard: true, reason: '一名爪牙，标准做法。' },
+      );
     if (etf) out.push({ key: 'etf', label: lbl(etf), value: etf.n, lean: minion ? -1 : 0, truth: true, standard: !minion, reason: '邪恶镇民：他有真能力，好人不容易相信他是邪恶的。' });
     if (demon) out.push({ key: 'demon', label: lbl(demon), value: demon.n, lean: 2, truth: true, reason: '直接指出恶魔，大帮善良。' });
     if (recluse) out.push({ key: 'recluse', label: lbl(recluse), value: recluse.n, lean: -1, truth: true, twist: true, reason: '把陌客当成邪恶（规则允许）：好人会冤枉他，帮邪恶。' });

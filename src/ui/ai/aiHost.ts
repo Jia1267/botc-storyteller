@@ -57,6 +57,7 @@ function askBody(s: GameState, a: AiAsk): MsgBody {
       seats: s.seats.filter((x) => !x.left).map((x) => x.n),
       dead: s.seats.filter((x) => !x.alive && !deaths.includes(x.n)).map((x) => x.n),
       disabled: a.disabled?.filter((n) => !deaths.includes(n)),
+      why: a.why,
       ordered: a.ordered,
       opts: a.opts,
       skip: a.skip,
@@ -123,8 +124,9 @@ export async function aiStep(c: AiCtx): Promise<void> {
     const plan = aiPlan(s, { spyRows });
     const cur = s.ns!.slot;
     const slot = currentSlot(s);
+    // 网页不知道这一步怎么处理（是 bug）：不悄悄跳过，平板上报出来，点了"跳过这一步"才往下走
     if (!plan) {
-      commit((st) => completeSlot(st, { kind: 'none' }));
+      if (takeSkip()) commit((st) => completeSlot(st, { kind: 'none' }));
       return;
     }
     let r: AiDone & { say?: string[] };

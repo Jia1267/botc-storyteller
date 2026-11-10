@@ -2,7 +2,7 @@
 // 要选人的步骤去问他（手机上选），要给信息的步骤按"让局势最均衡"的推荐给法给；
 // 和真人说书人模式用同一套引擎，只是把说书人点的那一下换成了推荐的那个选项。
 import { balance, recommend } from './balance';
-import { actorFor, believedRole, circleOrder, demonSeat, hasAbility, inPlay, isDemonSeat, isEvil, lilMonsta, malfunction, scriptOf, seatName, seatOf, teamOf } from './core';
+import { AI_EXCLUDED, actorFor, believedRole, circleOrder, demonSeat, hasAbility, inPlay, isDemonSeat, isEvil, lilMonsta, malfunction, scriptOf, seatName, seatOf, teamOf } from './core';
 import {
   currentSlot, demonKillPreview, effectiveSlot, fangguJumps, godfatherOutsiders, goonTriggered, minionSeats, pithagBlock, previewImp, previewSlayer, previewVirgin, slotActor,
   type SlotPayload,
@@ -22,12 +22,8 @@ import type { GameState, SlotId } from './types';
 /** AI 说书人能带的剧本 */
 export const AI_SCRIPTS = ['tb', 'bmr', 'sv', 'sunset', 'spooky', 'alvsal'] as const;
 
-/**
- * AI 局不配的角色：要靠人判断的（造谣者的话是不是真的、"疯狂"像不像、艺术家/渔夫白天找说书人、
- * 瘟疫医生死后说书人自己用爪牙能力……），以及网页还没接到 AI 白天流程里的。
- * 窃窃私语的镇民几乎都在这里，所以 AI 不带窃窃私语。
- */
-export const AI_EXCLUDED: RoleId[] = ['gossip', 'mutant', 'cerenovus', 'artist', 'savant', 'juggler', 'pixie', 'harpy', 'plaguedoctor', 'fisherman'];
+/** AI 局不配的角色（清单放在 core.ts：编信息时也要跳过它们） */
+export { AI_EXCLUDED };
 
 /** AI 局里还能选的角色（哲学家、麻脸巫婆的选项） */
 const aiRoles = (rs: RoleId[]) => rs.filter((r) => !AI_EXCLUDED.includes(r));
@@ -121,6 +117,8 @@ export interface AiAsk {
   ordered?: boolean;
   /** 选之前先给他看的魔典（寡妇） */
   rows?: string[];
+  /** 灰掉的座位为什么不能选（显示在座位下面） */
+  why?: Record<number, string>;
   /** 同一步问好几个人、或问同一个人两次时区分（默认 pick） */
   tag?: string;
 }
@@ -215,7 +213,14 @@ export function aiPlan(s: GameState, deps: { spyRows: (s: GameState) => string[]
       if (s.babysitterLocked && s.babysitter) return finish(s.babysitter);
       if (!minions.length) return { send: [], payload: none };
       return {
-        ask: { n: minions[0].n, count: 1, title: '小怪宝：替爪牙们选谁照看它', lines: lilmonstaPhoneLines, disabled: s.seats.filter((x) => !minions.includes(x)).map((x) => x.n) },
+        ask: {
+          n: minions[0].n,
+          count: 1,
+          title: '小怪宝：替爪牙们选谁照看它',
+          lines: lilmonstaPhoneLines,
+          disabled: s.seats.filter((x) => !minions.includes(x)).map((x) => x.n),
+          why: Object.fromEntries(s.seats.filter((x) => !minions.includes(x)).map((x) => [x.n, '不是爪牙'])),
+        },
         then: ({ seats: [bs] }) => finish(bs ?? minions[0].n),
       };
     }
@@ -234,8 +239,12 @@ export function aiPlan(s: GameState, deps: { spyRows: (s: GameState) => string[]
       const c = choices[recommend(choices, balance(s).score, rngOf(s, 7))] ?? choices[0];
       return { send: [], payload: { kind: 'yesno', yes: c.value, truth: true } };
     }
+    case 'moonchild':
+      // 月之子白天选的人：引擎按规则判死不死，不用问谁
+      return { send: [], payload: none };
   }
-  if (!actor) return { send: [], payload: none };
+  // 走到这里却没有要叫醒的人：网页不知道这一步怎么处理（不能悄悄跳过，平板上要报出来）
+  if (!actor) return null;
   const me = actor.n;
 
   switch (eff) {
@@ -547,8 +556,8 @@ function svPlan(s: GameState, eff: SlotId, me: number, lines: (sl: SlotId) => st
 function bmrPlan(s: GameState, eff: SlotId, me: number, lines: (sl: SlotId) => string[]): AiPlan | null {
   const none: SlotPayload = { kind: 'none' };
   const target = (t: number): SlotPayload => ({ kind: 'target', target: t });
-  const pickOne = (title: string, l: string[], disabled: number[] = []): AiPlan => ({
-    ask: { n: me, count: 1, title, lines: l, disabled },
+  const pickOne = (title: string, l: string[], disabled: number[] = [], why?: Record<number, string>): AiPlan => ({
+    ask: { n: me, count: 1, title, lines: l, disabled, why },
     then: ({ seats: [t] }) => ({ send: [], payload: target(t) }),
   });
   const d = demonSeat(s);
@@ -599,12 +608,12 @@ function bmrPlan(s: GameState, eff: SlotId, me: number, lines: (sl: SlotId) => s
     }
     case 'devilsadvocate': {
       const last = s.advocate?.night === s.night - 1 ? [s.advocate.seat] : [];
-      return pickOne(roleName('devilsadvocate'), lines('devilsadvocate'), [...deadSeats(s), ...last]);
+      return pickOne(roleName('devilsadvocate'), lines('devilsadvocate'), [...deadSeats(s), ...last], Object.fromEntries(last.map((n) => [n, '昨晚选过'])));
     }
     case 'exorcist': {
       const last = s.exorcistPick?.night === s.night - 1 ? [s.exorcistPick.seat] : [];
       return {
-        ask: { n: me, count: 1, title: roleName('exorcist'), lines: lines('exorcist'), disabled: last },
+        ask: { n: me, count: 1, title: roleName('exorcist'), lines: lines('exorcist'), disabled: last, why: Object.fromEntries(last.map((n) => [n, '昨晚选过'])) },
         then: ({ seats: [t] }) => ({
           // 选中了恶魔：告诉恶魔驱魔人是谁，他今晚不醒
           send: isDemonSeat(s, t) && !malfunction(s, me) && !goonTriggered(s, seatOf(s, me), [t], 'exorcist') ? [{ n: t, tag: 'info', card: { title: `${seatName(me)} 是`, big: ['驱魔人'], note: '他选中了你：今晚你不用醒了。' } }] : [],
@@ -636,7 +645,15 @@ function bmrPlan(s: GameState, eff: SlotId, me: number, lines: (sl: SlotId) => s
     case 'assassin':
     case 'professor':
       return {
-        ask: { n: me, count: 1, title: roleName(eff), lines: lines(eff), disabled: eff === 'professor' ? s.seats.filter((x) => x.alive).map((x) => x.n) : [], skip: '今晚不用（整局一次）' },
+        ask: {
+          n: me,
+          count: 1,
+          title: roleName(eff),
+          lines: lines(eff),
+          disabled: eff === 'professor' ? s.seats.filter((x) => x.alive).map((x) => x.n) : [],
+          why: eff === 'professor' ? Object.fromEntries(s.seats.filter((x) => x.alive).map((x) => [x.n, '还活着'])) : undefined,
+          skip: '今晚不用（整局一次）',
+        },
         then: (a) => ({ send: [], payload: a.skip || !a.seats.length ? none : target(a.seats[0]) }),
       };
     case 'grandmother': {
@@ -675,9 +692,6 @@ function bmrPlan(s: GameState, eff: SlotId, me: number, lines: (sl: SlotId) => s
         ask: { n: me, count: 1, title: '赌徒：选一名玩家，再猜他的角色', lines: lines('gambler'), disabled: [me], opts: roleOpts(scriptOf(s).roles) },
         then: (a) => ({ send: [], payload: { kind: 'gambler', target: a.seats[0], role: (a.opts[0] as RoleId) ?? seatOf(s, a.seats[0]).role } }),
       };
-    case 'gossip':
-    case 'moonchild':
-      return { send: [], payload: none };
   }
   return null;
 }

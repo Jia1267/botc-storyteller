@@ -109,6 +109,8 @@ export interface PickAsk {
   dead?: number[];
   /** 按规则不能选的（例如僧侣不能选自己） */
   disabled?: number[];
+  /** 不能选的原因，显示在灰掉的座位下面（例如"昨晚选过"）；没写的按"你自己/已死"显示 */
+  why?: Record<string, string>;
   /** 选人要分先后（例如鹰身女妖：第一个是要疯狂的人） */
   ordered?: boolean;
   /** 还要选的选项（角色、是或否……），选 optCount 个（默认 1） */
