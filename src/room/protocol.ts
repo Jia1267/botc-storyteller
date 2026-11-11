@@ -70,6 +70,12 @@ export interface AiPublic {
  * 这次投票的目标：已经有人待处决（或最高票打平）时，要比最高票多一票才能顶替，
  * 只写"需要 N 票"会让人以为够 N 票就能换人。
  */
+/** 这次投票要几票才有用（够数上处决台，或者顶替现在待处决的人） */
+export const goalVotes = (need: number, results: AiPublic['results'] = []) => {
+  const top = Math.max(0, ...results.map((r) => r.votes));
+  return top < need ? need : top + 1;
+};
+
 export function voteGoal(need: number, results: AiPublic['results'] = []): string {
   const top = Math.max(0, ...results.map((r) => r.votes));
   if (top < need) return `需要 ${need} 票`;

@@ -321,10 +321,16 @@ details.more[open] summary svg { transform: rotate(180deg); }
 }
 .pick-seat b { font-size: 19px; }
 .pick-seat small { font-size: 12px; color: #b9ad9d; min-height: 1.2em; }
-.pick-seat.sel { border-color: var(--gold); background: #3a2d14; box-shadow: 0 0 0 2px var(--gold) inset; }
-.pick-seat:disabled { opacity: 0.3; cursor: default; }
+/* 选中：金色填满 + ✓，靠亮度和形状区分，暗处也看得出来 */
+.pick-seat.sel { border-color: transparent; background: #c9a45e; color: #140f08; }
+.pick-seat.sel small, .pick-seat.sel.evil b { color: #140f08; }
+.pick-seat.sel::after { content: '✓'; position: absolute; top: 3px; right: 7px; font-size: 14px; font-weight: 900; }
+/* 不能选：虚线框，原因文字照样看得清（不整格变暗） */
+.pick-seat:disabled { cursor: default; background: #0e0b0d; border: 1.5px dashed #3a3238; color: #8c8178; }
+.pick-seat:disabled small { color: #8c8178; }
 .pick-seat { position: relative; }
 .pick-seat .ord { position: absolute; top: 4px; left: 6px; font-style: normal; font-size: 12px; font-weight: 700; color: var(--gold); }
+.pick-seat.sel .ord { color: #140f08; }
 .pick-seat.evil b { color: #e9867d; }
 .pick-grid.opts { grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); }
 .pick-grid.opts .pick-seat { min-height: 52px; }
@@ -459,6 +465,32 @@ details.more[open] summary svg { transform: rotate(180deg); }
 .showcard.v3 .team::before, .showcard.v3 .team::after { content: ''; width: 28px; height: 1.5px; background: currentColor; opacity: 0.6; }
 .showcard.v3 .done { bottom: calc(40px + var(--safe-b)); }
 .showcard .legal { position: absolute; left: 0; right: 0; bottom: calc(12px + var(--safe-b)); }
+
+/*
+ * 玩家自己手机上的卡片（夜里大家睁着眼）：不能被邻座一眼看出阵营、角色、有没有行动。
+ * 没有阵营色光晕、字不刺眼，三种卡（没有行动 / 看信息 / 选人）同一个样子：内容居中、按钮贴底、按钮一律描边。
+ */
+.showcard.quiet, .showcard.quiet.v3, .showcard.quiet.v3.win-evil { background: #000; color: #d8cbb8; padding-bottom: calc(96px + var(--safe-b)); gap: 12px; }
+.showcard.quiet .emblem, .showcard.quiet.v3 .team { color: #8a7f73; }
+.showcard.quiet .ttl { font-size: 17px; color: #b9ad9d; letter-spacing: 0.04em; text-wrap: balance; }
+.showcard.quiet .big, .showcard.quiet .big.many {
+  color: #d8cbb8; letter-spacing: 0; word-break: keep-all;
+  font-size: min(44px, calc((100vw - 48px) / var(--n, 4) / 1.08));
+}
+.showcard.quiet .ab, .showcard.quiet .say-line { font-size: 16px; color: #a89a88; font-style: normal; text-wrap: pretty; }
+.showcard.quiet .ab.note { color: #c7a27a; font-weight: 700; }
+.showcard.quiet .rows { color: #a89a88; font-size: 15px; }
+.showcard.quiet .done, .showcard.quiet .pick-ok, .showcard.quiet .pick-ok.btn-primary {
+  background: transparent; border: 1.5px solid #6b5a3a; color: #c9a45e; box-shadow: none;
+}
+.showcard.quiet.pick { justify-content: safe center; }
+.showcard.quiet .pick-seat:not(.sel):not(:disabled) { color: #d8cbb8; }
+
+/* AI 局投票：票数用圆点 */
+.vote-dots { display: inline-flex; gap: 5px; vertical-align: middle; margin-right: 6px; }
+.vote-dots i { width: 12px; height: 12px; border-radius: 50%; border: 1.5px solid #c9a45e; }
+.vote-dots i.on { background: #c9a45e; }
+.vote-next { border-color: var(--gold); color: var(--gold); font-weight: 700; }
 @keyframes emb-in { from { opacity: 0; transform: scale(0.86); } to { opacity: 1; transform: none; } }
 
 /* ---------- 结束页 ---------- */

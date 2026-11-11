@@ -154,13 +154,13 @@ function PickSeat({ code, uid, meta, seats, stray, kicked }: { code: string; uid
         <span className="dim">你的名字（可以不填）</span>
         <input className="input" value={name} maxLength={12} placeholder="比如：小王" onChange={(e) => setName(e.target.value)} />
       </label>
-      <div className="role-grid">
+      <div className="pick-grid">
         {metaSeats(meta).map((n) => {
           const x = seats[n];
           return (
-            <button key={n} className="role-chip" disabled={busy || !!x} style={x ? { opacity: 0.45 } : undefined} onClick={() => take(n)}>
-              {seatLabel(n)}
-              {x && <small>{x.name || '有人了'}</small>}
+            <button key={n} className="pick-seat" disabled={busy || !!x} onClick={() => take(n)}>
+              <b>{seatLabel(n)}</b>
+              <small>{x ? x.name || '有人了' : ''}</small>
             </button>
           );
         })}
@@ -232,9 +232,10 @@ function Seated({ code, seat, name, meta, seats }: { code: string; seat: number;
         key={msgKey(next)}
         c={next.fix ? { ...next.card, lines: ['说书人更正了刚才的信息：以这条为准。', ...(next.card.lines ?? [])] } : next.card}
         onDone={() => finish(next, ackMsg(code, seat, next.id))}
+        quiet
       />
     );
-  if (showRole && role) return <ShowCard c={{ ...role, title: '你的角色' }} onDone={() => setShowRole(false)} />;
+  if (showRole && role) return <ShowCard c={{ ...role, title: '你的角色' }} onDone={() => setShowRole(false)} quiet />;
 
   return (
     <div className="stack">
@@ -255,7 +256,7 @@ function Seated({ code, seat, name, meta, seats }: { code: string; seat: number;
                 : '有消息会自动弹出来。看完点"看完了"。'}
       </p>
       {role && (
-        <button className="btn btn-primary btn-block" onClick={() => setShowRole(true)}>
+        <button className="btn btn-ghost btn-sm" onClick={() => setShowRole(true)}>
           看我的角色
         </button>
       )}
@@ -292,7 +293,7 @@ function PickCard({ m, me, seats, onPick }: { m: RoomMsg; me: number; seats: Rec
     .filter(Boolean)
     .join('、');
   return (
-    <div className="showcard pick" role="dialog" aria-label="选人">
+    <div className="showcard pick quiet" role="dialog" aria-label="选人">
       {m.card.lines?.map((l, i) => (
         <div key={i} className="ab say-line">
           {l}
@@ -437,13 +438,13 @@ function EndView({ code, seat, end, seats, closed = false }: { code: string; sea
           </>
         ) : (
           <>
-            <div className="role-grid">
+            <div className="pick-grid">
               {end.seats
                 .filter((x) => x.n !== seat)
                 .map((x) => (
-                  <button key={x.n} className="role-chip" style={pick === x.n ? { boxShadow: '0 0 0 2px var(--gold) inset' } : undefined} onClick={() => setPick(x.n)}>
-                    {seatLabel(x.n)}
-                    {seats[x.n]?.name && <small>{seats[x.n].name}</small>}
+                  <button key={x.n} className={`pick-seat${pick === x.n ? ' sel' : ''}`} aria-pressed={pick === x.n} onClick={() => setPick(x.n)}>
+                    <b>{seatLabel(x.n)}</b>
+                    <small>{seats[x.n]?.name ?? ''}</small>
                   </button>
                 ))}
             </div>

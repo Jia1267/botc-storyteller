@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useId, useRef, useState, type ReactNode, type RefObject } from 'react';
+import { createContext, useCallback, useContext, useEffect, useId, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { ROLES, TEAM_NAME, isEvilTeam, roleName, type Team } from '../engine/roles';
 import { balance, leanTag, whyPrefix, type Choice } from '../engine/balance';
@@ -503,7 +503,8 @@ export function seatMarks(s: GameState, n: number): Mark[] {
 
 /* ---------------- 给玩家看的大字卡 ---------------- */
 
-export function ShowCard({ c, onDone }: { c: CardContent; onDone: () => void }) {
+/** quiet：玩家自己手机上看（夜里大家睁着眼），用不显眼、不分阵营颜色的样式 */
+export function ShowCard({ c, onDone, quiet = false }: { c: CardContent; onDone: () => void; quiet?: boolean }) {
   // 卡片也至少停 1 秒：连点"给他看"时第二下不会直接点到"看完了"
   const [ready, setReady] = useState(false);
   useEffect(() => {
@@ -515,7 +516,7 @@ export function ShowCard({ c, onDone }: { c: CardContent; onDone: () => void }) 
   // 从房间数据库来的卡片：空的大字列表会被数据库去掉（例如间谍的魔典卡）
   const big = c.big ?? [];
   return (
-    <div className={`showcard${side ? ` v3${side === 'evil' ? ' win-evil' : ''}` : ''}`} role="dialog" aria-label="给玩家看">
+    <div className={`showcard${side ? ` v3${side === 'evil' ? ' win-evil' : ''}` : ''}${quiet ? ' quiet' : ''}`} role="dialog" aria-label="给玩家看">
       {c.lines?.map((l, i) => (
         <div key={i} className="ab say-line">
           {l}
@@ -524,7 +525,8 @@ export function ShowCard({ c, onDone }: { c: CardContent; onDone: () => void }) 
       {c.title && <div className="ttl">{c.title}</div>}
       {side && <Emblem team={side} />}
       {big.length > 0 && (
-        <div className={`big${big.length > 1 ? ' many' : ''}`}>
+        // --n：最长一行几个字，私密样式按字数缩小，长角色名不会把最后一个字挤到下一行
+        <div className={`big${big.length > 1 ? ' many' : ''}`} style={{ '--n': Math.max(1, ...big.map((b) => [...b].length)) } as CSSProperties}>
           {big.map((b) => (
             <div key={b}>{b}</div>
           ))}
@@ -544,7 +546,7 @@ export function ShowCard({ c, onDone }: { c: CardContent; onDone: () => void }) 
       )}
       {c.ability && <div className="ab">{c.ability}</div>}
       {c.note && (
-        <div className="ab" style={{ color: 'var(--evil)', fontWeight: 700 }}>
+        <div className="ab note" style={quiet ? undefined : { color: 'var(--evil)', fontWeight: 700 }}>
           {c.note}
         </div>
       )}

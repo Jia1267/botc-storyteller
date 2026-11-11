@@ -1,7 +1,7 @@
 // AI 说书人局：玩家手机上的白天——看倒计时和平板念的话，提名、发言结束、轮到自己时举手、不再提名、宣称猎手开枪、宣称戏法师猜。
 import { useEffect, useRef, useState } from 'react';
 import { aiAct, roomError, watchOffset } from '../../room/api';
-import { handVotes, seatLabel, voteGoal, type AiActs, type AiPublic, type SeatInfo } from '../../room/protocol';
+import { goalVotes, handVotes, seatLabel, voteGoal, type AiActs, type AiPublic, type SeatInfo } from '../../room/protocol';
 import { Icon } from '../icons';
 
 const STAGE: Record<AiPublic['stage'], string> = {
@@ -27,6 +27,9 @@ function useServerNow() {
   }, []);
   return now;
 }
+
+/** 票数圆点：要几票画几个，举手的填满（多出来的也画上） */
+const dots = (got: number, goal: number) => Array.from({ length: Math.max(got, goal) }, (_, i) => <i key={i} className={i < got ? 'on' : ''} />);
 
 const mmss = (ms: number) => {
   const sec = Math.max(0, Math.ceil(ms / 1000));
@@ -95,12 +98,17 @@ export function AiDay({ code, seat, ai, seats }: { code: string; seat: number; a
   useEffect(() => {
     if (myTurn) navigator.vibrate?.(200);
   }, [myTurn, nom?.i]);
+  // 我前面那个人在投：提前说一声，轮到时来得及想
+  const nextUp = ai.stage === 'vote' && !!ai.vote && ai.vote.order[ai.vote.at + 1] === seat;
+  useEffect(() => {
+    if (nextUp) navigator.vibrate?.(150);
+  }, [nextUp, nom?.i]);
 
   const grid = (allowed: (n: number) => boolean) => (
-    <div className="role-grid">
+    <div className="pick-grid">
       {everyone.map((n) => (
-        <button key={n} className="role-chip" disabled={!allowed(n)} style={pick === n ? { boxShadow: '0 0 0 2px var(--gold) inset' } : allowed(n) ? undefined : { opacity: 0.4 }} onClick={() => setPick(n)}>
-          {seatLabel(n)}
+        <button key={n} className={`pick-seat${pick === n ? ' sel' : ''}`} disabled={!allowed(n)} aria-pressed={pick === n} onClick={() => setPick(n)}>
+          <b>{seatLabel(n)}</b>
           <small>{[n === seat ? '你' : seats[n]?.name, !ai.alive.includes(n) && '已死'].filter(Boolean).join(' · ')}</small>
         </button>
       ))}
@@ -158,8 +166,12 @@ export function AiDay({ code, seat, ai, seats }: { code: string; seat: number; a
       {ai.stage === 'vote' && nom && ai.vote && (
         <>
           <p>
-            {name(nom.by)} 提名了 {name(nom.target)}，{voteGoal(ai.vote.need, ai.results)}。现在 {handVotes(ai)} 票。
+            {name(nom.by)} 提名了 {name(nom.target)}，{voteGoal(ai.vote.need, ai.results)}。
           </p>
+          <p aria-label={`现在 ${handVotes(ai)} 票`}>
+            <span className="vote-dots">{dots(handVotes(ai), goalVotes(ai.vote.need, ai.results))}</span> 现在 {handVotes(ai)} 票
+          </p>
+          {nextUp && <p className="card vote-next">下一个就是你：想好举不举手</p>}
           {voter === seat ? (
             !alive && !ghost.includes(seat) ? (
               <p className="card card-warn">轮到你了，但你已经死了、那一票也用掉了。</p>
@@ -299,19 +311,19 @@ export function AiDay({ code, seat, ai, seats }: { code: string; seat: number; a
             {mode === 'minions' || mode === 'demons' ? (
               <>
                 <b>{mode === 'minions' ? '第 1 步：点你认为是爪牙的人（可以点好几个，没有就不点）' : '第 2 步：点你认为是恶魔的人'}</b>
-                <div className="role-grid">
+                <div className="pick-grid">
                   {everyone.map((n) => {
                     const on = guess[mode].includes(n);
                     const other = mode === 'minions' ? guess.demons : guess.minions;
                     return (
                       <button
                         key={n}
-                        className="role-chip"
+                        className={`pick-seat${on ? ' sel' : ''}`}
                         disabled={other.includes(n)}
-                        style={on ? { boxShadow: '0 0 0 2px var(--gold) inset' } : other.includes(n) ? { opacity: 0.4 } : undefined}
+                        aria-pressed={on}
                         onClick={() => setGuess({ ...guess, [mode]: on ? guess[mode].filter((x) => x !== n) : [...guess[mode], n] })}
                       >
-                        {seatLabel(n)}
+                        <b>{seatLabel(n)}</b>
                         <small>{[n === seat ? '你' : seats[n]?.name, !ai.alive.includes(n) && '已死'].filter(Boolean).join(' · ')}</small>
                       </button>
                     );
