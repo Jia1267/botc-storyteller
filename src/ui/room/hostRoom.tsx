@@ -1,7 +1,7 @@
 // 说书人这边的房间：开房、看谁入座、把身份发到每个人手机上。
 // Firebase 只在开过房间时才加载（import('../../room/api')），不开房的人主页面不变大。
 import { Suspense, createContext, lazy, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { metaSeats, msgStatus, roomLink, seatLabel, tallyMvp, wrongSeats, wrongText, type Acks, type AiPublic, type EndInfo, type MsgBody, type RoomMeta, type RoomMsg, type SeatInfo } from '../../room/protocol';
+import { metaSeats, msgStatus, roomLink, seatLabel, tallyMvp, type Acks, type AiPublic, type EndInfo, type MsgBody, type RoomMeta, type RoomMsg, type SeatInfo } from '../../room/protocol';
 import type { CardContent } from '../common';
 import { BottomBar, ConfirmButton, Sheet } from '../common';
 
@@ -314,9 +314,8 @@ export function RoomCard({ seatNs }: { seatNs: number[] }) {
       </div>
     );
   const sat = seatNs.filter((n) => room.seats[n]);
-  const wrong = wrongSeats(seatNs, room.seats);
   return (
-    <div className={`card stack${sat.length < seatNs.length || wrong.length ? ' card-warn' : ''}`} style={{ gap: 8 }}>
+    <div className={`card stack${sat.length < seatNs.length ? ' card-warn' : ''}`} style={{ gap: 8 }}>
       <div className="row" style={{ justifyContent: 'space-between', flexWrap: 'nowrap' }}>
         <b>
           房间 {room.code} · 已入座 {sat.length} / {seatNs.length}
@@ -327,7 +326,6 @@ export function RoomCard({ seatNs }: { seatNs: number[] }) {
       </div>
       {sat.length < seatNs.length && <p className="dim">还没入座：{seatNs.filter((n) => !room.seats[n]).map(seatLabel).join('、')}。让他们扫码选座。</p>}
       {sat.length < seatNs.length && <p className="dim">{SEAT_TIP}</p>}
-      {wrong.length > 0 && <p>{wrongText(wrong)}：让他们看一下左右是谁，坐错了就点"坐错了，换座位"重新选。</p>}
       {!room.online && <p className="dim">这台设备断线了，正在重连…</p>}
       {room.err && <p className="card card-warn">{room.err}</p>}
       {sheet && <RoomSheet seatNs={seatNs} onClose={() => setSheet(false)} />}
@@ -393,8 +391,6 @@ function SeatList({ seatNs, status }: { seatNs: number[]; status?: (n: number) =
             <span className="grow">
               {seatLabel(n)} {x ? x.name || '' : <span className="dim">没人</span>}
               {x && !x.online && <span className="dim"> · 断线</span>}
-              {x && room.meta?.phase === 'lobby' && x.ok === true && <span className="dim"> · 邻座对过了</span>}
-              {x && room.meta?.phase === 'lobby' && x.ok === false && <span className="evil"> · 说邻座不对</span>}
             </span>
             {status?.(n)}
             {x && !status &&

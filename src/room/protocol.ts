@@ -124,20 +124,6 @@ export interface SeatInfo {
   uid: string;
   name?: string;
   online?: boolean;
-  /** 入座后确认左右邻座：对 / 不对（有人说不对就不能开局） */
-  ok?: boolean;
-}
-
-/** 说邻座不对的座位 */
-export const wrongSeats = (seatNs: number[], seats: Record<string, SeatInfo>) => seatNs.filter((n) => seats[n]?.ok === false);
-export const wrongText = (ns: number[]) => `${ns.map(seatLabel).join('、')}说邻座不对`;
-
-/** 开局时的左右邻座（旅行者不算）：座位顺时针数，后一个号在你左手边、前一个号在右手边 */
-export function seatNeighbors(seatNs: number[], n: number): { left: number; right: number } | null {
-  const order = seatNs.filter((x) => x < 100);
-  const i = order.indexOf(n);
-  if (i < 0 || order.length < 3) return null;
-  return { left: order[(i + 1) % order.length], right: order[(i - 1 + order.length) % order.length] };
 }
 
 /** 夜里让玩家在手机上选人（也可以选角色、选是或否） */

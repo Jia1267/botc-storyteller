@@ -3,7 +3,7 @@ import { ackMsg, answerPick, claimSeat, gotMsg, keepOnline, leaveSeat, roomError
 import { metaSeats, seatLabel, sortMsgs, type EndInfo, type PickAnswer, type RoomMeta, type RoomMsg, type SeatInfo } from '../../room/protocol';
 import { MIN_PAGE_MS, ShowCard, type CardContent } from '../common';
 import { AiDay } from './PlayerAi';
-import { NeighborCheck, ScriptRoles, SeatRing } from './PlayerInfo';
+import { ScriptRoles, SeatRing } from './PlayerInfo';
 
 const NAME_KEY = 'botc-room-name';
 /** 看过的消息记在本机：刷新页面不会把看过的再弹一遍（重发的消息发出时间不同，会再弹） */
@@ -262,7 +262,6 @@ function Seated({ code, seat, name, meta, seats }: { code: string; seat: number;
                 : '有消息会自动弹出来。看完点"看完了"。'}
       </p>
       {meta.phase === 'game' && <SeatRing order={order} alive={alive} ghost={meta.ai?.ghost} me={seat} seats={seats} />}
-      {meta.phase === 'lobby' && <NeighborCheck code={code} seat={seat} meta={meta} seats={seats} />}
       {(role || meta.script) && (
         <div className="row" style={{ gap: 8 }}>
           {role && (

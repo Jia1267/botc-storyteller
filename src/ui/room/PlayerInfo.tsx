@@ -1,8 +1,6 @@
-// 玩家手机上随时能看的公开信息：剧本角色表、谁还活着的圆桌；入座后确认左右邻座。
-import { useState } from 'react';
+// 玩家手机上随时能看的公开信息：剧本角色表、谁还活着的圆桌。
 import { ROLES, TEAM_NAME, roleName, type Team } from '../../engine/roles';
-import { roomError, setSeatOk } from '../../room/api';
-import { metaSeats, seatLabel, seatNeighbors, type RoomMeta, type SeatInfo } from '../../room/protocol';
+import { seatLabel, type RoomMeta, type SeatInfo } from '../../room/protocol';
 import { Sheet } from '../common';
 
 const TEAMS: Team[] = ['townsfolk', 'outsider', 'minion', 'demon'];
@@ -63,58 +61,6 @@ export function SeatRing({ order: seatNs, alive, ghost = [], me, seats }: { orde
           </div>
         );
       })}
-    </div>
-  );
-}
-
-/**
- * 入座后确认左右邻座：座位按顺时针数，你后面一个号坐在你左手边。
- * 坐错了号，共情者、厨师这些和邻座有关的信息整局都会错，所以开局前每个人自己对一遍；有人说不对就不能开始。
- */
-export function NeighborCheck({ code, seat, meta, seats }: { code: string; seat: number; meta: RoomMeta; seats: Record<string, SeatInfo> }) {
-  const [err, setErr] = useState<string | null>(null);
-  const nb = seatNeighbors(metaSeats(meta), seat);
-  if (!nb) return null;
-  const { left, right } = nb;
-  const who = (n: number) => `${seatLabel(n)}${seats[n] ? (seats[n].name ? `（${seats[n].name}）` : '') : '（还没人坐）'}`;
-  const ready = !!seats[left] && !!seats[right];
-  const ok = seats[seat]?.ok;
-  const answer = (v: boolean) => setSeatOk(code, seat, v).catch((e) => setErr(roomError(e)));
-  return (
-    <div className={`card stack${ok === false ? ' card-warn' : ''}`} style={{ gap: 8 }}>
-      <b>对一下左右邻座</b>
-      <p style={{ margin: 0 }}>
-        你左手边应该是 {who(left)}，右手边是 {who(right)}。
-      </p>
-      {!ready ? (
-        <p className="dim" style={{ margin: 0 }}>
-          等左右两边的人都坐好再确认。
-        </p>
-      ) : ok === undefined ? (
-        <div className="row" style={{ gap: 8 }}>
-          <button className="btn btn-primary grow" onClick={() => answer(true)}>
-            对
-          </button>
-          <button className="btn btn-outline grow" onClick={() => answer(false)}>
-            不对
-          </button>
-        </div>
-      ) : ok ? (
-        <div className="row" style={{ gap: 8, justifyContent: 'space-between' }}>
-          <span className="dim">你确认过了：邻座对。</span>
-          <button className="btn btn-ghost btn-sm" onClick={() => answer(false)}>
-            其实不对
-          </button>
-        </div>
-      ) : (
-        <div className="stack" style={{ gap: 6 }}>
-          <span>你说邻座不对：说书人那边会看到，换好座位以前不能开始。</span>
-          <button className="btn btn-outline btn-sm" onClick={() => answer(true)}>
-            现在对了
-          </button>
-        </div>
-      )}
-      {err && <p className="card card-warn">{err}</p>}
     </div>
   );
 }

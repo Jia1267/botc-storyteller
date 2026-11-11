@@ -45,9 +45,6 @@ export const setPhase = (code: string, phase: RoomMeta['phase']) => set(ref(db, 
 /** 房间信息里跟着游戏变的公开部分：白天还是夜晚、剧本角色表、圆桌 */
 export const setMetaKey = <K extends 'time' | 'script' | 'table'>(code: string, key: K, value: RoomMeta[K]) => set(ref(db, roomPath(code, 'meta', key)), value ?? null);
 
-/** 玩家确认左右邻座：对 / 不对 */
-export const setSeatOk = (code: string, n: number, ok: boolean) => set(ref(db, roomPath(code, 'seats', n, 'ok')), ok);
-
 /** 人数、旅行者变了：座位跟着变 */
 export const setSeats = (code: string, seatNs: number[], title: string) =>
   Promise.all([
