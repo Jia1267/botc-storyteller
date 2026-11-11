@@ -343,6 +343,21 @@ export function nightUnread(s: GameState, room: Pick<HostRoom, 'seats' | 'msgs' 
 }
 
 /**
+ * 还没看完"真信息"的人（不算"今晚你没有行动"）：说书人带局时，只剩没行动的人没点，就可以直接天亮，
+ * 他们手机上的"没有行动"进白天后自动收起；有人还没看信息才需要等（或者说书人确认后不等）。
+ */
+export function infoUnread(s: GameState, room: Pick<HostRoom, 'seats' | 'msgs' | 'acks'>): number[] {
+  return nightUnread(s, room).filter((n) =>
+    Object.keys(room.msgs[n] ?? {}).some((id) => isNightMsg(id, s.night) && id !== idleMsgId(s.night, n) && !room.acks[n]?.[id]),
+  );
+}
+
+export function useInfoUnread(s: GameState): number[] | null {
+  const room = useRoom();
+  return phonesOn(room) ? infoUnread(s, room) : null;
+}
+
+/**
  * 夜里一直挂着：
  * - 走到某人随机分到的那一步、并且他今晚已经不可能被叫醒了，就发"今晚你没有行动"；天亮时还没收到任何东西的人全部补发；
  * - 前面步骤里没选完就被跳过的选人请求，从手机上收回。

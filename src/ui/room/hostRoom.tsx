@@ -156,6 +156,13 @@ export function RoomProvider({ seatNs, title, phase, roleCards, children }: {
     });
   }, [code, meta, want, save]);
 
+  // 白天还是夜晚：手机上跟着显示
+  const time = phase === 'night' ? 'night' : phase === 'day' ? 'day' : null;
+  useEffect(() => {
+    if (!code || !meta || !time || meta.time === time) return;
+    loadApi().then((api) => api.setTime(code, time).catch((e) => setErr(api.roomError(e))));
+  }, [code, meta, time]);
+
   // 有人被"空出"后又坐回来（或者换了一个人坐）：角色卡自动补上
   const latestCards = useRef(roleCards);
   latestCards.current = roleCards;

@@ -42,6 +42,9 @@ export const closeRoom = (code: string) => remove(ref(db, roomPath(code)));
 
 export const setPhase = (code: string, phase: RoomMeta['phase']) => set(ref(db, roomPath(code, 'meta', 'phase')), phase);
 
+/** 白天还是夜晚 */
+export const setTime = (code: string, time: NonNullable<RoomMeta['time']>) => set(ref(db, roomPath(code, 'meta', 'time')), time);
+
 /** 人数、旅行者变了：座位跟着变 */
 export const setSeats = (code: string, seatNs: number[], title: string) =>
   Promise.all([

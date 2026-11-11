@@ -12,7 +12,7 @@ import { seeded } from '../../engine/rng';
 import { SLOT_TITLE, endLines } from '../../engine/scripts';
 import { setScript, shuffleSeats, startDeal } from '../../engine/setup';
 import { watchOffset } from '../../room/api';
-import { handVotes, msgStatus, type AiPublic } from '../../room/protocol';
+import { handVotes, msgStatus, voteGoal, type AiPublic } from '../../room/protocol';
 import type { Game } from '../../store';
 import { dealCard } from '../dealCard';
 import { EndScreen } from '../End';
@@ -138,7 +138,7 @@ export default function AiApp({ g, onExit }: { g: Game; onExit: () => void }) {
           />
         )}
       </header>
-      {!unlocked && s.phase !== 'setup' && canSpeak && <p className="card card-warn ai-unlock">点一下屏幕开启声音（平板要先点一下才能念台词）。</p>}
+      {!unlocked && s.phase !== 'setup' && s.phase !== 'end' && canSpeak && <p className="card card-warn ai-unlock">点一下屏幕开启声音（平板要先点一下才能念台词）。</p>}
       {!awake && <p className="card card-warn">这台设备的浏览器不能保持屏幕常亮：请在系统设置里把"自动锁定"关掉，不然几分钟没人碰，平板一锁屏网页就不主持了。</p>}
       {body}
     </div>
@@ -315,7 +315,7 @@ function AiTable({ g, room, say }: { g: Game; room: HostRoom; say: (t: string) =
         {ai?.nom && (ai.stage === 'speech1' || ai.stage === 'speech2' || ai.stage === 'vote') && (
           <p className="ai-nom">
             {seatName(ai.nom.by)} 提名了 {seatName(ai.nom.target)}
-            {ai.stage === 'vote' && ai.vote && `　需要 ${ai.vote.need} 票　现在 ${handVotes(ai)} 票`}
+            {ai.stage === 'vote' && ai.vote && `　${voteGoal(ai.vote.need, ai.results)}　现在 ${handVotes(ai)} 票`}
             {voter && `　轮到 ${seatName(voter)}`}
           </p>
         )}

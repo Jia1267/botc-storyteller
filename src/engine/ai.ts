@@ -344,7 +344,7 @@ export function aiPlan(s: GameState, deps: { spyRows: (s: GameState) => string[]
       // 炼金术士：告诉他有哪个爪牙的能力，之后在那个爪牙的位置问他
       const ab = s.alchemistAbility;
       if (!ab) return { send: [], payload: none };
-      return { send: [{ n: me, tag: 'info', card: { title: '你拥有这个爪牙的能力（你仍然是善良的）', big: [roleName(ab)], ability: abilityNoSetup(ROLES[ab].ability), lines: lines('alchemist') } }], payload: none };
+      return { send: [{ n: me, tag: 'info', card: { title: '你拥有这个爪牙的能力（你仍然是善良的）', big: [roleName(ab)], ability: abilityNoSetup(ROLES[ab].ability) } }], payload: none };
     }
   }
   return bmrPlan(s, eff, actor.n, lines) ?? svPlan(s, eff, actor.n, lines) ?? alvsalPlan(s, eff, actor.n, lines);
@@ -603,7 +603,7 @@ function bmrPlan(s: GameState, eff: SlotId, me: number, lines: (sl: SlotId) => s
     case 'godfather': {
       if (s.night > 1) return pickOne(roleName('godfather'), ['今天有外来者死了。请选择一名玩家，他会死亡。']);
       const outs = godfatherOutsiders(s);
-      const card: AiCard = outs.length ? { title: '这些外来者在场', big: outs.map(roleName), lines: lines('godfather') } : { title: '场上没有外来者', big: ['0'] };
+      const card: AiCard = outs.length ? { title: '这些外来者在场', big: outs.map(roleName) } : { title: '场上没有外来者', big: ['0'] };
       return { send: [{ n: me, tag: 'info', card }], payload: none };
     }
     case 'devilsadvocate': {

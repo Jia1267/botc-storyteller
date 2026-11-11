@@ -19,6 +19,8 @@ export interface RoomMeta {
   seatNs?: number[];
   title: string;
   phase: 'lobby' | 'game' | 'end';
+  /** 游戏中现在是白天还是夜晚（手机上显示；进白天时收起没点的"今晚你没有行动"） */
+  time?: 'night' | 'day';
   createdAt: number;
   /** 游戏结束后的复盘 */
   end?: EndInfo;
@@ -62,6 +64,19 @@ export interface AiPublic {
   claims?: ('slayer' | 'alsaahir')[];
   /** 能力生效的报丧女妖（已经公开宣布过）：每天提名两次，投票算两票 */
   banshee?: number;
+}
+
+/**
+ * 这次投票的目标：已经有人待处决（或最高票打平）时，要比最高票多一票才能顶替，
+ * 只写"需要 N 票"会让人以为够 N 票就能换人。
+ */
+export function voteGoal(need: number, results: AiPublic['results'] = []): string {
+  const top = Math.max(0, ...results.map((r) => r.votes));
+  if (top < need) return `需要 ${need} 票`;
+  const tops = results.filter((r) => r.votes === top);
+  return tops.length === 1
+    ? `要 ${top + 1} 票才能顶替 ${tops[0].target}号（${top} 票打平，就没人被处决）`
+    : `要 ${top + 1} 票才能上处决台（现在 ${tops.map((r) => `${r.target}号`).join('、')} 打平，没人待处决）`;
 }
 
 /** 现在举手的票数（报丧女妖算两票） */

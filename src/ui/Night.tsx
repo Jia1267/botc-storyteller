@@ -32,7 +32,7 @@ import { GrimoirePanel, spyRows } from './Grimoire';
 import { Icon } from './icons';
 import { KlutzPrompt, MoonchildPrompt, PixiePrompt, promptPending } from './Prompts';
 import { useRoom } from './room/hostRoom';
-import { NightPhones, PhoneBar, StepBar, infoTo, phonesOn, useNightUnread, usePhoneAsk, usePhoneOn, usePhoneSend, type PhoneItem } from './room/nightRoom';
+import { NightPhones, PhoneBar, StepBar, infoTo, phonesOn, useInfoUnread, useNightUnread, usePhoneAsk, usePhoneOn, usePhoneSend, type PhoneItem } from './room/nightRoom';
 
 interface StepProps {
   g: Game;
@@ -649,9 +649,11 @@ function DawnStep({ g, s }: { g: Game; s: GameState }) {
   const bs = s.bansheeActive ? seatOf(s, s.bansheeActive) : null;
   const banshee = bs?.death?.when === 'night' && bs.death.night === s.night ? bs.n : undefined;
   const fakeZ = s.zombuulFake ? s.seats.find((x) => x.role === 'zombuul' && deaths.includes(x.n)) : undefined;
-  // 房间：所有人都点完了手机上的消息才天亮（没收到东西的人这时会收到"今晚你没有行动"）
+  // 房间：信息都看完了才天亮；只剩"今晚你没有行动"没点的人不用等（进白天后他们手机上自动收起）
   const unread = useNightUnread(s);
-  const waiting = !s.winner && !!unread?.length;
+  const infoLeft = useInfoUnread(s);
+  const idleLeft = (unread ?? []).filter((n) => !(infoLeft ?? []).includes(n));
+  const waiting = !s.winner && !!infoLeft?.length;
   return (
     <>
       <SayBox
@@ -677,13 +679,26 @@ function DawnStep({ g, s }: { g: Game; s: GameState }) {
           </p>
         </div>
       )}
-      {unread && <p className="dim">天亮前要等每个人都点完手机上的消息{unread.length ? `：还剩 ${seatsText(unread)}` : '（都点完了）'}。</p>}
+      {unread && (
+        <p className="dim">
+          {infoLeft?.length
+            ? `还在等 ${seatsText(infoLeft)} 看完今晚的信息。`
+            : idleLeft.length
+              ? `今晚的信息都看完了。${seatsText(idleLeft)} 还没点"今晚你没有行动"，不影响：进入白天后他们手机上会自动收起。`
+              : '手机上的消息都点完了。'}
+        </p>
+      )}
       <BottomBar wide>
         {waiting && !promptPending(s) && (
-          <ConfirmButton className="btn btn-ghost" label="有人手机不行" confirmLabel="再点一次：不等了，进入白天" onConfirm={() => done({ kind: 'none' })} />
+          <ConfirmButton
+            className="btn btn-ghost"
+            label="不等了"
+            confirmLabel="再点一次：直接进入白天（没看完的信息他白天还能看）"
+            onConfirm={() => done({ kind: 'none' })}
+          />
         )}
         <button className="btn btn-primary grow" disabled={(!s.winner && promptPending(s)) || waiting} onClick={() => done({ kind: 'none' })}>
-          {s.winner ? '宣布结果' : promptPending(s) ? '先处理上面的提示' : waiting ? `等 ${seatsText(unread!)} 点完手机` : '进入白天'}
+          {s.winner ? '宣布结果' : promptPending(s) ? '先处理上面的提示' : waiting ? `等 ${seatsText(infoLeft!)} 看完信息` : '进入白天'}
         </button>
       </BottomBar>
     </>
@@ -1877,7 +1892,7 @@ function AlchemistStep({ g, s, actor }: StepProps) {
   const ab = s.alchemistAbility;
   const card = ab ? { title: '你拥有这个爪牙的能力（你仍然是善良的）', big: [roleName(ab)], ability: abilityNoSetup(ROLES[ab].ability) } : null;
   const phoneOn = usePhoneOn(actor.n);
-  const phone = usePhoneSend(s, card ? [infoTo(actor.n, card, slotLines('alchemist', s.style))] : []);
+  const phone = usePhoneSend(s, card ? [infoTo(actor.n, card)] : []);
   if (phoneOn)
     return (
       <>
@@ -1919,7 +1934,7 @@ function GodfatherStep({ g, s, actor }: StepProps) {
   const outs = godfatherOutsiders(s);
   const card = outs.length ? { title: '这些外来者在场', big: outs.map(roleName) } : { title: '场上没有外来者', big: ['0'] };
   const phoneOn = usePhoneOn(actor.n);
-  const phone = usePhoneSend(s, [infoTo(actor.n, card, outs.length ? slotLines('godfather', s.style) : undefined)]);
+  const phone = usePhoneSend(s, [infoTo(actor.n, card)]);
   if (phoneOn)
     return (
       <>

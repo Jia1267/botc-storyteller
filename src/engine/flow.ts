@@ -300,6 +300,8 @@ export function startNight(s: GameState) {
   if (s.princessNight === s.night && pr && !malfunction(s, pr.n)) s.ns.demonNoKill = '公主提名的人今天被处决了，今晚恶魔不杀人';
   s.voteMods = {};
   addLog(s, 'night', `第 ${s.night} 夜开始`);
+  // 复盘里说明僵怖为什么没杀人（不然看着像漏了一步）
+  if (s.night > 1 && demonSeat(s)?.role === 'zombuul' && diedOnDay(s, s.night - 1).length) addLog(s, 'night', '僵怖今晚不醒：今天白天有人死了');
   advance(s);
 }
 
@@ -616,7 +618,11 @@ export function completeSlot(s: GameState, p: SlotPayload) {
   switch (eff) {
     case 'dawn': {
       const d = ns.deaths;
-      addLog(s, 'night', d.length ? `天亮：${d.map((n) => `${seatName(n)}`).join('、')} 死亡` : '天亮：平安夜');
+      const line = d.length ? `天亮：${d.map((n) => `${seatName(n)}`).join('、')} 死亡` : '天亮：平安夜';
+      // 夜里已经分出胜负（例如教父补刀后只剩两人）：死讯排在"获胜"前面，复盘才按因果读得通
+      const wi = s.winner ? s.log.findIndex((e) => e.night === s.night && e.phase === 'night' && /^(善良|邪恶)阵营获胜：/.test(e.text)) : -1;
+      if (wi >= 0) s.log.splice(wi, 0, { night: s.night, phase: 'night', text: line });
+      else addLog(s, 'night', line);
       s.fearAnnounce = false;
       s.fearNominated = null;
       s.babysitterLocked = false;

@@ -589,7 +589,8 @@ export function nominationLines(style: 'simple' | 'atmo'): string[] {
 export function executionLines(n: number | null, style: 'simple' | 'atmo', survived = false): string[] {
   if (n === null) return style === 'simple' ? ['今天没有人被处决。'] : ['今天，绞刑架空着。没有人被处决。'];
   if (survived) return style === 'simple' ? [`${seatName(n)} 被处决了，但他没有死。`] : ['绞索收紧……又松开了。', `${seatName(n)} 被处决了，但他没有死。`];
-  return style === 'simple' ? [`${seatName(n)} 被处决了。`] : ['绞索收紧……', `${seatName(n)} 被处决了。`];
+  // 说清楚死了：弄臣、茶艺师、魔鬼代言人这些剧本里"处决了但没死"很常见
+  return style === 'simple' ? [`${seatName(n)} 被处决了，他死了。`] : ['绞索收紧……', `${seatName(n)} 被处决了，他死了。`];
 }
 
 export function endLines(winner: 'good' | 'evil', style: 'simple' | 'atmo'): string[] {

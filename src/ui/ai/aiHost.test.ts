@@ -6,7 +6,7 @@ import { newGame, setCount, setScript, shuffleSeats, startDeal } from '../../eng
 import { aiSetCount, type AI_SCRIPTS } from '../../engine/ai';
 import type { GameState } from '../../engine/types';
 import { gotKey, idleMsgId, pickKey, type Acks, type AiActs, type AiPublic, type MsgBody, type RoomMeta, type RoomMsg, type SeatInfo } from '../../room/protocol';
-import { IDLE_BODY, idleDue, nightUnread, stalePicks } from '../room/nightRoom';
+import { IDLE_BODY, idleDue, infoUnread, nightUnread, stalePicks } from '../room/nightRoom';
 import { aiStep, type AiCtx } from './aiHost';
 
 /** 和数据库一样：去掉 undefined、空数组、空对象 */
@@ -244,7 +244,8 @@ describe('AI 说书人：一局从第 1 夜到结束（假的房间和手机）'
     s.seats[5].death = { night: 1, when: 'day', cause: '测试' };
     expect(s.zombuulFake).toBe(true);
     finishDay(s);
-    // 第 2 夜：白天有人死了，僵怖不醒：之前就死的两个人都不用点
+    // 第 2 夜：白天有人死了，僵怖不醒（复盘里写明原因）：之前就死的两个人都不用点
+    expect(s.log.some((e) => e.night === 2 && e.text.includes('僵怖今晚不醒'))).toBe(true);
     expect(nightUnread(s, room)).not.toContain(6);
     expect(nightUnread(s, room)).not.toContain(1);
     toDay();
@@ -252,6 +253,25 @@ describe('AI 说书人：一局从第 1 夜到结束（假的房间和手机）'
     finishDay(s);
     // 第 3 夜：白天没人死，假死的僵怖要醒：所有死人都要收到"没有行动"打掩护
     expect(nightUnread(s, room)).toContain(6);
+  });
+
+  it('说书人带局天亮：只剩"今晚你没有行动"没点的人不用等，还没看信息的人才要等', () => {
+    const s = newGame();
+    setScript(s, 'tb');
+    setCount(s, 5, seeded(1));
+    startDeal(s);
+    finishDeal(s);
+    const room = {
+      seats: { 1: { uid: 'a', online: true }, 2: { uid: 'b', online: true }, 3: { uid: 'c', online: true } },
+      msgs: {
+        1: { 'N1-5-1-info': { id: 'N1-5-1-info', card: { big: ['0'] }, sentAt: 1 } as RoomMsg },
+        2: { [idleMsgId(1, 2)]: { id: idleMsgId(1, 2), card: { big: [] }, sentAt: 2 } as RoomMsg },
+        3: { 'N1-6-3-info': { id: 'N1-6-3-info', card: { big: ['1'] }, sentAt: 3 } as RoomMsg },
+      },
+      acks: { 3: { 'N1-6-3-info': 1 } },
+    };
+    expect(nightUnread(s, room)).toEqual([1, 2]);
+    expect(infoUnread(s, room)).toEqual([1]);
   });
 
   it('公开进度里没有任何人的身份', async () => {

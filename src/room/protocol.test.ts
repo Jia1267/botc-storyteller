@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { seeded } from '../engine/rng';
 import {
-  gotKey, hashUnit, idleMsgId, isNightMsg, isRoomCode, metaSeats, msgStatus, newRoomCode, nightMsgId, pickKey, pickOf, roomLink, roomPath, sameBody, seatLabel, sortMsgs, tallyMvp,
+  gotKey, hashUnit, idleMsgId, isNightMsg, isRoomCode, metaSeats, msgStatus, newRoomCode, nightMsgId, pickKey, pickOf, roomLink, roomPath, sameBody, seatLabel, sortMsgs, tallyMvp, voteGoal,
 } from './protocol';
 
 describe('房间', () => {
@@ -79,5 +79,19 @@ describe('房间', () => {
     // 不会全挤在一头
     expect(xs.filter((x) => x < 0.5).length).toBeGreaterThan(60);
     expect(xs.filter((x) => x >= 0.5).length).toBeGreaterThan(60);
+  });
+});
+
+describe('投票要几票', () => {
+  it('没人待处决：够数就行；有人待处决：要比他多一票，打平就没人被处决', () => {
+    expect(voteGoal(3, [])).toBe('需要 3 票');
+    expect(voteGoal(3, [{ by: 1, target: 4, votes: 2, text: '票数不够' }])).toBe('需要 3 票');
+    expect(voteGoal(2, [{ by: 3, target: 2, votes: 3, text: '2号 现在待处决' }])).toBe('要 4 票才能顶替 2号（3 票打平，就没人被处决）');
+    expect(
+      voteGoal(2, [
+        { by: 3, target: 2, votes: 3, text: '' },
+        { by: 1, target: 5, votes: 3, text: '' },
+      ]),
+    ).toBe('要 4 票才能上处决台（现在 2号、5号 打平，没人待处决）');
   });
 });

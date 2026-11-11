@@ -11,7 +11,7 @@ import { pacifistChoices } from '../../engine/info';
 import { seeded } from '../../engine/rng';
 import { dawnLines, executionLines } from '../../engine/scripts';
 import type { GameState } from '../../engine/types';
-import { answerOf, nightMsgId, type AiActs, type AiPublic, type MsgBody } from '../../room/protocol';
+import { answerOf, nightMsgId, voteGoal, type AiActs, type AiPublic, type MsgBody } from '../../room/protocol';
 import { spyRows } from '../Grimoire';
 import type { HostRoom } from '../room/hostRoom';
 
@@ -239,7 +239,11 @@ export async function aiStep(c: AiCtx): Promise<void> {
   }
   // 处决已经定了（例如刷新前刚处决）：进入"今天的处决"
   if (s.executed !== undefined && ai.stage !== 'result') {
-    await put({ stage: 'result', until: now + 6000 });
+    // 提名记录里的"现在待处决"改成处决的结果（死了还是没死）
+    const ex = s.executed;
+    const fate = ex === null ? '' : seatOf(s, ex).alive ? '被处决了，但没有死' : '被处决，死了';
+    const results = (ai.results ?? []).map((r) => (r.target === ex && r.text.includes('待处决') ? { ...r, text: fate } : r));
+    await put({ stage: 'result', until: now + 6000, results });
     return;
   }
   // 宣称猎手开枪：投票时不处理
@@ -350,7 +354,7 @@ export async function aiStep(c: AiCtx): Promise<void> {
       }
       const order = voteOrder(s, nom.target).filter((n) => seatOf(s, n).alive || !(ai.spent ?? []).includes(n));
       const need = voteNeed(s);
-      await speak(`开始投票，需要 ${need} 票。从 ${seatName(order[0])} 开始，按顺时针一人 ${settings.vote} 秒，轮到你时在手机上举手。`, {
+      await speak(`开始投票，${voteGoal(need, ai.results)}。从 ${seatName(order[0])} 开始，按顺时针一人 ${settings.vote} 秒，轮到你时在手机上举手。`, {
         stage: 'vote', vote: { order, at: 0, hands: {}, need }, until: now + settings.vote * 1000 + 4000,
       });
       return;

@@ -519,6 +519,22 @@ describe('首夜信息不点强神、整体稍微帮邪恶', () => {
   });
 });
 
+describe('复盘顺序', () => {
+  it('夜里已经分出胜负：天亮的死讯排在"获胜"前面', () => {
+    const s = game(['washerwoman', 'chef', 'empath', 'monk', 'soldier', 'poisoner', 'imp']);
+    runToDawn(s);
+    s.ns!.deaths = [3];
+    s.seats[2].alive = false;
+    s.winner = 'evil';
+    s.log.push({ night: s.night, phase: 'night', text: '邪恶阵营获胜：测试' });
+    completeSlot(s, { kind: 'none' });
+    const dawn = s.log.findIndex((e) => e.text.startsWith('天亮：'));
+    const won = s.log.findIndex((e) => e.text.startsWith('邪恶阵营获胜'));
+    expect(dawn).toBeGreaterThanOrEqual(0);
+    expect(dawn).toBeLessThan(won);
+  });
+});
+
 describe('驱魔人挡住小恶魔', () => {
   it('驱魔人选中恶魔的那晚，小恶魔那一步不再出现', () => {
     const s = newGame();

@@ -200,11 +200,9 @@ function Seated({ code, seat, name, meta, seats }: { code: string; seat: number;
     [code, seat],
   );
 
-  // 一条一条看：看完的在本机藏起来（记在本机，刷新也不再弹）
-  const next = msgs.find((m) => !seen.includes(msgKey(m)));
-  const finish = (m: RoomMsg, send: Promise<unknown>) => {
+  const markSeen = (keys: string[]) =>
     setSeen((xs) => {
-      const ys = [...xs, msgKey(m)].slice(-300);
+      const ys = [...xs, ...keys].slice(-300);
       try {
         localStorage.setItem(seenKey(code, seat), JSON.stringify(ys));
       } catch {
@@ -212,6 +210,17 @@ function Seated({ code, seat, name, meta, seats }: { code: string; seat: number;
       }
       return ys;
     });
+  // 进白天了还没点的"今晚你没有行动"直接收起（当成看过了，下一夜也不会再弹）：说书人不用等他点完
+  const isIdle = (m: RoomMsg) => /^N\d+-idle-/.test(m.id);
+  const staleIdle = meta.time === 'day' ? msgs.filter((m) => isIdle(m) && !seen.includes(msgKey(m))).map(msgKey) : [];
+  useEffect(() => {
+    if (staleIdle.length) markSeen(staleIdle);
+  }, [staleIdle.join()]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 一条一条看：看完的在本机藏起来（记在本机，刷新也不再弹）
+  const next = msgs.find((m) => !seen.includes(msgKey(m)) && !staleIdle.includes(msgKey(m)));
+  const finish = (m: RoomMsg, send: Promise<unknown>) => {
+    markSeen([msgKey(m)]);
     send.catch((e) => setErr(roomError(e)));
   };
   // 游戏结束：复盘和 MVP 投票（没看完的夜里消息不用再看了）
@@ -235,7 +244,15 @@ function Seated({ code, seat, name, meta, seats }: { code: string; seat: number;
         {name ? `（${name}）` : ''}
       </h2>
       <p className="muted">
-        {meta.phase === 'lobby' ? '等其他人坐好，说书人开始以后你的角色会自动出现在这里。' : meta.phase === 'end' ? '游戏结束了，复盘马上发过来……' : '有消息会自动弹出来。看完点"看完了"。'}
+        {meta.phase === 'lobby'
+          ? '等其他人坐好，说书人开始以后你的角色会自动出现在这里。'
+          : meta.phase === 'end'
+            ? '游戏结束了，复盘马上发过来……'
+            : !meta.ai && meta.time === 'day'
+              ? '现在是白天：听说书人的。有消息会自动弹出来。'
+              : !meta.ai && meta.time === 'night'
+                ? '现在是夜晚：有消息会自动弹出来，看完点"看完了"；没有就等着。'
+                : '有消息会自动弹出来。看完点"看完了"。'}
       </p>
       {role && (
         <button className="btn btn-primary btn-block" onClick={() => setShowRole(true)}>
@@ -292,13 +309,24 @@ function PickCard({ m, me, seats, onPick }: { m: RoomMsg; me: number; seats: Rec
       )}
       {a.count > 0 && (
         <div className="pick-grid">
-          {a.seats.map((n) => (
-            <button key={n} className={`pick-seat${sel.includes(n) ? ' sel' : ''}`} disabled={a.disabled?.includes(n)} aria-pressed={sel.includes(n)} onClick={() => setSel((xs) => toggle(xs, n, a.count))}>
-              {a.ordered && sel.includes(n) && <i className="ord">{sel.indexOf(n) + 1}</i>}
-              <b>{seatLabel(n)}</b>
-              <small>{[n === me ? '你' : seats[n]?.name, a.dead?.includes(n) && '已死', a.disabled?.includes(n) && a.why?.[n]].filter(Boolean).join(' · ')}</small>
-            </button>
-          ))}
+          {a.seats.map((n) => {
+            const note = [n === me ? '你' : seats[n]?.name, a.dead?.includes(n) && '已死', a.disabled?.includes(n) && a.why?.[n]].filter(Boolean).join(' · ');
+            return (
+              <button
+                key={n}
+                className={`pick-seat${sel.includes(n) ? ' sel' : ''}`}
+                disabled={a.disabled?.includes(n)}
+                aria-pressed={sel.includes(n)}
+                // 读屏要读出"几号、是谁、能不能选"
+                aria-label={`${seatLabel(n)}${note ? `，${note}` : ''}`}
+                onClick={() => setSel((xs) => toggle(xs, n, a.count))}
+              >
+                {a.ordered && sel.includes(n) && <i className="ord">{sel.indexOf(n) + 1}</i>}
+                <b>{seatLabel(n)}</b>
+                <small>{note}</small>
+              </button>
+            );
+          })}
         </div>
       )}
       {a.opts && a.opts.length > 0 && (

@@ -1,7 +1,7 @@
 // AI 说书人局：玩家手机上的白天——看倒计时和平板念的话，提名、发言结束、轮到自己时举手、不再提名、宣称猎手开枪、宣称戏法师猜。
 import { useEffect, useRef, useState } from 'react';
 import { aiAct, roomError, watchOffset } from '../../room/api';
-import { handVotes, seatLabel, type AiActs, type AiPublic, type SeatInfo } from '../../room/protocol';
+import { handVotes, seatLabel, voteGoal, type AiActs, type AiPublic, type SeatInfo } from '../../room/protocol';
 import { Icon } from '../icons';
 
 const STAGE: Record<AiPublic['stage'], string> = {
@@ -158,7 +158,7 @@ export function AiDay({ code, seat, ai, seats }: { code: string; seat: number; a
       {ai.stage === 'vote' && nom && ai.vote && (
         <>
           <p>
-            {name(nom.by)} 提名了 {name(nom.target)}，需要 {ai.vote.need} 票。现在 {handVotes(ai)} 票。
+            {name(nom.by)} 提名了 {name(nom.target)}，{voteGoal(ai.vote.need, ai.results)}。现在 {handVotes(ai)} 票。
           </p>
           {voter === seat ? (
             !alive && !ghost.includes(seat) ? (
