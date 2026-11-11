@@ -11,6 +11,7 @@
 //   rooms/{code}/meta/end        结束后的复盘（所有人可读）：胜负、每个人的身份、时间线、MVP 票数
 //   rooms/{code}/meta/ai         AI 说书人局：白天进行到哪（倒计时、谁提名、投票、谁举手），所有人可读
 //   rooms/{code}/acks/{n}/nom|spoke|hand|nomore|slay  AI 局里玩家在手机上的操作（只有开房设备读）
+import type { RoleId } from '../engine/roles';
 import type { CardContent } from '../ui/common';
 
 export interface RoomMeta {
@@ -21,6 +22,10 @@ export interface RoomMeta {
   phase: 'lobby' | 'game' | 'end';
   /** 游戏中现在是白天还是夜晚（手机上显示；进白天时收起没点的"今晚你没有行动"） */
   time?: 'night' | 'day';
+  /** 这局剧本有哪些角色（手机上看角色表）；missing = AI 局一定不会出现的 */
+  script?: { roles: RoleId[]; missing?: RoleId[] };
+  /** 手机上的圆桌：顺时针的座位顺序（旅行者插在他坐的位置）和公开的存活座位；夜里不更新，夜里死的人天亮才变 */
+  table?: { order: number[]; alive: number[] };
   createdAt: number;
   /** 游戏结束后的复盘 */
   end?: EndInfo;
@@ -119,6 +124,20 @@ export interface SeatInfo {
   uid: string;
   name?: string;
   online?: boolean;
+  /** 入座后确认左右邻座：对 / 不对（有人说不对就不能开局） */
+  ok?: boolean;
+}
+
+/** 说邻座不对的座位 */
+export const wrongSeats = (seatNs: number[], seats: Record<string, SeatInfo>) => seatNs.filter((n) => seats[n]?.ok === false);
+export const wrongText = (ns: number[]) => `${ns.map(seatLabel).join('、')}说邻座不对`;
+
+/** 开局时的左右邻座（旅行者不算）：座位顺时针数，后一个号在你左手边、前一个号在右手边 */
+export function seatNeighbors(seatNs: number[], n: number): { left: number; right: number } | null {
+  const order = seatNs.filter((x) => x < 100);
+  const i = order.indexOf(n);
+  if (i < 0 || order.length < 3) return null;
+  return { left: order[(i + 1) % order.length], right: order[(i - 1 + order.length) % order.length] };
 }
 
 /** 夜里让玩家在手机上选人（也可以选角色、选是或否） */

@@ -22,6 +22,7 @@ import { Catalog } from './Catalog';
 import { Icon } from './icons';
 import { dealCard } from './dealCard';
 import { RoomCard, useRoom } from './room/hostRoom';
+import { wrongSeats, wrongText } from '../room/protocol';
 
 export function SetupScreen({ g, onRules, onRoles, onSheet }: { g: Game; onRules: () => void; onRoles: () => void; onSheet: () => void }) {
   if (g.s.setupStep === 'script') return <ScriptStep g={g} />;
@@ -923,13 +924,15 @@ function DealButton({ g }: { g: Game }) {
       </button>
     );
   const missing = s.seats.filter((x) => !room.seats[x.n]).map((x) => seatName(x.n));
+  // 有人说邻座不对：座位号错了，和邻座有关的信息整局都会错
+  const wrong = wrongSeats(s.seats.map((x) => x.n), room.seats);
   const send = async () => {
     const ok = await room.deal(Object.fromEntries(s.seats.map((x) => [x.n, dealCard(s, x)])));
     if (ok) g.commit((st) => startDeal(st));
   };
   return (
-    <button className="btn btn-primary btn-block" disabled={missing.length > 0 || room.busy} onClick={send}>
-      {missing.length ? `还没入座：${missing.join('、')}` : room.busy ? '正在发…' : '把身份发到每个人手机上'}
+    <button className="btn btn-primary btn-block" disabled={missing.length > 0 || wrong.length > 0 || room.busy} onClick={send}>
+      {missing.length ? `还没入座：${missing.join('、')}` : wrong.length ? `${wrongText(wrong)}：先对一下座位` : room.busy ? '正在发…' : '把身份发到每个人手机上'}
     </button>
   );
 }

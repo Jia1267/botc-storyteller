@@ -1,6 +1,7 @@
 import { Suspense, lazy, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { currentSlot, slotActor } from './engine/flow';
-import { scriptOf } from './engine/core';
+import { circleOrder, scriptOf } from './engine/core';
+import { aiMissing } from './engine/ai';
 import { SLOT_TITLE } from './engine/scripts';
 import { useGame } from './store';
 import type { GameState } from './engine/types';
@@ -80,11 +81,16 @@ export default function App() {
   const seatNs = hasSeats ? s.seats.map((x) => x.n) : [];
   // 游戏中每个座位现在的角色卡：有人被"空出"后坐回来，房间自动把角色还给他
   const roleCards = s.phase === 'night' || s.phase === 'day' ? Object.fromEntries(s.seats.map((x) => [x.n, dealCard(s, x)])) : undefined;
+  // 手机上的剧本角色表（AI 局写出一定不会出现的角色）
+  const missing = s.ai ? aiMissing(s) : [];
+  const script = hasSeats ? { roles: scriptOf(s).roles, ...(missing.length ? { missing } : {}) } : undefined;
+  // 手机上的圆桌：谁还活着只在白天、发身份、结束时公开（夜里死的人天亮才公布）
+  const ring = s.phase === 'deal' || s.phase === 'day' || s.phase === 'end' ? { order: circleOrder(s), alive: s.seats.filter((x) => x.alive).map((x) => x.n) } : undefined;
 
   // AI 说书人局：平板是公共屏幕，不显示魔典、菜单这些说书人自己看的东西
   if (s.ai)
     return (
-      <RoomProvider seatNs={seatNs} title={`${scriptOf(s).name} · AI 说书人`} phase={s.phase} roleCards={roleCards}>
+      <RoomProvider seatNs={seatNs} title={`${scriptOf(s).name} · AI 说书人`} phase={s.phase} roleCards={roleCards} script={script} table={ring}>
         <UiCtx.Provider value={ui}>
           <TableCtx.Provider value={table}>
             <TimerCtx.Provider value={timer}>
@@ -106,7 +112,7 @@ export default function App() {
   else screen = <EndScreen g={g} />;
 
   return (
-    <RoomProvider seatNs={seatNs} title={scriptOf(s).name} phase={s.phase} roleCards={roleCards}>
+    <RoomProvider seatNs={seatNs} title={scriptOf(s).name} phase={s.phase} roleCards={roleCards} script={script} table={ring}>
     <UiCtx.Provider value={ui}>
       <TableCtx.Provider value={table}>
       <TimerCtx.Provider value={timer}>

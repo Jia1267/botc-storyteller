@@ -486,6 +486,25 @@ details.more[open] summary svg { transform: rotate(180deg); }
 .showcard.quiet.pick { justify-content: safe center; }
 .showcard.quiet .pick-seat:not(.sel):not(:disabled) { color: #d8cbb8; }
 
+/* 手机上的圆桌：谁还活着（每个座位的宽度按人数算，写在元素上） */
+.seat-ring { position: relative; width: 100%; max-width: 360px; aspect-ratio: 1; margin: 6px auto; }
+.seat-ring-mid { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--text-3); font-size: 13px; }
+.ring-seat {
+  position: absolute; transform: translate(-50%, -50%); aspect-ratio: 1; padding: 2px; border-radius: 12px; overflow: hidden; line-height: 1.25;
+  border: 1.5px solid #4a3f48; background: #17121a; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center;
+}
+.ring-seat b { font-size: 14px; white-space: nowrap; }
+.ring-seat small { font-size: 11px; color: #b9ad9d; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ring-seat.dead { border-style: dashed; background: #0e0b0d; color: #8c8178; }
+.ring-seat.dead small { color: #8c8178; }
+.ring-seat.me { border-color: #c9a45e; }
+.seat-ring.tight .ring-seat { border-radius: 10px; }
+.seat-ring.tight .ring-seat b { font-size: 12px; }
+.seat-ring.tight .ring-seat small { font-size: 10px; }
+.seat-ring.tighter .ring-seat { border-radius: 8px; padding: 1px; }
+.seat-ring.tighter .ring-seat b { font-size: 11px; }
+.seat-ring.tighter .ring-seat small { font-size: 9px; }
+
 /* AI 局投票：票数用圆点 */
 .vote-dots { display: inline-flex; gap: 5px; vertical-align: middle; margin-right: 6px; }
 .vote-dots i { width: 12px; height: 12px; border-radius: 50%; border: 1.5px solid #c9a45e; }

@@ -1,7 +1,7 @@
 // 说书人这边的房间：开房、看谁入座、把身份发到每个人手机上。
 // Firebase 只在开过房间时才加载（import('../../room/api')），不开房的人主页面不变大。
 import { Suspense, createContext, lazy, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { metaSeats, msgStatus, roomLink, seatLabel, tallyMvp, type Acks, type AiPublic, type EndInfo, type MsgBody, type RoomMeta, type RoomMsg, type SeatInfo } from '../../room/protocol';
+import { metaSeats, msgStatus, roomLink, seatLabel, tallyMvp, wrongSeats, wrongText, type Acks, type AiPublic, type EndInfo, type MsgBody, type RoomMeta, type RoomMsg, type SeatInfo } from '../../room/protocol';
 import type { CardContent } from '../common';
 import { BottomBar, ConfirmButton, Sheet } from '../common';
 
@@ -74,12 +74,16 @@ export const useRoom = () => useContext(RoomCtx)!;
 type GamePhase = 'setup' | 'deal' | 'night' | 'day' | 'end';
 const roomPhase = (p: GamePhase): RoomMeta['phase'] => (p === 'setup' ? 'lobby' : p === 'end' ? 'end' : 'game');
 
-export function RoomProvider({ seatNs, title, phase, roleCards, children }: {
+export function RoomProvider({ seatNs, title, phase, roleCards, script, table, children }: {
   seatNs: number[];
   title: string;
   phase: GamePhase;
   /** 游戏中每个座位现在的角色卡：有人被"空出"后坐回来，自动把角色还给他 */
   roleCards?: Record<number, CardContent>;
+  /** 剧本角色表（公开） */
+  script?: RoomMeta['script'];
+  /** 圆桌（座位顺序、存活）：只在白天、发身份、结束时给（夜里死的人天亮才公布） */
+  table?: RoomMeta['table'];
   children: ReactNode;
 }) {
   const [saved, setSaved] = useState<Saved | null>(loadSaved);
@@ -160,8 +164,20 @@ export function RoomProvider({ seatNs, title, phase, roleCards, children }: {
   const time = phase === 'night' ? 'night' : phase === 'day' ? 'day' : null;
   useEffect(() => {
     if (!code || !meta || !time || meta.time === time) return;
-    loadApi().then((api) => api.setTime(code, time).catch((e) => setErr(api.roomError(e))));
+    loadApi().then((api) => api.setMetaKey(code, 'time', time).catch((e) => setErr(api.roomError(e))));
   }, [code, meta, time]);
+
+  // 剧本角色表、圆桌：手机上看（数据库读回来的字段顺序会变、空数组会没有，所以用拼起来的字符串比）
+  const scriptKey = script && `${script.roles.join()}|${(script.missing ?? []).join()}`;
+  useEffect(() => {
+    if (!code || !meta || !script || (meta.script && `${(meta.script.roles ?? []).join()}|${(meta.script.missing ?? []).join()}`) === scriptKey) return;
+    loadApi().then((api) => api.setMetaKey(code, 'script', script).catch((e) => setErr(api.roomError(e))));
+  }, [code, meta, scriptKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  const tableKey = table && `${table.order.join()}|${table.alive.join()}`;
+  useEffect(() => {
+    if (!code || !meta || !table || (meta.table && `${(meta.table.order ?? []).join()}|${(meta.table.alive ?? []).join()}`) === tableKey) return;
+    loadApi().then((api) => api.setMetaKey(code, 'table', table).catch((e) => setErr(api.roomError(e))));
+  }, [code, meta, tableKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 有人被"空出"后又坐回来（或者换了一个人坐）：角色卡自动补上
   const latestCards = useRef(roleCards);
@@ -298,8 +314,9 @@ export function RoomCard({ seatNs }: { seatNs: number[] }) {
       </div>
     );
   const sat = seatNs.filter((n) => room.seats[n]);
+  const wrong = wrongSeats(seatNs, room.seats);
   return (
-    <div className={`card stack${sat.length < seatNs.length ? ' card-warn' : ''}`} style={{ gap: 8 }}>
+    <div className={`card stack${sat.length < seatNs.length || wrong.length ? ' card-warn' : ''}`} style={{ gap: 8 }}>
       <div className="row" style={{ justifyContent: 'space-between', flexWrap: 'nowrap' }}>
         <b>
           房间 {room.code} · 已入座 {sat.length} / {seatNs.length}
@@ -310,6 +327,7 @@ export function RoomCard({ seatNs }: { seatNs: number[] }) {
       </div>
       {sat.length < seatNs.length && <p className="dim">还没入座：{seatNs.filter((n) => !room.seats[n]).map(seatLabel).join('、')}。让他们扫码选座。</p>}
       {sat.length < seatNs.length && <p className="dim">{SEAT_TIP}</p>}
+      {wrong.length > 0 && <p>{wrongText(wrong)}：让他们看一下左右是谁，坐错了就点"坐错了，换座位"重新选。</p>}
       {!room.online && <p className="dim">这台设备断线了，正在重连…</p>}
       {room.err && <p className="card card-warn">{room.err}</p>}
       {sheet && <RoomSheet seatNs={seatNs} onClose={() => setSheet(false)} />}
@@ -375,6 +393,8 @@ function SeatList({ seatNs, status }: { seatNs: number[]; status?: (n: number) =
             <span className="grow">
               {seatLabel(n)} {x ? x.name || '' : <span className="dim">没人</span>}
               {x && !x.online && <span className="dim"> · 断线</span>}
+              {x && room.meta?.phase === 'lobby' && x.ok === true && <span className="dim"> · 邻座对过了</span>}
+              {x && room.meta?.phase === 'lobby' && x.ok === false && <span className="evil"> · 说邻座不对</span>}
             </span>
             {status?.(n)}
             {x && !status &&

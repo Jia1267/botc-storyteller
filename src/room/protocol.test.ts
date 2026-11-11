@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { seeded } from '../engine/rng';
 import {
-  gotKey, hashUnit, idleMsgId, isNightMsg, isRoomCode, metaSeats, msgStatus, newRoomCode, nightMsgId, pickKey, pickOf, roomLink, roomPath, sameBody, seatLabel, sortMsgs, tallyMvp, voteGoal,
+  gotKey, hashUnit, idleMsgId, isNightMsg, isRoomCode, metaSeats, msgStatus, newRoomCode, nightMsgId, pickKey, pickOf, roomLink, roomPath, sameBody, seatLabel, sortMsgs, tallyMvp, voteGoal, seatNeighbors, wrongSeats, wrongText,
 } from './protocol';
 
 describe('房间', () => {
@@ -93,5 +93,20 @@ describe('投票要几票', () => {
         { by: 1, target: 5, votes: 3, text: '' },
       ]),
     ).toBe('要 4 票才能上处决台（现在 2号、5号 打平，没人待处决）');
+  });
+});
+
+describe('入座后确认邻座', () => {
+  it('后一个号在左手边、前一个号在右手边，首尾相接；旅行者不算；不到 3 个座位不用确认', () => {
+    expect(seatNeighbors([1, 2, 3, 4, 5], 1)).toEqual({ left: 2, right: 5 });
+    expect(seatNeighbors([1, 2, 3, 4, 5], 5)).toEqual({ left: 1, right: 4 });
+    expect(seatNeighbors([1, 2, 3, 101], 3)).toEqual({ left: 1, right: 2 });
+    expect(seatNeighbors([1, 2, 3], 101)).toBeNull();
+    expect(seatNeighbors([1, 2], 1)).toBeNull();
+  });
+  it('只有说了"不对"的座位挡住开局；没答、说对的不算', () => {
+    const seats = { 1: { uid: 'a', ok: true }, 2: { uid: 'b', ok: false }, 3: { uid: 'c' }, 4: { uid: 'd', ok: false } };
+    expect(wrongSeats([1, 2, 3, 4, 5], seats)).toEqual([2, 4]);
+    expect(wrongText([2, 4])).toBe('2 号、4 号说邻座不对');
   });
 });

@@ -12,7 +12,7 @@ import { seeded } from '../../engine/rng';
 import { SLOT_TITLE, endLines } from '../../engine/scripts';
 import { setScript, shuffleSeats, startDeal } from '../../engine/setup';
 import { watchOffset } from '../../room/api';
-import { handVotes, msgStatus, voteGoal, type AiPublic } from '../../room/protocol';
+import { handVotes, msgStatus, voteGoal, wrongSeats, wrongText, type AiPublic } from '../../room/protocol';
 import type { Game } from '../../store';
 import { dealCard } from '../dealCard';
 import { EndScreen } from '../End';
@@ -154,6 +154,7 @@ function AiSetup({ g, onStart, onExit }: { g: Game; onStart: () => void; onExit:
   const sc = scriptOf(s);
   const seatNs = s.setupStep !== 'count' && s.seats.length ? s.seats.map((x) => x.n) : [];
   const missing = seatNs.filter((n) => !room.seats[n]);
+  const wrong = wrongSeats(seatNs, room.seats);
   const tweak = (k: keyof typeof set, v: number) => g.tweak((st) => (st.ai = { ...(st.ai ?? AI_DEFAULTS), [k]: v }));
   const opt = (k: keyof typeof set, vals: number[], unit: (v: number) => string) => (
     <div className="seg">
@@ -236,8 +237,8 @@ function AiSetup({ g, onStart, onExit }: { g: Game; onStart: () => void; onExit:
         </button>
       </div>
       <BottomBar wide>
-        <button className="btn btn-primary btn-block" disabled={room.busy || !seatNs.length || missing.length > 0} onClick={room.code ? start : room.open}>
-          {!seatNs.length ? '先选人数' : !room.code ? '开房间（大家扫码入座）' : missing.length ? `还没入座：${missing.map(seatName).join('、')}` : '开始：把身份发到每个人手机上'}
+        <button className="btn btn-primary btn-block" disabled={room.busy || !seatNs.length || missing.length > 0 || wrong.length > 0} onClick={room.code ? start : room.open}>
+          {!seatNs.length ? '先选人数' : !room.code ? '开房间（大家扫码入座）' : missing.length ? `还没入座：${missing.map(seatName).join('、')}` : wrong.length ? `${wrongText(wrong)}：先对一下座位` : '开始：把身份发到每个人手机上'}
         </button>
       </BottomBar>
     </main>
